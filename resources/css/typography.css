@@ -1,0 +1,109 @@
+@reference "./app.css";
+
+@layer components {
+    .typography * {
+        @apply my-2 break-words whitespace-normal transition-all text-foreground;
+    }
+
+    .typography h1 {
+        @apply mb-4 text-3xl tracking-tight scroll-m-20;
+    }
+
+    .typography h2 {
+        @apply pb-2 my-4 text-[1.7rem] font-semibold tracking-tight transition-colors border-b scroll-m-20 first:mt-0;
+    }
+
+    .typography h3 {
+        @apply my-4 text-2xl font-semibold tracking-tight scroll-m-20;
+    }
+
+    .typography h4 {
+        @apply my-4 text-xl font-semibold tracking-tight scroll-m-20;
+    }
+
+    .typography h5 {
+        @apply text-lg font-semibold tracking-tight scroll-m-20;
+    }
+
+    .typography h6 {
+        @apply text-base font-semibold tracking-tight scroll-m-20;
+    }
+
+    .typography p {
+        @apply leading-7;
+    }
+
+    .typography blockquote {
+        @apply mt-6 italic border-l-2 ps-6;
+    }
+
+    .typography hr {
+        @apply my-6 border-t;
+    }
+
+    .typography a {
+        @apply text-primary hover:text-primary/80;
+    }
+
+    .typography strong,
+    .typography b {
+        @apply font-bold;
+    }
+
+    .typography em,
+    .typography i {
+        @apply italic;
+    }
+
+    .typography del {
+        @apply line-through;
+    }
+
+    .typography code {
+        @apply relative rounded bg-muted px-[0.3rem] py-[0.2rem] font-mono text-sm font-semibold;
+    }
+
+    .typography pre {
+        @apply p-4 my-6 overflow-x-auto rounded-lg bg-muted;
+        direction: ltr;
+    }
+
+    .typography pre code {
+        @apply px-0 py-0 bg-transparent rounded-none;
+    }
+
+    .typography ul {
+        @apply my-6 ms-6 list-disc [&>li]:mt-2;
+    }
+
+    .typography ol {
+        @apply my-6 ms-6 list-decimal [&>li]:mt-2;
+    }
+
+    .typography img {
+        @apply max-w-full my-6 rounded-lg;
+    }
+
+    .typography ul ul,
+    .typography ol ol,
+    .typography ul ol,
+    .typography ol ul {
+        @apply my-2 ms-6;
+    }
+
+    .typography p.lead {
+        @apply text-xl text-muted-foreground;
+    }
+
+    .typography div.large {
+        @apply text-lg font-semibold;
+    }
+
+    .typography small {
+        @apply text-sm font-medium leading-none;
+    }
+
+    .typography p.muted {
+        @apply text-sm text-muted-foreground;
+    }
+}
