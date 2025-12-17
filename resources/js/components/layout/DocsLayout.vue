@@ -15,7 +15,7 @@ onMounted(async () => {
 </script>
 
 <template>
-    <SidebarProvider>
+    <SidebarProvider :default-open="true">
         <DocsSidebar />
         <div class="flex-1 p-2 space-y-4 max-w-[calc(100dvw)] md:max-w-[calc(100dvw-var(--sidebar-width))]">
             <DocsNavbar />

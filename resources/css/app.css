@@ -149,7 +149,7 @@
 
   body {
     @apply bg-background text-foreground;
-    font-family: 'Cairo';
+    font-family: 'Cairo', sans-serif;
     padding-right: 0px !important;
   }
 }

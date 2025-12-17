@@ -7,7 +7,6 @@ import {
     SidebarContent,
     SidebarFooter,
     SidebarGroup,
-    SidebarGroupLabel,
     SidebarMenu,
 } from '@/components/ui/sidebar';
 import SidebarMenuList from './sidebar/SidebarMenuList.vue';
@@ -25,24 +24,15 @@ const navigation = computed(() => (page.props.navigation || []) as NavigationIte
 </script>
 
 <template>
-    <Sidebar side="right" variant="sidebar" class="border-l">
-        <SidebarHeader class="border-b">
-            <div class="flex items-center justify-center py-4">
-                <h2 class="text-lg font-semibold">القائمة</h2>
-            </div>
-        </SidebarHeader>
-        <SidebarContent class="px-2">
+    <Sidebar side="right" variant="floating">
+        <SidebarHeader />
+        <SidebarContent style="scrollbar-gutter: stable">
             <SidebarGroup>
-                <SidebarGroupLabel>المحتوى</SidebarGroupLabel>
                 <SidebarMenu>
                     <SidebarMenuList :items="navigation" />
                 </SidebarMenu>
             </SidebarGroup>
         </SidebarContent>
-        <SidebarFooter class="border-t p-4">
-            <div class="text-sm text-neutral-500 text-center">
-                نادي الحاسبات - جامعة القصيم
-            </div>
-        </SidebarFooter>
+        <SidebarFooter />
     </Sidebar>
 </template>

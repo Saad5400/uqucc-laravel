@@ -37,20 +37,20 @@ watch(
 <template>
     <Collapsible v-model:open="open">
         <SidebarMenuItem>
-            <div class="flex items-center justify-between gap-1">
-                <SidebarMenuLink :item="item" />
+            <div class="flex items-center gap-1">
                 <CollapsibleTrigger asChild>
                     <SidebarMenuButton
                         aria-label="فتح/إغلاق القائمة"
-                        :class="cn('flex items-center justify-center w-fit', open && 'bg-sidebar-accent')"
+                        class="flex size-5 items-center justify-center rounded-sm hover:bg-sidebar-accent"
                     >
-                        <ChevronLeft :class="cn('transition-transform size-4', open && '-rotate-90')" />
+                        <ChevronLeft :class="cn('size-4 transition-transform', open && 'rotate-90')" />
                     </SidebarMenuButton>
                 </CollapsibleTrigger>
+                <SidebarMenuLink :item="item" />
             </div>
         </SidebarMenuItem>
 
-        <CollapsibleContent class="my-2 ps-2 ms-2 border-s-1 border-foreground/30">
+        <CollapsibleContent class="ms-4 border-s border-sidebar-border ps-3">
             <!-- RECURSION happens here -->
             <SidebarMenuList :items="item.children ?? []" />
         </CollapsibleContent>
