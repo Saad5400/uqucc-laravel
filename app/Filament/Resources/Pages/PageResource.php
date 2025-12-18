@@ -20,7 +20,7 @@ class PageResource extends Resource
 {
     protected static ?string $model = Page::class;
 
-    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedRectangleStack;
+    protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedDocumentText;
 
     protected static ?string $modelLabel = 'صفحة';
 
@@ -52,7 +52,6 @@ class PageResource extends Resource
         return [
             'index' => ListPages::route('/'),
             'create' => CreatePage::route('/create'),
-            'view' => Pages\ViewPage::route('/{record}'),
             'edit' => EditPage::route('/{record}/edit'),
         ];
     }

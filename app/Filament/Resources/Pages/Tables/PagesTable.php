@@ -2,12 +2,15 @@
 
 namespace App\Filament\Resources\Pages\Tables;
 
+use App\Filament\Resources\Pages\PageResource;
+use App\Filament\Resources\Pages\Pages\ListPages;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ForceDeleteBulkAction;
 use Filament\Actions\RestoreBulkAction;
 use Filament\Actions\ViewAction;
+use Filament\Support\Enums\Operation;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
@@ -15,6 +18,7 @@ use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\TrashedFilter;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
+use Livewire\Component;
 
 class PagesTable
 {
@@ -70,14 +74,12 @@ class PagesTable
                 Filter::make('root_only')
                     ->label('الصفحات الرئيسية فقط')
                     ->query(fn (Builder $query): Builder => $query->whereNull('parent_id'))
-                    ->default(),
+                    ->default(fn(Component $livewire) => $livewire instanceof ListPages),
 
                 TrashedFilter::make()
                     ->label('المحذوفة'),
             ])
             ->recordActions([
-                ViewAction::make()
-                    ->label('عرض'),
                 EditAction::make()
                     ->label('تعديل'),
             ])
