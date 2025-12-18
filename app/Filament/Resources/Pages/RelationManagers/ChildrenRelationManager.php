@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Pages\RelationManagers;
 
 use App\Filament\Resources\Pages\PageResource;
 use App\Filament\Resources\Pages\Schemas\PageForm;
+use App\Filament\Resources\Pages\Tables\PagesTable;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\CreateAction;
 use Filament\Actions\DeleteAction;
@@ -27,4 +28,15 @@ class ChildrenRelationManager extends RelationManager
     protected static ?string $modelLabel = 'صفحة فرعية';
 
     protected static ?string $pluralModelLabel = 'صفحات فرعية';
+
+    public function table(Table $table): Table
+    {
+        return PagesTable::configure($table)
+            ->headerActions([
+                CreateAction::make()
+                    ->url(PageResource::getUrl('create', [
+                        'default_parent_id' => $this->ownerRecord->id,
+                    ])),
+            ]);
+    }
 }

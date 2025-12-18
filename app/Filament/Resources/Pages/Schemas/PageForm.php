@@ -9,7 +9,9 @@ use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
+use Filament\Support\Enums\Operation;
 
 class PageForm
 {
@@ -24,9 +26,16 @@ class PageForm
                             ->label('العنوان')
                             ->required()
                             ->live(onBlur: true)
-                            ->afterStateUpdated(fn ($state, callable $set) => $set('slug', '/'.str($state)->slug())),
+                            ->afterStateUpdated(function ($state, Set $set, string $operation) {
+                                if ($operation == 'create') {
+                                    $set('slug', '/' . str($state)->slug());
+                                }
+                            }),
 
                         TextInput::make('slug')
+                            ->extraAttributes([
+                                'dir' => 'ltr',
+                            ])
                             ->label('الرابط')
                             ->required()
                             ->unique(ignoreRecord: true)
@@ -39,6 +48,7 @@ class PageForm
 
                         Select::make('parent_id')
                             ->label('الصفحة الأب')
+                            ->default(request('default_parent_id') ?? null)
                             ->relationship('parent', 'title')
                             ->searchable()
                             ->preload(),

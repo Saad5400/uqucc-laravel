@@ -11,7 +11,7 @@ const colorMode = useColorMode();
 
 <template>
     <header
-        class="screenshot-hidden flex items-center justify-between w-full gap-2 p-2 border rounded-lg shadow-sm bg-sidebar border-sidebar-border"
+        class="screenshot-hidden flex items-center justify-between w-full gap-2 p-2 border rounded-lg shadow-sm bg-sidebar border-sidebar-border !h-14"
     >
         <div class="flex items-center">
             <Button aria-label="فاتح القائمة" as-child variant="ghost" size="icon" class="md:hidden">

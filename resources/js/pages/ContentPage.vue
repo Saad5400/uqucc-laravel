@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { computed } from 'vue';
 import { usePage } from '@inertiajs/vue3';
 import DocsLayout from '@/components/layout/DocsLayout.vue';
 import {
@@ -9,7 +8,6 @@ import {
     BreadcrumbLink,
     BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
-import { Card, CardContent } from '@/components/ui/card';
 
 defineOptions({
     layout: DocsLayout,
@@ -73,24 +71,31 @@ usePage().props.title = props.page.title;
         </Breadcrumb>
 
         <!-- Page Content -->
-        <div v-if="hasContent" class="typography" v-html="page.html_content"></div>
+        <div class="typography">
+            <!-- Main content -->
+            <div v-if="hasContent" v-html="page.html_content"></div>
 
-        <!-- Child Pages Grid (for directory pages without content) -->
-        <div v-if="!hasContent && page.children.length > 0" class="typography">
-            <h1 class="flex items-center gap-2">
+            <!-- Page heading if no content -->
+            <h1 v-else class="flex items-center gap-2">
                 <i v-if="page.icon" :class="page.icon" class="!size-8" />
                 {{ breadcrumbs[breadcrumbs.length - 1]?.title }}
             </h1>
-            <div class="grid grid-cols-[repeat(auto-fill,minmax(min(20rem,80vw),1fr))] gap-4">
-                <Card v-for="child in page.children" :key="child.id">
-                    <CardContent class="p-6">
-                        <a :href="child.slug" class="flex items-center gap-2 text-lg font-semibold no-underline">
-                            <i v-if="child.icon" :class="child.icon" class="!size-6" />
-                            {{ child.title }}
-                        </a>
-                    </CardContent>
-                </Card>
-            </div>
+
+            <!-- Catalog section (always show at end if page has children) -->
+            <template v-if="page.children.length > 0">
+                <h3>في هذا القسم</h3>
+                <div class="grid grid-cols-[repeat(auto-fill,minmax(min(14rem,80vw),1fr))] gap-2 mb-8">
+                    <a
+                        v-for="child in page.children"
+                        :key="child.id"
+                        :href="child.slug"
+                        class="inline-flex items-center gap-2 rounded-md font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 has-[>svg]:px-3 p-8 whitespace-normal size-full flex justify-start text-start px-4 py-2 text-lg no-underline"
+                    >
+                        <i v-if="child.icon" :class="child.icon" class="!size-8 me-1" />
+                        {{ child.title }}
+                    </a>
+                </div>
+            </template>
         </div>
 
         <!-- Authors -->
