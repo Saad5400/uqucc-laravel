@@ -70,6 +70,7 @@ class PageController extends Controller
                     'title' => $child->title,
                     'icon' => $child->icon,
                 ])->toArray(),
+                'catalog' => $this->getCatalogPages($page),
             ],
             'breadcrumbs' => $breadcrumbs,
             'hasContent' => ! empty($page->html_content),
@@ -95,6 +96,29 @@ class PageController extends Controller
         return $breadcrumbs->map(fn ($p) => [
             'title' => $p->title,
             'path' => $p->slug,
+        ])->toArray();
+    }
+
+    /**
+     * Get catalog pages for a page.
+     * For the homepage, show other root-level pages; otherwise, show the page's children.
+     *
+     * @return array<int, array{id:int,slug:string,title:string,icon:?string}>
+     */
+    private function getCatalogPages(Page $page): array
+    {
+        $catalogQuery = $page->slug === '/'
+            ? Page::whereNull('parent_id')
+                ->where('hidden', false)
+                ->where('slug', '!=', '/')
+                ->orderBy('order')
+            : $page->children()->where('hidden', false)->orderBy('order');
+
+        return $catalogQuery->get()->map(fn (Page $child) => [
+            'id' => $child->id,
+            'slug' => $child->slug,
+            'title' => $child->title,
+            'icon' => $child->icon,
         ])->toArray();
     }
 }

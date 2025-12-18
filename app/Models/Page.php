@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -68,6 +69,23 @@ class Page extends Model implements Sortable
     public function authors(): BelongsToMany
     {
         return $this->belongsToMany(Author::class)->withTimestamps()->orderBy('order');
+    }
+
+    protected function htmlContent(): Attribute
+    {
+        return Attribute::make(
+            get: function ($value) {
+                // If JSON decode succeeds, return the array; otherwise return the original string HTML.
+                if (blank($value)) {
+                    return $value;
+                }
+
+                $decoded = json_decode($value, true);
+
+                return json_last_error() === JSON_ERROR_NONE && is_array($decoded) ? $decoded : $value;
+            },
+            set: fn ($value) => is_array($value) ? json_encode($value) : $value,
+        );
     }
 
     /**

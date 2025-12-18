@@ -2,6 +2,8 @@
 
 namespace App\Filament\Resources\Pages\Schemas;
 
+use App\Filament\Forms\Blocks\AlertBlock;
+use App\Filament\Forms\Blocks\CollapsibleBlock;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
@@ -64,6 +66,12 @@ class PageForm
                         RichEditor::make('html_content')
                             ->label('المحتوى الرئيسي')
                             ->required()
+                            ->json()
+                            ->customBlocks([
+                                AlertBlock::class,
+                                CollapsibleBlock::class,
+                            ])
+                            ->activePanel('customBlocks')
                             ->columnSpanFull(),
 
                         Textarea::make('stem')

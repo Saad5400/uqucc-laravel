@@ -136,6 +136,10 @@
 }
 
 @layer base {
+  :root {
+    font-family: 'Cairo', sans-serif;
+  }
+
   * {
     @apply border-border outline-ring/50;
     scrollbar-width: thin;
@@ -151,5 +155,9 @@
     @apply bg-background text-foreground;
     font-family: 'Cairo', sans-serif;
     padding-right: 0px !important;
+  }
+
+  .page-card {
+    @apply rounded-xl shadow-sm;
   }
 }

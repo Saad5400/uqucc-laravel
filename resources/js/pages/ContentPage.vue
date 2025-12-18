@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { usePage } from '@inertiajs/vue3';
+import { Icon } from '@iconify/vue';
 import DocsLayout from '@/components/layout/DocsLayout.vue';
 import {
     Breadcrumb,
@@ -8,6 +9,8 @@ import {
     BreadcrumbLink,
     BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
+import Button from '@/components/ui/button/Button.vue';
+import RichContentRenderer from '@/components/RichContentRenderer.vue';
 
 defineOptions({
     layout: DocsLayout,
@@ -32,11 +35,12 @@ interface PageData {
     slug: string;
     title: string;
     description?: string;
-    html_content: string;
+    html_content: string | Record<string, unknown> | null;
     icon?: string;
     og_image?: string;
     authors: Author[];
     children: ChildPage[];
+    catalog: ChildPage[];
 }
 
 interface Breadcrumb {
@@ -55,9 +59,9 @@ usePage().props.title = props.page.title;
 </script>
 
 <template>
-    <div class="container mx-auto max-w-5xl py-8 px-4">
+    <div class="space-y-6">
         <!-- Breadcrumbs -->
-        <Breadcrumb v-if="breadcrumbs.length > 1" class="mb-4">
+        <Breadcrumb v-if="breadcrumbs.length > 1" class="mb-2">
             <BreadcrumbList>
                 <template v-for="(breadcrumb, index) in breadcrumbs" :key="index">
                     <BreadcrumbItem>
@@ -70,10 +74,16 @@ usePage().props.title = props.page.title;
             </BreadcrumbList>
         </Breadcrumb>
 
+        <!-- Page title -->
+        <div class="flex items-center gap-3">
+            <Icon v-if="page.icon" :icon="page.icon" class="!size-8" />
+            <h1 class="text-3xl font-semibold m-0">{{ page.title }}</h1>
+        </div>
+
         <!-- Page Content -->
         <div class="typography">
             <!-- Main content -->
-            <div v-if="hasContent" v-html="page.html_content"></div>
+            <RichContentRenderer v-if="hasContent" :content="page.html_content" />
 
             <!-- Page heading if no content -->
             <h1 v-else class="flex items-center gap-2">
@@ -82,18 +92,20 @@ usePage().props.title = props.page.title;
             </h1>
 
             <!-- Catalog section (always show at end if page has children) -->
-            <template v-if="page.children.length > 0">
-                <h3>في هذا القسم</h3>
-                <div class="grid grid-cols-[repeat(auto-fill,minmax(min(14rem,80vw),1fr))] gap-2 mb-8">
-                    <a
-                        v-for="child in page.children"
+            <template v-if="page.catalog.length > 0">
+                <div class="grid grid-cols-[repeat(auto-fill,minmax(min(20rem,80dvw),1fr))] gap-4">
+                    <Button
+                        v-for="child in page.catalog"
                         :key="child.id"
-                        :href="child.slug"
-                        class="inline-flex items-center gap-2 rounded-md font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive bg-secondary text-secondary-foreground shadow-xs hover:bg-secondary/80 has-[>svg]:px-3 p-8 whitespace-normal size-full flex justify-start text-start px-4 py-2 text-lg no-underline"
+                        as-child
+                        variant="secondary"
+                        class="p-8 text-2xl whitespace-normal size-full flex justify-start text-start"
                     >
-                        <i v-if="child.icon" :class="child.icon" class="!size-8 me-1" />
-                        {{ child.title }}
-                    </a>
+                        <a :href="child.slug" class="flex items-center gap-2 w-full no-underline text-current">
+                            <Icon v-if="child.icon" :icon="child.icon" class="!size-8 me-1" />
+                            {{ child.title }}
+                        </a>
+                    </Button>
                 </div>
             </template>
         </div>

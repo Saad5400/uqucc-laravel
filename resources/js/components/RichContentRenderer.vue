@@ -1,0 +1,103 @@
+<script setup lang="ts">
+import { EditorContent, useEditor } from '@tiptap/vue-3';
+import Link from '@tiptap/extension-link';
+import StarterKit from '@tiptap/starter-kit';
+import TextAlign from '@tiptap/extension-text-align';
+import Underline from '@tiptap/extension-underline';
+import DOMPurify from 'isomorphic-dompurify';
+import { computed, watch } from 'vue';
+
+import AlertBlock from '@/tiptap/extensions/alertBlock';
+import CollapsibleBlock from '@/tiptap/extensions/collapsibleBlock';
+
+const props = withDefaults(
+    defineProps<{
+        content: unknown;
+    }>(),
+    {
+        content: null,
+    },
+);
+
+const isJsonContent = computed(
+    () => props.content !== null && typeof props.content === 'object' && !Array.isArray(props.content),
+);
+
+const transformCustomBlocks = (node: any): any => {
+    if (!node || typeof node !== 'object') return node;
+
+    const nextNode: any = Array.isArray(node) ? [...node] : { ...node };
+
+    if (nextNode.type === 'customBlock') {
+        const id = nextNode.attrs?.id;
+        if (id === 'alert') {
+            nextNode.type = 'alertBlock';
+        } else if (id === 'collapsible') {
+            nextNode.type = 'collapsibleBlock';
+        }
+    }
+
+    if (Array.isArray(nextNode.content)) {
+        nextNode.content = nextNode.content.map((child: any) => transformCustomBlocks(child));
+    }
+
+    return nextNode;
+};
+
+const transformedContent = computed(() => {
+    if (!isJsonContent.value) return null;
+    return transformCustomBlocks(props.content);
+});
+
+const cleanHtml = computed(() =>
+    typeof props.content === 'string' && props.content
+        ? DOMPurify.sanitize(props.content)
+        : '',
+);
+
+const editor = useEditor({
+    editable: false,
+    content: transformedContent.value as Record<string, unknown> | null,
+    extensions: [
+        StarterKit.configure({
+            heading: {
+                levels: [1, 2, 3, 4, 5, 6],
+            },
+        }),
+        Underline,
+        Link.configure({
+            openOnClick: true,
+            autolink: true,
+            linkOnPaste: true,
+        }),
+        TextAlign.configure({
+            types: ['heading', 'paragraph'],
+        }),
+        AlertBlock,
+        CollapsibleBlock,
+    ],
+    editorProps: {
+        attributes: {
+            class: 'typography',
+        },
+    },
+});
+
+watch(
+    () => props.content,
+    (value) => {
+        if (!editor.value) return;
+
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+            editor.value.commands.setContent(transformCustomBlocks(value));
+        } else {
+            editor.value.commands.clearContent(true);
+        }
+    },
+);
+</script>
+
+<template>
+    <EditorContent v-if="isJsonContent" :editor="editor" />
+    <div v-else class="typography" v-html="cleanHtml" />
+</template>
