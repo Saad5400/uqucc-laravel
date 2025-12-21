@@ -67,19 +67,23 @@ class UquccSearchHandler extends BaseHandler
     {
         $pageUrl = url($page->slug);
 
-        // Build message content
-        $messageText = "**{$page->title}**\n\n";
+        // Build message content with proper markdown escaping
+        $title = $this->escapeMarkdownV2($page->title);
+        $messageText = "*{$title}*\n\n";
 
         // Add description or search cache content
         if ($searchCache && $searchCache->content) {
-            $messageText .= Str::limit(strip_tags($searchCache->content), 500) . "\n\n";
+            $content = Str::limit(strip_tags($searchCache->content), 500);
+            $messageText .= $this->escapeMarkdownV2($content) . "\n\n";
         } elseif ($page->description) {
-            $messageText .= Str::limit($page->description, 500) . "\n\n";
+            $content = Str::limit($page->description, 500);
+            $messageText .= $this->escapeMarkdownV2($content) . "\n\n";
         }
 
-        // Add link
-        $messageText .= "🔗 الرابط: {$pageUrl}";
+        // Add link with proper escaping
+        $escapedUrl = $this->escapeMarkdownV2($pageUrl);
+        $messageText .= "🔗 الرابط: [{$escapedUrl}]({$pageUrl})";
 
-        $this->reply($message, $messageText);
+        $this->replyMarkdown($message, $messageText);
     }
 }

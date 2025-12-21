@@ -18,12 +18,9 @@ class UquccListHandler extends BaseHandler
 
     protected function listPages(Message $message): void
     {
-        // Get all visible root-level pages with their children
+        // Get all visible root-level pages
         $pages = Page::visible()
             ->rootLevel()
-            ->with(['children' => function ($query) {
-                $query->where('hidden', false)->orderBy('order');
-            }])
             ->orderBy('order')
             ->get();
 
@@ -34,16 +31,25 @@ class UquccListHandler extends BaseHandler
 
         $list = [];
         foreach ($pages as $page) {
-            $list[] = "`دليل {$page->title}`";
-
-            // Add children if they exist
-            if ($page->children->isNotEmpty()) {
-                foreach ($page->children as $child) {
-                    $list[] = "  ↳ `دليل {$child->title}`";
-                }
-            }
+            $this->addPageToList($page, $list, 0);
         }
 
         $this->replyMarkdown($message, $this->escapeMarkdownV2("الفهرس:\n\n") . implode("\n", $list));
+    }
+
+    protected function addPageToList(Page $page, array &$list, int $level): void
+    {
+        // Add indentation based on level
+        $indent = str_repeat('  ', $level);
+        $arrow = $level > 0 ? '↳ ' : '';
+
+        $list[] = "{$indent}{$arrow}`دليل {$page->title}`";
+
+        // Recursively add all visible children
+        $children = $page->children()->where('hidden', false)->orderBy('order')->get();
+
+        foreach ($children as $child) {
+            $this->addPageToList($child, $list, $level + 1);
+        }
     }
 }
