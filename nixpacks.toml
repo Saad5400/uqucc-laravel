@@ -155,6 +155,21 @@ stderr_logfile=/var/log/worker-inertia-ssr.log
 stdout_logfile=/var/log/worker-inertia-ssr.log
 '''
 
+"worker-telegram-bot.conf" = '''
+[program:telegram-bot]
+command=bash -c 'exec php /app/artisan telegram:run'
+process_name=%(program_name)s
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+stdout_logfile=/var/log/worker-telegram-bot.log
+stderr_logfile=/var/log/worker-telegram-bot.log
+stdout_logfile_maxbytes=10MB
+stderr_logfile_maxbytes=10MB
+stopwaitsecs=3600
+'''
+
 "php-fpm.conf" = '''
 [www]
 listen = 127.0.0.1:9000
