@@ -4,7 +4,7 @@ nixPkgs = [
     "php84",                  # <--- CHANGED from default php or php82
     "php84Packages.composer", # <--- Ensure composer matches the PHP version
     "python311Packages.supervisor",
-    "nodejs_22"               # Ensure you have node if you removed "..."
+    "nodejs_18"               # Ensure you have node if you removed "..."
 ]
 
 [phases.install]
