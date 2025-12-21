@@ -1,8 +1,17 @@
 [phases.setup]
 nixPkgs = [
-    "...",
+    "php84",
+    "php84Extensions.curl",
+    "php84Extensions.mbstring",
+    "php84Extensions.openssl",
+    "php84Extensions.pdo",
+    "php84Extensions.pdo_mysql",
+    "php84Extensions.json",
+    "composer",
+    "nodejs_20",
     "python311Packages.supervisor",
 ]
+
 
 [phases.install]
 cmds = [
