@@ -51,6 +51,8 @@ class TelegramBotService
                 }
             } catch (\Exception $e) {
                 echo "Error: " . $e->getMessage() . PHP_EOL;
+                echo "File: " . $e->getFile() . ":" . $e->getLine() . PHP_EOL;
+                echo "Trace: " . $e->getTraceAsString() . PHP_EOL;
                 sleep(5);
             }
         }
@@ -58,14 +60,24 @@ class TelegramBotService
 
     protected function handleUpdate(Update $update): void
     {
-        $message = $update->getMessage();
+        try {
+            $message = $update->getMessage();
 
-        if (!$message || $message->getFrom()->getIsBot()) {
-            return;
-        }
+            if (!$message || $message->getFrom()->getIsBot()) {
+                return;
+            }
 
-        foreach ($this->handlers as $handler) {
-            $handler->handle($message);
+            foreach ($this->handlers as $handler) {
+                try {
+                    $handler->handle($message);
+                } catch (\Exception $e) {
+                    echo "Handler error: " . get_class($handler) . " - " . $e->getMessage() . PHP_EOL;
+                    echo "File: " . $e->getFile() . ":" . $e->getLine() . PHP_EOL;
+                }
+            }
+        } catch (\Exception $e) {
+            echo "Update handling error: " . $e->getMessage() . PHP_EOL;
+            echo "File: " . $e->getFile() . ":" . $e->getLine() . PHP_EOL;
         }
     }
 }

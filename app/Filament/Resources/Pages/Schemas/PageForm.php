@@ -5,15 +5,15 @@ namespace App\Filament\Resources\Pages\Schemas;
 use App\Filament\Forms\Blocks\AlertBlock;
 use App\Filament\Forms\Blocks\CollapsibleBlock;
 use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
-use Filament\Forms\Get;
+use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
+use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\Operation;
@@ -88,12 +88,13 @@ class PageForm
                     ])
                     ->columns(2),
 
-                Section::make('ردود Discord السريعة')
+                Section::make('ردود تيليجرام السريعة')
                     ->columnSpanFull()
                     ->description('تهيئة محتوى الرد الذي يمكن للبوت إرساله مباشرة للمستخدمين')
                     ->schema([
                         Toggle::make('quick_response_enabled')
                             ->label('تفعيل الرد السريع')
+                            ->reactive()
                             ->helperText('عند التفعيل يمكن للبوت استخدام هذه الصفحة كقالب رد جاهز')
                             ->default(false),
 
@@ -119,21 +120,33 @@ class PageForm
                                     ->url()
                                     ->required()
                                     ->maxLength(2048),
+
+                                Select::make('size')
+                                    ->label('حجم الزر')
+                                    ->options([
+                                        'full' => 'عرض كامل (زر واحد في السطر)',
+                                        'half' => 'نصف عرض (زران في السطر)',
+                                        'third' => 'ثلث عرض (ثلاثة أزرار في السطر)',
+                                    ])
+                                    ->default('full')
+                                    ->required()
+                                    ->helperText('عدد الأزرار في السطر الواحد'),
                             ])
                             ->hidden(fn (Get $get) => ! $get('quick_response_enabled'))
                             ->addActionLabel('إضافة زر')
-                            ->columns(2)
+                            ->columns(3)
                             ->reorderable()
                             ->collapsed(),
 
                         Textarea::make('quick_response_message')
                             ->label('نص الرد')
-                            ->helperText('نص قصير يمكن للبوت إرساله مع الرابط في الديسكورد')
+                            ->helperText('نص قصير يمكن للبوت إرساله مع الرابط في التيليجرام')
                             ->rows(4)
                             ->columnSpanFull()
                             ->hidden(fn (Get $get) => ! $get('quick_response_enabled')),
 
                         FileUpload::make('quick_response_attachments')
+                            ->disk('public')
                             ->label('مرفقات الرد (صور/ملفات)')
                             ->directory('quick-responses')
                             ->visibility('public')
