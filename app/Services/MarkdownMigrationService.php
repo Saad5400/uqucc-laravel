@@ -94,8 +94,7 @@ class MarkdownMigrationService
             'quick_response_enabled' => $frontmatter['quickResponseEnabled'] ?? false,
             'quick_response_send_link' => $frontmatter['quickResponseSendLink'] ?? true,
             'quick_response_message' => $frontmatter['quickResponseMessage'] ?? null,
-            'quick_response_button_label' => $frontmatter['quickResponseButtonLabel'] ?? null,
-            'quick_response_button_url' => $frontmatter['quickResponseButtonUrl'] ?? null,
+            'quick_response_buttons' => $frontmatter['quickResponseButtons'] ?? [],
             'quick_response_attachments' => $frontmatter['quickResponseAttachments'] ?? [],
         ];
 

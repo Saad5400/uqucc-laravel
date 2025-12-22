@@ -43,8 +43,7 @@ interface PageData {
         enabled: boolean;
         send_link: boolean;
         message?: string | null;
-        button_label?: string | null;
-        button_url?: string | null;
+        buttons: { text: string; url: string }[];
         attachments: { name: string; url: string }[];
     };
 }

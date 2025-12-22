@@ -9,6 +9,7 @@ use App\Services\Telegram\Handlers\UquccListHandler;
 use App\Services\Telegram\Handlers\PythonExecutionHandler;
 use App\Services\Telegram\Handlers\JavaExecutionHandler;
 use App\Services\Telegram\Handlers\DeepSeekChatHandler;
+use App\Services\QuickResponseService;
 
 class TelegramBotService
 {
@@ -22,7 +23,7 @@ class TelegramBotService
 
         // Initialize handlers
         $this->handlers = [
-            new UquccSearchHandler($this->telegram),
+            new UquccSearchHandler($this->telegram, app(QuickResponseService::class)),
             new UquccListHandler($this->telegram),
             new PythonExecutionHandler($this->telegram),
             new JavaExecutionHandler($this->telegram),

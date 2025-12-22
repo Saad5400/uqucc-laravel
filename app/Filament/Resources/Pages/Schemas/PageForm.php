@@ -6,6 +6,7 @@ use App\Filament\Forms\Blocks\AlertBlock;
 use App\Filament\Forms\Blocks\CollapsibleBlock;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Grid;
+use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -101,18 +102,29 @@ class PageForm
                                 Toggle::make('quick_response_send_link')
                                     ->label('إرسال رابط الصفحة مع الرد')
                                     ->default(true),
-
-                                TextInput::make('quick_response_button_label')
-                                    ->label('عنوان الزر')
-                                    ->maxLength(50),
-
-                                TextInput::make('quick_response_button_url')
-                                    ->label('رابط الزر')
-                                    ->url()
-                                    ->maxLength(2048),
                             ])
                             ->columns(3)
                             ->hidden(fn (Get $get) => ! $get('quick_response_enabled')),
+
+                        Repeater::make('quick_response_buttons')
+                            ->label('الأزرار')
+                            ->schema([
+                                TextInput::make('text')
+                                    ->label('عنوان الزر')
+                                    ->required()
+                                    ->maxLength(50),
+
+                                TextInput::make('url')
+                                    ->label('رابط الزر')
+                                    ->url()
+                                    ->required()
+                                    ->maxLength(2048),
+                            ])
+                            ->hidden(fn (Get $get) => ! $get('quick_response_enabled'))
+                            ->addActionLabel('إضافة زر')
+                            ->columns(2)
+                            ->reorderable()
+                            ->collapsed(),
 
                         Textarea::make('quick_response_message')
                             ->label('نص الرد')

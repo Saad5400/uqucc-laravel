@@ -25,8 +25,7 @@ return new class extends Migration
             $table->boolean('quick_response_enabled')->default(false);
             $table->boolean('quick_response_send_link')->default(true);
             $table->text('quick_response_message')->nullable();
-            $table->string('quick_response_button_label')->nullable();
-            $table->string('quick_response_button_url')->nullable();
+            $table->json('quick_response_buttons')->nullable();
             $table->json('quick_response_attachments')->nullable();
             $table->timestamps();
             $table->softDeletes();

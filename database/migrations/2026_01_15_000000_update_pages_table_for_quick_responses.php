@@ -27,9 +27,16 @@ return new class extends Migration
             $table->boolean('quick_response_enabled')->default(false)->after('extension');
             $table->boolean('quick_response_send_link')->default(true)->after('quick_response_enabled');
             $table->text('quick_response_message')->nullable()->after('quick_response_send_link');
-            $table->string('quick_response_button_label')->nullable()->after('quick_response_message');
-            $table->string('quick_response_button_url')->nullable()->after('quick_response_button_label');
-            $table->json('quick_response_attachments')->nullable()->after('quick_response_button_url');
+            $table->json('quick_response_buttons')->nullable()->after('quick_response_message');
+            $table->json('quick_response_attachments')->nullable()->after('quick_response_buttons');
+
+            if (Schema::hasColumn('pages', 'quick_response_button_label')) {
+                $table->dropColumn('quick_response_button_label');
+            }
+
+            if (Schema::hasColumn('pages', 'quick_response_button_url')) {
+                $table->dropColumn('quick_response_button_url');
+            }
         });
     }
 
@@ -43,12 +50,14 @@ return new class extends Migration
             $table->string('stem')->nullable()->after('level');
             $table->string('og_image')->nullable()->after('icon');
 
+            $table->string('quick_response_button_label')->nullable()->after('quick_response_message');
+            $table->string('quick_response_button_url')->nullable()->after('quick_response_button_label');
+
             $table->dropColumn([
                 'quick_response_enabled',
                 'quick_response_send_link',
                 'quick_response_message',
-                'quick_response_button_label',
-                'quick_response_button_url',
+                'quick_response_buttons',
                 'quick_response_attachments',
             ]);
         });

@@ -3,6 +3,7 @@
 namespace App\Services\Telegram\Handlers;
 
 use App\Models\Page;
+use App\Services\QuickResponseService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Telegram\Bot\Objects\Message;
@@ -10,6 +11,13 @@ use Telegram\Bot\Objects\Message;
 class UquccSearchHandler extends BaseHandler
 {
     protected array $exceptionWords = ['لابتوب'];
+
+    public function __construct(
+        \Telegram\Bot\Api $telegram,
+        protected QuickResponseService $quickResponses
+    ) {
+        parent::__construct($telegram);
+    }
 
     public function handle(Message $message): void
     {
@@ -36,15 +44,7 @@ class UquccSearchHandler extends BaseHandler
 
     protected function searchAndRespond(Message $message, string $query): void
     {
-        // Search directly in pages table
-        $page = Page::visible()
-            ->where(function ($q) use ($query) {
-                $q->whereRaw('LOWER(title) LIKE ?', ['%'.mb_strtolower($query).'%'])
-                    ->orWhereRaw('LOWER(slug) LIKE ?', ['%'.mb_strtolower($query).'%'])
-                    ->orWhereRaw('LOWER(html_content) LIKE ?', ['%'.mb_strtolower($query).'%'])
-                    ->orWhereRaw('LOWER(COALESCE(quick_response_message, "")) LIKE ?', ['%'.mb_strtolower($query).'%']);
-            })
-            ->first();
+        $page = $this->quickResponses->search($query);
 
         if (! $page) {
             $this->reply($message, 'الصفحة غير موجودة');
@@ -86,15 +86,21 @@ class UquccSearchHandler extends BaseHandler
             'parse_mode' => 'MarkdownV2',
         ];
 
-        if ($page->quick_response_button_label && $page->quick_response_button_url) {
-            $params['reply_markup'] = [
-                'inline_keyboard' => [
-                    [[
-                        'text' => $page->quick_response_button_label,
-                        'url' => $page->quick_response_button_url,
-                    ]],
-                ],
-            ];
+        if ($page->quick_response_buttons) {
+            $buttons = collect($page->quick_response_buttons)
+                ->filter(fn ($btn) => filled($btn['text'] ?? null) && filled($btn['url'] ?? null))
+                ->map(fn ($btn) => [[
+                    'text' => $btn['text'],
+                    'url' => $btn['url'],
+                ]])
+                ->values()
+                ->all();
+
+            if (! empty($buttons)) {
+                $params['reply_markup'] = [
+                    'inline_keyboard' => $buttons,
+                ];
+            }
         }
 
         $this->telegram->sendMessage($params);

@@ -74,8 +74,10 @@ class PageController extends Controller
                     'enabled' => $page->quick_response_enabled,
                     'send_link' => $page->quick_response_send_link,
                     'message' => $page->quick_response_message,
-                    'button_label' => $page->quick_response_button_label,
-                    'button_url' => $page->quick_response_button_url,
+                    'buttons' => collect($page->quick_response_buttons ?? [])
+                        ->filter(fn ($btn) => filled($btn['text'] ?? null) && filled($btn['url'] ?? null))
+                        ->values()
+                        ->toArray(),
                     'attachments' => collect($page->quick_response_attachments ?? [])
                         ->filter()
                         ->map(fn (string $path) => [

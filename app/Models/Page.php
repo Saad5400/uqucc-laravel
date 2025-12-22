@@ -36,6 +36,7 @@ class Page extends Model implements Sortable
     {
         Cache::forget(config('app-cache.keys.navigation_tree'));
         Cache::forget(config('app-cache.keys.search_data'));
+        Cache::forget(config('app-cache.keys.quick_responses'));
     }
 
     protected $fillable = [
@@ -51,8 +52,7 @@ class Page extends Model implements Sortable
         'quick_response_enabled',
         'quick_response_send_link',
         'quick_response_message',
-        'quick_response_button_label',
-        'quick_response_button_url',
+        'quick_response_buttons',
         'quick_response_attachments',
     ];
 
@@ -62,6 +62,7 @@ class Page extends Model implements Sortable
         'level' => 'integer',
         'quick_response_enabled' => 'boolean',
         'quick_response_send_link' => 'boolean',
+        'quick_response_buttons' => 'array',
         'quick_response_attachments' => 'array',
     ];
 
