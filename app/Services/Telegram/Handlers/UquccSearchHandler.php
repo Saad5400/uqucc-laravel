@@ -5,6 +5,7 @@ namespace App\Services\Telegram\Handlers;
 use App\Models\Page;
 use App\Services\QuickResponseService;
 use App\Services\TelegramMarkdownService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Spatie\Browsershot\Browsershot;
@@ -178,20 +179,42 @@ class UquccSearchHandler extends BaseHandler
         ]);
     }
 
-    protected function takeScreenshot(string $path): string
+    protected function getScreenshotCacheKey(Page $page): string
     {
+        // Use page slug and updated_at timestamp to create versioned cache key
+        $version = $page->updated_at ? $page->updated_at->timestamp : '0';
+        $slug = str_replace('/', '_', trim($page->slug, '/')) ?: 'home';
+        return config('app-cache.keys.screenshot') . ":{$slug}:{$version}";
+    }
+
+    protected function getScreenshotPath(Page $page): string
+    {
+        $slug = str_replace('/', '_', trim($page->slug, '/')) ?: 'home';
+        $version = $page->updated_at ? $page->updated_at->timestamp : '0';
+        $filename = "{$slug}_{$version}.webp";
+        return storage_path("app/public/screenshots/{$filename}");
+    }
+
+    protected function takeScreenshot(Page $page): string
+    {
+        $cacheKey = $this->getScreenshotCacheKey($page);
+        $screenshotPath = $this->getScreenshotPath($page);
+        
+        // Check if cached screenshot exists and is valid
+        if (file_exists($screenshotPath) && Cache::has($cacheKey)) {
+            return $screenshotPath;
+        }
+        
         // Default dimensions matching screenshot.ts (720x377 for 1.91:1 aspect ratio)
         $width = 720;
         $height = 377;
         
-        $pageUrl = url($path);
+        $pageUrl = url($page->slug);
         
-        // Create temporary file for screenshot
-        $tempPath = storage_path('app/temp/screenshot_' . uniqid() . '.webp');
-        $tempDir = dirname($tempPath);
-        
-        if (!is_dir($tempDir)) {
-            mkdir($tempDir, 0755, true);
+        // Ensure screenshots directory exists
+        $screenshotsDir = dirname($screenshotPath);
+        if (!is_dir($screenshotsDir)) {
+            mkdir($screenshotsDir, 0755, true);
         }
         
         try {
@@ -199,6 +222,7 @@ class UquccSearchHandler extends BaseHandler
                 ->windowSize($width, $height)
                 ->deviceScaleFactor(1)
                 ->waitUntilNetworkIdle()
+                ->delay(500) // Wait 500ms after network idle to ensure DOM is fully rendered
                 ->timeout(60)
                 ->dismissDialogs()
                 ->setScreenshotType('webp', 80)
@@ -228,19 +252,33 @@ class UquccSearchHandler extends BaseHandler
                     'aggressive-cache-discard',
                 ]);
             
-            // Hide elements with .screenshot-hidden class and adjust scrollbar
+            // Inject CSS to hide .screenshot-hidden elements
+            // This is more reliable than JavaScript evaluation as it applies immediately
+            $browsershot->setOption('addStyleTag', [
+                [
+                    'content' => '.screenshot-hidden { display: none !important; visibility: hidden !important; }',
+                ],
+            ]);
+            
+            // Also use evaluate as a fallback and to adjust scrollbar
             $browsershot->evaluate("
-                document.querySelectorAll('.screenshot-hidden').forEach(e => e.style.display = 'none');
+                document.querySelectorAll('.screenshot-hidden').forEach(e => {
+                    e.style.display = 'none';
+                    e.style.visibility = 'hidden';
+                });
                 document.documentElement.style.scrollbarGutter = 'auto';
             ");
             
-            $browsershot->save($tempPath);
+            $browsershot->save($screenshotPath);
             
-            return $tempPath;
+            // Cache the screenshot path for the configured TTL
+            Cache::put($cacheKey, $screenshotPath, config('app-cache.screenshots.ttl'));
+            
+            return $screenshotPath;
         } catch (\Exception $e) {
             // Clean up on error
-            if (file_exists($tempPath)) {
-                @unlink($tempPath);
+            if (file_exists($screenshotPath)) {
+                @unlink($screenshotPath);
             }
             throw $e;
         }
@@ -248,27 +286,22 @@ class UquccSearchHandler extends BaseHandler
 
     protected function sendScreenshotWithText(Message $message, Page $page, string $caption, ?string $replyMarkup = null): void
     {
-        try {
-            $screenshotPath = $this->takeScreenshot($page->slug);
-            
-            $params = [
-                'chat_id' => $message->getChat()->getId(),
-                'photo' => InputFile::create($screenshotPath, 'screenshot.webp'),
-                'caption' => $caption,
-                'parse_mode' => 'MarkdownV2',
-            ];
+        // Get cached or generate new screenshot
+        $screenshotPath = $this->takeScreenshot($page);
+        
+        $params = [
+            'chat_id' => $message->getChat()->getId(),
+            'photo' => InputFile::create($screenshotPath, 'screenshot.webp'),
+            'caption' => $caption,
+            'parse_mode' => 'MarkdownV2',
+        ];
 
-            if ($replyMarkup) {
-                $params['reply_markup'] = $replyMarkup;
-            }
-
-            $this->telegram->sendPhoto($params);
-        } finally {
-            // Clean up temporary screenshot file
-            if (isset($screenshotPath) && file_exists($screenshotPath)) {
-                @unlink($screenshotPath);
-            }
+        if ($replyMarkup) {
+            $params['reply_markup'] = $replyMarkup;
         }
+
+        $this->telegram->sendPhoto($params);
+        // Note: We don't delete the screenshot file as it's cached for reuse
     }
 
     protected function sendQuickResponseAttachments(Message $message, Page $page, string $caption, ?string $replyMarkup = null): void
