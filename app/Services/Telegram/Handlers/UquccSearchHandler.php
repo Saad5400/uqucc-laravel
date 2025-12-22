@@ -7,6 +7,7 @@ use App\Services\QuickResponseService;
 use App\Services\TelegramMarkdownService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Spatie\Browsershot\Browsershot;
 use Telegram\Bot\FileUpload\InputFile;
 use Telegram\Bot\Objects\Message;
 
@@ -73,6 +74,9 @@ class UquccSearchHandler extends BaseHandler
         if ($attachments->isNotEmpty() && $page->quick_response_enabled) {
             // Send attachments with text as caption
             $this->sendQuickResponseAttachments($message, $page, $textContent, $replyMarkup);
+        } elseif (!$page->quick_response_enabled) {
+            // When quick response is disabled, send screenshot with text as caption
+            $this->sendScreenshotWithText($message, $page, $textContent, $replyMarkup);
         } else {
             // Send text message only
             $params = [
@@ -172,6 +176,99 @@ class UquccSearchHandler extends BaseHandler
         return json_encode([
             'inline_keyboard' => $keyboard,
         ]);
+    }
+
+    protected function takeScreenshot(string $path): string
+    {
+        // Default dimensions matching screenshot.ts (720x377 for 1.91:1 aspect ratio)
+        $width = 720;
+        $height = 377;
+        
+        $pageUrl = url($path);
+        
+        // Create temporary file for screenshot
+        $tempPath = storage_path('app/temp/screenshot_' . uniqid() . '.webp');
+        $tempDir = dirname($tempPath);
+        
+        if (!is_dir($tempDir)) {
+            mkdir($tempDir, 0755, true);
+        }
+        
+        try {
+            $browsershot = Browsershot::url($pageUrl)
+                ->windowSize($width, $height)
+                ->deviceScaleFactor(1)
+                ->waitUntilNetworkIdle()
+                ->timeout(60)
+                ->dismissDialogs()
+                ->setScreenshotType('webp', 80)
+                ->addChromiumArguments([
+                    'no-sandbox',
+                    'disable-setuid-sandbox',
+                    'disable-dev-shm-usage',
+                    'disable-gpu',
+                    'disable-web-security',
+                    'disable-extensions',
+                    'disable-plugins',
+                    'disable-default-apps',
+                    'disable-background-timer-throttling',
+                    'disable-backgrounding-occluded-windows',
+                    'disable-renderer-backgrounding',
+                    'disable-features=TranslateUI',
+                    'disable-component-update',
+                    'disable-domain-reliability',
+                    'disable-sync',
+                    'disable-client-side-phishing-detection',
+                    'disable-permissions-api',
+                    'disable-notifications',
+                    'disable-desktop-notifications',
+                    'disable-background-networking',
+                    'memory-pressure-off',
+                    'max_old_space_size=128',
+                    'aggressive-cache-discard',
+                ]);
+            
+            // Hide elements with .screenshot-hidden class and adjust scrollbar
+            $browsershot->evaluate("
+                document.querySelectorAll('.screenshot-hidden').forEach(e => e.style.display = 'none');
+                document.documentElement.style.scrollbarGutter = 'auto';
+            ");
+            
+            $browsershot->save($tempPath);
+            
+            return $tempPath;
+        } catch (\Exception $e) {
+            // Clean up on error
+            if (file_exists($tempPath)) {
+                @unlink($tempPath);
+            }
+            throw $e;
+        }
+    }
+
+    protected function sendScreenshotWithText(Message $message, Page $page, string $caption, ?string $replyMarkup = null): void
+    {
+        try {
+            $screenshotPath = $this->takeScreenshot($page->slug);
+            
+            $params = [
+                'chat_id' => $message->getChat()->getId(),
+                'photo' => InputFile::create($screenshotPath, 'screenshot.webp'),
+                'caption' => $caption,
+                'parse_mode' => 'MarkdownV2',
+            ];
+
+            if ($replyMarkup) {
+                $params['reply_markup'] = $replyMarkup;
+            }
+
+            $this->telegram->sendPhoto($params);
+        } finally {
+            // Clean up temporary screenshot file
+            if (isset($screenshotPath) && file_exists($screenshotPath)) {
+                @unlink($screenshotPath);
+            }
+        }
     }
 
     protected function sendQuickResponseAttachments(Message $message, Page $page, string $caption, ?string $replyMarkup = null): void
