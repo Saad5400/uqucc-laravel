@@ -136,7 +136,12 @@ class PageForm
                             ->addActionLabel('إضافة زر')
                             ->columns(3)
                             ->reorderable()
-                            ->collapsed(),
+                            ->collapsed()
+                            ->helperText(fn (Get $get) => 
+                                !empty($get('quick_response_attachments')) 
+                                    ? '⚠️ ملاحظة: لا يمكن استخدام الأزرار مع المرفقات في نفس الوقت بسبب قيود واجهة برمجة تطبيقات تيليجرام. سيتم تجاهل الأزرار عند وجود مرفقات.'
+                                    : null
+                            ),
 
                         Textarea::make('quick_response_message')
                             ->label('نص الرد')
@@ -154,7 +159,11 @@ class PageForm
                             ->downloadable()
                             ->openable()
                             ->preserveFilenames()
-                            ->helperText('تُرفع مع الرد في حال احتجنا لإضافة صور أو ملفات داعمة')
+                            ->helperText(fn (Get $get) => 
+                                !empty($get('quick_response_buttons')) 
+                                    ? '⚠️ ملاحظة: لا يمكن استخدام المرفقات مع الأزرار في نفس الوقت بسبب قيود واجهة برمجة تطبيقات تيليجرام. سيتم تجاهل الأزرار عند وجود مرفقات.'
+                                    : 'تُرفع مع الرد في حال احتجنا لإضافة صور أو ملفات داعمة'
+                            )
                             ->columnSpanFull()
                             ->hidden(fn (Get $get) => ! $get('quick_response_enabled')),
                     ]),

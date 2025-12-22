@@ -238,10 +238,8 @@ class UquccSearchHandler extends BaseHandler
             $payload['chat_id'] = $chatId;
             $payload['media'] = json_encode($media);
 
-            if ($replyMarkup) {
-                $payload['reply_markup'] = $replyMarkup;
-            }
-
+            // Note: sendMediaGroup doesn't support reply_markup parameter
+            // If buttons are provided, they will be ignored
             $this->telegram->sendMediaGroup($payload);
         } else {
             // Single attachment - send as photo or document
