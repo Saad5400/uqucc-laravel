@@ -34,13 +34,19 @@ interface PageData {
     id: number;
     slug: string;
     title: string;
-    description?: string;
     html_content: string | Record<string, unknown> | null;
     icon?: string;
-    og_image?: string;
     authors: Author[];
     children: ChildPage[];
     catalog: ChildPage[];
+    quick_response?: {
+        enabled: boolean;
+        send_link: boolean;
+        message?: string | null;
+        button_label?: string | null;
+        button_url?: string | null;
+        attachments: { name: string; url: string }[];
+    };
 }
 
 interface Breadcrumb {

@@ -12,7 +12,6 @@ use Filament\Actions\RestoreBulkAction;
 use Filament\Actions\ViewAction;
 use Filament\Support\Enums\Operation;
 use Filament\Tables\Columns\IconColumn;
-use Filament\Tables\Columns\ImageColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
 use Filament\Tables\Filters\TrashedFilter;
@@ -49,14 +48,10 @@ class PagesTable
                     ->boolean()
                     ->sortable(),
 
-                TextColumn::make('order')
-                    ->label('الترتيب')
-                    ->numeric()
+                IconColumn::make('quick_response_enabled')
+                    ->label('رد سريع')
+                    ->boolean()
                     ->sortable(),
-
-                ImageColumn::make('og_image')
-                    ->label('الصورة')
-                    ->toggleable(),
 
                 TextColumn::make('created_at')
                     ->label('تاريخ الإنشاء')

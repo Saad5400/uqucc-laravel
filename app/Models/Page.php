@@ -41,22 +41,28 @@ class Page extends Model implements Sortable
     protected $fillable = [
         'slug',
         'title',
-        'description',
         'html_content',
         'order',
         'icon',
-        'og_image',
         'hidden',
         'parent_id',
         'level',
-        'stem',
         'extension',
+        'quick_response_enabled',
+        'quick_response_send_link',
+        'quick_response_message',
+        'quick_response_button_label',
+        'quick_response_button_url',
+        'quick_response_attachments',
     ];
 
     protected $casts = [
         'hidden' => 'boolean',
         'order' => 'integer',
         'level' => 'integer',
+        'quick_response_enabled' => 'boolean',
+        'quick_response_send_link' => 'boolean',
+        'quick_response_attachments' => 'array',
     ];
 
     public array $sortable = [

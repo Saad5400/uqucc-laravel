@@ -15,16 +15,19 @@ return new class extends Migration
             $table->id();
             $table->string('slug')->unique();
             $table->string('title');
-            $table->text('description')->nullable();
             $table->longText('html_content');
             $table->integer('order')->default(0);
             $table->string('icon')->nullable();
-            $table->string('og_image')->nullable();
             $table->boolean('hidden')->default(false);
             $table->foreignId('parent_id')->nullable()->constrained('pages')->onDelete('cascade');
             $table->integer('level')->default(0);
-            $table->string('stem')->nullable();
             $table->string('extension')->default('md');
+            $table->boolean('quick_response_enabled')->default(false);
+            $table->boolean('quick_response_send_link')->default(true);
+            $table->text('quick_response_message')->nullable();
+            $table->string('quick_response_button_label')->nullable();
+            $table->string('quick_response_button_url')->nullable();
+            $table->json('quick_response_attachments')->nullable();
             $table->timestamps();
             $table->softDeletes();
 

@@ -5,11 +5,13 @@ namespace App\Filament\Resources\Pages\Schemas;
 use App\Filament\Forms\Blocks\AlertBlock;
 use App\Filament\Forms\Blocks\CollapsibleBlock;
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\Grid;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
+use Filament\Forms\Get;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
@@ -43,11 +45,6 @@ class PageForm
                             ->unique(ignoreRecord: true)
                             ->prefix(url('/')),
 
-                        Textarea::make('description')
-                            ->label('الوصف')
-                            ->rows(3)
-                            ->columnSpanFull(),
-
                         Select::make('parent_id')
                             ->label('الصفحة الأب')
                             ->default(request('default_parent_id') ?? null)
@@ -73,12 +70,6 @@ class PageForm
                             ])
                             ->activePanel('customBlocks')
                             ->columnSpanFull(),
-
-                        Textarea::make('stem')
-                            ->label('محتوى إضافي (نص عادي)')
-                            ->helperText('يمكن استخدام هذا الحقل لمحتوى إضافي أو ملاحظات')
-                            ->rows(5)
-                            ->columnSpanFull(),
                     ]),
 
                 Section::make('إعدادات الصفحة')
@@ -89,24 +80,59 @@ class PageForm
                             ->label('الأيقونة')
                             ->helperText('اسم الأيقونة من Heroicons'),
 
-                        FileUpload::make('og_image')
-                            ->label('صورة المعاينة')
-                            ->image()
-                            ->directory('og-images')
-                            ->visibility('public'),
-
-                        TextInput::make('order')
-                            ->label('الترتيب')
-                            ->numeric()
-                            ->default(0)
-                            ->helperText('يُستخدم لترتيب الصفحات في القائمة'),
-
                         Toggle::make('hidden')
                             ->label('مخفية')
                             ->helperText('إخفاء الصفحة من القوائم العامة')
                             ->default(false),
                     ])
                     ->columns(2),
+
+                Section::make('ردود Discord السريعة')
+                    ->columnSpanFull()
+                    ->description('تهيئة محتوى الرد الذي يمكن للبوت إرساله مباشرة للمستخدمين')
+                    ->schema([
+                        Toggle::make('quick_response_enabled')
+                            ->label('تفعيل الرد السريع')
+                            ->helperText('عند التفعيل يمكن للبوت استخدام هذه الصفحة كقالب رد جاهز')
+                            ->default(false),
+
+                        Grid::make()
+                            ->schema([
+                                Toggle::make('quick_response_send_link')
+                                    ->label('إرسال رابط الصفحة مع الرد')
+                                    ->default(true),
+
+                                TextInput::make('quick_response_button_label')
+                                    ->label('عنوان الزر')
+                                    ->maxLength(50),
+
+                                TextInput::make('quick_response_button_url')
+                                    ->label('رابط الزر')
+                                    ->url()
+                                    ->maxLength(2048),
+                            ])
+                            ->columns(3)
+                            ->hidden(fn (Get $get) => ! $get('quick_response_enabled')),
+
+                        Textarea::make('quick_response_message')
+                            ->label('نص الرد')
+                            ->helperText('نص قصير يمكن للبوت إرساله مع الرابط في الديسكورد')
+                            ->rows(4)
+                            ->columnSpanFull()
+                            ->hidden(fn (Get $get) => ! $get('quick_response_enabled')),
+
+                        FileUpload::make('quick_response_attachments')
+                            ->label('مرفقات الرد (صور/ملفات)')
+                            ->directory('quick-responses')
+                            ->visibility('public')
+                            ->multiple()
+                            ->downloadable()
+                            ->openable()
+                            ->preserveFilenames()
+                            ->helperText('تُرفع مع الرد في حال احتجنا لإضافة صور أو ملفات داعمة')
+                            ->columnSpanFull()
+                            ->hidden(fn (Get $get) => ! $get('quick_response_enabled')),
+                    ]),
             ]);
     }
 }
