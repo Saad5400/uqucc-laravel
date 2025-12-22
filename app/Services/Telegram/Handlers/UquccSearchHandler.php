@@ -3,9 +3,8 @@
 namespace App\Services\Telegram\Handlers;
 
 use App\Models\Page;
-use App\Models\PageSearchCache;
-use Telegram\Bot\Objects\Message;
 use Illuminate\Support\Str;
+use Telegram\Bot\Objects\Message;
 
 class UquccSearchHandler extends BaseHandler
 {
@@ -27,7 +26,7 @@ class UquccSearchHandler extends BaseHandler
             $query = $content;
         }
 
-        if (!$isCommand) {
+        if (! $isCommand) {
             return;
         }
 
@@ -36,34 +35,25 @@ class UquccSearchHandler extends BaseHandler
 
     protected function searchAndRespond(Message $message, string $query): void
     {
-        // Search in page_search_cache using full-text search
-        $searchResult = PageSearchCache::whereRaw('LOWER(content) LIKE ?', ['%' . mb_strtolower($query) . '%'])
-            ->orWhereRaw('LOWER(title) LIKE ?', ['%' . mb_strtolower($query) . '%'])
-            ->with('page')
+        // Search directly in pages table
+        $page = Page::visible()
+            ->where(function ($q) use ($query) {
+                $q->whereRaw('LOWER(title) LIKE ?', ['%'.mb_strtolower($query).'%'])
+                    ->orWhereRaw('LOWER(description) LIKE ?', ['%'.mb_strtolower($query).'%'])
+                    ->orWhereRaw('LOWER(slug) LIKE ?', ['%'.mb_strtolower($query).'%']);
+            })
             ->first();
 
-        if (!$searchResult) {
-            // Fallback to pages table
-            $page = Page::visible()
-                ->where(function ($q) use ($query) {
-                    $q->whereRaw('LOWER(title) LIKE ?', ['%' . mb_strtolower($query) . '%'])
-                        ->orWhereRaw('LOWER(description) LIKE ?', ['%' . mb_strtolower($query) . '%'])
-                        ->orWhereRaw('LOWER(slug) LIKE ?', ['%' . mb_strtolower($query) . '%']);
-                })
-                ->first();
+        if (! $page) {
+            $this->reply($message, 'الصفحة غير موجودة');
 
-            if (!$page) {
-                $this->reply($message, 'الصفحة غير موجودة');
-                return;
-            }
-
-            $this->sendPageResult($message, $page);
-        } else {
-            $this->sendPageResult($message, $searchResult->page, $searchResult);
+            return;
         }
+
+        $this->sendPageResult($message, $page);
     }
 
-    protected function sendPageResult(Message $message, Page $page, ?PageSearchCache $searchCache = null): void
+    protected function sendPageResult(Message $message, Page $page): void
     {
         $pageUrl = url($page->slug);
 
@@ -71,13 +61,10 @@ class UquccSearchHandler extends BaseHandler
         $title = $this->escapeMarkdownV2($page->title);
         $messageText = "*{$title}*\n\n";
 
-        // Add description or search cache content
-        if ($searchCache && $searchCache->content) {
-            $content = Str::limit(strip_tags($searchCache->content), 500);
-            $messageText .= $this->escapeMarkdownV2($content) . "\n\n";
-        } elseif ($page->description) {
+        // Add description
+        if ($page->description) {
             $content = Str::limit($page->description, 500);
-            $messageText .= $this->escapeMarkdownV2($content) . "\n\n";
+            $messageText .= $this->escapeMarkdownV2($content)."\n\n";
         }
 
         // Add link with proper escaping

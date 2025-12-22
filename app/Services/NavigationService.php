@@ -47,9 +47,11 @@ class NavigationService
      */
     public function getCachedTree(): array
     {
-        return cache()->remember('navigation_tree', 3600, function () {
-            return $this->buildTree();
-        });
+        return cache()->remember(
+            config('app-cache.keys.navigation_tree'),
+            config('app-cache.navigation.ttl'),
+            fn () => $this->buildTree()
+        );
     }
 
     /**
@@ -57,6 +59,6 @@ class NavigationService
      */
     public function clearCache(): void
     {
-        cache()->forget('navigation_tree');
+        cache()->forget(config('app-cache.keys.navigation_tree'));
     }
 }

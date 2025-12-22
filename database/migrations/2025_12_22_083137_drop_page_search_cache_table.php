@@ -11,19 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('page_search_cache', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('page_id')->constrained()->onDelete('cascade');
-            $table->string('section_id');
-            $table->string('title');
-            $table->text('content');
-            $table->integer('level');
-            $table->integer('position');
-            $table->timestamps();
-
-            // Note: Fulltext index not supported in SQLite, using Fuse.js for client-side search
-            $table->index('page_id');
-        });
+        Schema::dropIfExists('page_search_cache');
     }
 
     /**
@@ -31,6 +19,17 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('page_search_cache');
+        Schema::create('page_search_cache', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('page_id')->constrained()->cascadeOnDelete();
+            $table->string('section_id')->unique();
+            $table->string('title');
+            $table->text('content');
+            $table->integer('level');
+            $table->integer('position');
+            $table->timestamps();
+
+            $table->index('page_id');
+        });
     }
 };
