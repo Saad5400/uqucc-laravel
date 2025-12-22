@@ -4,6 +4,7 @@ namespace App\Services\Telegram\Handlers;
 
 use App\Models\Page;
 use App\Services\QuickResponseService;
+use App\Services\TelegramMarkdownService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Telegram\Bot\FileUpload\InputFile;
@@ -15,7 +16,8 @@ class UquccSearchHandler extends BaseHandler
 
     public function __construct(
         \Telegram\Bot\Api $telegram,
-        protected QuickResponseService $quickResponses
+        protected QuickResponseService $quickResponses,
+        protected TelegramMarkdownService $markdownService
     ) {
         parent::__construct($telegram);
     }
@@ -102,7 +104,8 @@ class UquccSearchHandler extends BaseHandler
                 $messageText = is_string($page->quick_response_message) 
                     ? $page->quick_response_message 
                     : (string) $page->quick_response_message;
-                $lines[] = $this->escapeMarkdownV2($messageText);
+                // Convert markdown to Telegram MarkdownV2 format
+                $lines[] = $this->markdownService->toMarkdownV2($messageText);
             }
 
             if ($page->quick_response_send_link) {

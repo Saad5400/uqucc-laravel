@@ -5,6 +5,7 @@ namespace App\Filament\Resources\Pages\Schemas;
 use App\Filament\Forms\Blocks\AlertBlock;
 use App\Filament\Forms\Blocks\CollapsibleBlock;
 use Filament\Forms\Components\FileUpload;
+use Filament\Forms\Components\MarkdownEditor;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
@@ -143,10 +144,9 @@ class PageForm
                                     : null
                             ),
 
-                        Textarea::make('quick_response_message')
+                        MarkdownEditor::make('quick_response_message')
                             ->label('نص الرد')
-                            ->helperText('نص قصير يمكن للبوت إرساله مع الرابط في التيليجرام')
-                            ->rows(4)
+                            ->helperText('نص قصير يمكن للبوت إرساله مع الرابط في التيليجرام. يمكنك استخدام Markdown للتنسيق. الصيغة المدعومة: **للخط العريض**، *للخط المائل*، [رابط](url)، `كود`، ~خط مشطوب~')
                             ->columnSpanFull()
                             ->hidden(fn (Get $get) => ! $get('quick_response_enabled')),
 
