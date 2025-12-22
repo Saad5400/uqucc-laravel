@@ -2,12 +2,13 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Cache;
 use Spatie\EloquentSortable\Sortable;
 use Spatie\EloquentSortable\SortableTrait;
 
@@ -15,6 +16,27 @@ class Page extends Model implements Sortable
 {
     use SoftDeletes;
     use SortableTrait;
+
+    protected static function booted(): void
+    {
+        static::saved(function () {
+            self::clearAppCache();
+        });
+
+        static::deleted(function () {
+            self::clearAppCache();
+        });
+
+        static::restored(function () {
+            self::clearAppCache();
+        });
+    }
+
+    protected static function clearAppCache(): void
+    {
+        Cache::forget(config('app-cache.keys.navigation_tree'));
+        Cache::forget(config('app-cache.keys.search_data'));
+    }
 
     protected $fillable = [
         'slug',
@@ -86,14 +108,6 @@ class Page extends Model implements Sortable
             },
             set: fn ($value) => is_array($value) ? json_encode($value) : $value,
         );
-    }
-
-    /**
-     * Get the search cache sections for this page
-     */
-    public function searchCacheSections(): HasMany
-    {
-        return $this->hasMany(PageSearchCache::class);
     }
 
     /**

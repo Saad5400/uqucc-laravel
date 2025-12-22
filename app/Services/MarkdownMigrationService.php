@@ -4,8 +4,6 @@ namespace App\Services;
 
 use App\Models\Author;
 use App\Models\Page;
-use App\Models\PageSearchCache;
-use DOMDocument;
 use Illuminate\Support\Facades\Log;
 use League\CommonMark\CommonMarkConverter;
 use League\CommonMark\Environment\Environment;
@@ -119,9 +117,6 @@ class MarkdownMigrationService
                 $authorIds = Author::whereIn('username', $frontmatter['authors'])->pluck('id');
                 $page->authors()->sync($authorIds);
             }
-
-            // Generate search cache
-            $this->generateSearchCache($page);
 
             $pageData['id'] = $page->id;
         }
@@ -239,81 +234,6 @@ class MarkdownMigrationService
         }
 
         return 'Untitled';
-    }
-
-    /**
-     * Generate search cache for a page
-     */
-    private function generateSearchCache(Page $page): void
-    {
-        // Delete existing cache entries
-        PageSearchCache::where('page_id', $page->id)->delete();
-
-        // Skip if no content
-        if (empty($page->html_content)) {
-            return;
-        }
-
-        $dom = new DOMDocument;
-        // Suppress warnings for malformed HTML
-        @$dom->loadHTML(mb_convert_encoding($page->html_content, 'HTML-ENTITIES', 'UTF-8'), LIBXML_NOERROR);
-
-        $sections = [];
-        $xpath = new \DOMXPath($dom);
-
-        // Find all heading elements
-        $headings = $xpath->query('//h1 | //h2 | //h3 | //h4 | //h5 | //h6');
-
-        foreach ($headings as $index => $heading) {
-            $level = (int) substr($heading->nodeName, 1); // h1 -> 1
-            $title = $heading->textContent;
-            $id = $heading->getAttribute('id') ?: $this->slugify($title);
-
-            // Get content until next heading
-            $content = $this->extractSectionContent($heading);
-
-            $sections[] = [
-                'page_id' => $page->id,
-                'section_id' => "{$page->slug}#{$id}",
-                'title' => $title,
-                'content' => strip_tags($content),
-                'level' => $level,
-                'position' => $index,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ];
-        }
-
-        if (! empty($sections)) {
-            PageSearchCache::insert($sections);
-        }
-    }
-
-    /**
-     * Extract content from a heading until the next heading
-     */
-    private function extractSectionContent(\DOMNode $heading): string
-    {
-        $content = '';
-        $sibling = $heading->nextSibling;
-
-        while ($sibling) {
-            if ($sibling->nodeType === XML_ELEMENT_NODE && preg_match('/^h[1-6]$/i', $sibling->nodeName)) {
-                break;
-            }
-            $content .= $sibling->textContent ?? '';
-            $sibling = $sibling->nextSibling;
-        }
-
-        return $content;
-    }
-
-    /**
-     * Create a slug from text
-     */
-    private function slugify(string $text): string
-    {
-        return strtolower(preg_replace('/[^a-z0-9\x{0600}-\x{06FF}]+/ui', '-', $text));
     }
 
     /**

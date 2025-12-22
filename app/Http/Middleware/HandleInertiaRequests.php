@@ -41,22 +41,28 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
-            // Navigation tree (cached for 1 hour)
-            'navigation' => fn () => cache()->remember('navigation_tree', 3600, function () {
-                return app(\App\Services\NavigationService::class)->buildTree();
-            }),
-            // Search data (cached for 1 hour)
-            'searchData' => fn () => cache()->remember('search_data', 3600, function () {
-                return \App\Models\PageSearchCache::with('page')
+            // Navigation tree (cached, auto-invalidates on page changes)
+            'navigation' => fn () => cache()->remember(
+                config('app-cache.keys.navigation_tree'),
+                config('app-cache.navigation.ttl'),
+                fn () => app(\App\Services\NavigationService::class)->buildTree()
+            ),
+            // Search data (cached, auto-invalidates on page changes)
+            'searchData' => fn () => cache()->remember(
+                config('app-cache.keys.search_data'),
+                config('app-cache.search.ttl'),
+                fn () => \App\Models\Page::visible()
+                    ->select('slug', 'title', 'description')
+                    ->orderBy('title')
                     ->get()
-                    ->map(fn ($item) => [
-                        'id' => $item->section_id,
-                        'title' => $item->title,
-                        'content' => $item->content,
-                        'level' => $item->level,
+                    ->map(fn ($page) => [
+                        'id' => $page->slug,
+                        'title' => $page->title,
+                        'content' => $page->description ?? '',
+                        'slug' => $page->slug,
                     ])
-                    ->toArray();
-            }),
+                    ->toArray()
+            ),
         ];
     }
 }
