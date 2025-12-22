@@ -34,7 +34,6 @@ class NavigationService
                     'path' => $page->slug,
                     'icon' => $page->icon,
                     'order' => $page->order,
-                    'stem' => $page->stem,
                     'children' => $this->buildHierarchy($pages, $page->id),
                 ];
             })

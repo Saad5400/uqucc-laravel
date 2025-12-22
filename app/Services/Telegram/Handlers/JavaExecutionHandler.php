@@ -10,7 +10,9 @@ class JavaExecutionHandler extends BaseHandler
 {
     public function handle(Message $message): void
     {
-        $content = trim($message->getText() ?? '');
+        $text = $message->getText();
+        // Ensure getText() returns a string (handle edge cases where it might be an array)
+        $content = is_string($text) ? trim($text) : '';
         $userId = $message->getFrom()->getId();
 
         // Check if user is providing input for previous Java code
@@ -49,7 +51,9 @@ class JavaExecutionHandler extends BaseHandler
 
     protected function executeWithInput(Message $message, int $userId): void
     {
-        $input = $message->getText();
+        $text = $message->getText();
+        // Ensure getText() returns a string (handle edge cases where it might be an array)
+        $input = is_string($text) ? $text : '';
         $userState = $this->getUserState($userId);
         $code = $userState['code'];
         $className = $userState['className'];

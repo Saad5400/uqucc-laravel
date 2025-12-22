@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Page;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Support\Facades\Storage;
 
 class PageController extends Controller
 {
@@ -54,10 +55,8 @@ class PageController extends Controller
                 'id' => $page->id,
                 'slug' => $page->slug,
                 'title' => $page->title,
-                'description' => $page->description,
                 'html_content' => $page->html_content,
                 'icon' => $page->icon,
-                'og_image' => $page->og_image,
                 'authors' => $page->authors->map(fn ($author) => [
                     'id' => $author->id,
                     'name' => $author->name,
@@ -71,6 +70,23 @@ class PageController extends Controller
                     'icon' => $child->icon,
                 ])->toArray(),
                 'catalog' => $this->getCatalogPages($page),
+                'quick_response' => [
+                    'enabled' => $page->quick_response_enabled,
+                    'send_link' => $page->quick_response_send_link,
+                    'message' => $page->quick_response_message,
+                    'buttons' => collect($page->quick_response_buttons ?? [])
+                        ->filter(fn ($btn) => filled($btn['text'] ?? null) && filled($btn['url'] ?? null))
+                        ->values()
+                        ->toArray(),
+                    'attachments' => collect($page->quick_response_attachments ?? [])
+                        ->filter()
+                        ->map(fn (string $path) => [
+                            'name' => basename($path),
+                            'url' => Storage::disk('public')->url($path),
+                        ])
+                        ->values()
+                        ->toArray(),
+                ],
             ],
             'breadcrumbs' => $breadcrumbs,
             'hasContent' => ! empty($page->html_content),

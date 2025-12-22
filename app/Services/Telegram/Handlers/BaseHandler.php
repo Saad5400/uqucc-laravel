@@ -20,7 +20,10 @@ abstract class BaseHandler
 
     protected function matches(Message $message, string $pattern): bool
     {
-        return preg_match($pattern, trim($message->getText() ?? '')) === 1;
+        $text = $message->getText();
+        // Ensure getText() returns a string (handle edge cases where it might be an array)
+        $content = is_string($text) ? trim($text) : '';
+        return preg_match($pattern, $content) === 1;
     }
 
     protected function reply(Message $message, string $text, ?string $parseMode = null): void

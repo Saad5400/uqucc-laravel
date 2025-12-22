@@ -4,7 +4,7 @@
 
 ### Database Schema
 - ✅ **pages table** - Stores all content with hierarchy support
-  - Fields: id, slug, title, description, html_content, order, icon, og_image, hidden, parent_id, level, stem, extension
+  - Fields: id, slug, title, html_content, order, icon, hidden, parent_id, level, extension, quick_response_enabled, quick_response_send_link, quick_response_message, quick_response_buttons, quick_response_attachments
   - Indexes: slug, parent_id, (hidden, order), level
   - Soft deletes enabled
 

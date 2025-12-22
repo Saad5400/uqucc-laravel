@@ -13,7 +13,9 @@ class DeepSeekChatHandler extends BaseHandler
 
     public function handle(Message $message): void
     {
-        $content = trim($message->getText() ?? '');
+        $text = $message->getText();
+        // Ensure getText() returns a string (handle edge cases where it might be an array)
+        $content = is_string($text) ? trim($text) : '';
 
         // Check if message starts with "اسال سيك"
         if (!preg_match('/^اسال سيك\s+(.+)$/us', $content, $matches)) {
@@ -35,13 +37,18 @@ class DeepSeekChatHandler extends BaseHandler
             $this->messageHistories[$historyKey] = [];
         }
 
-        // Build user query
-        $userName = $message->getFrom()->getFirstName();
-        if ($message->getFrom()->getLastName()) {
-            $userName .= ' ' . $message->getFrom()->getLastName();
+        // Build user query - ensure all values are strings
+        $firstName = $message->getFrom()->getFirstName();
+        $userName = is_string($firstName) ? $firstName : (string) $firstName;
+        
+        $lastName = $message->getFrom()->getLastName();
+        if ($lastName) {
+            $userName .= ' ' . (is_string($lastName) ? $lastName : (string) $lastName);
         }
-        if ($message->getFrom()->getUsername()) {
-            $userName .= ' (@' . $message->getFrom()->getUsername() . ')';
+        
+        $username = $message->getFrom()->getUsername();
+        if ($username) {
+            $userName .= ' (@' . (is_string($username) ? $username : (string) $username) . ')';
         }
 
         $userQuery = "{$userName}: {$query}";
