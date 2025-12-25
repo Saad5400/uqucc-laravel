@@ -46,8 +46,8 @@ const alertIcon = computed(() => {
 <template>
     <NodeViewWrapper class="block">
         <Alert>
-            <Icon :icon="alertIcon" />
-            <AlertDescription v-html="alertBody" />
+            <Icon class="m-0" :icon="alertIcon" />
+            <AlertDescription class="[&>p]:m-0 m-0" v-html="alertBody" />
         </Alert>
     </NodeViewWrapper>
 </template>
