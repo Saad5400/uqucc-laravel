@@ -52,13 +52,13 @@ class HandleInertiaRequests extends Middleware
                 config('app-cache.keys.search_data'),
                 config('app-cache.search.ttl'),
                 fn () => \App\Models\Page::visible()
-                    ->select('slug', 'title', 'description')
+                    ->select('slug', 'title')
                     ->orderBy('title')
                     ->get()
                     ->map(fn ($page) => [
                         'id' => $page->slug,
                         'title' => $page->title,
-                        'content' => $page->description ?? '',
+                        'content' => '',
                         'slug' => $page->slug,
                     ])
                     ->toArray()
