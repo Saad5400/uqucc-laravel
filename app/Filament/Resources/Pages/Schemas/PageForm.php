@@ -64,6 +64,7 @@ class PageForm
                     ->schema([
                         RichEditor::make('html_content')
                             ->label('المحتوى الرئيسي')
+                            ->fileAttachmentsDisk('public')
                             ->required()
                             ->json()
                             ->customBlocks([
