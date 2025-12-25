@@ -92,22 +92,40 @@ class PageForm
 
                 Section::make('ردود تيليجرام السريعة')
                     ->columnSpanFull()
-                    ->description('تهيئة محتوى الرد الذي يمكن للبوت إرساله مباشرة للمستخدمين')
+                    ->description('الرد السريع مفعّل دائماً. يمكنك تخصيص المحتوى أو تفعيل الاستخراج التلقائي من المحتوى الرئيسي')
                     ->schema([
-                        Toggle::make('quick_response_enabled')
-                            ->label('تفعيل الرد السريع')
+                        Toggle::make('quick_response_auto_extract')
+                            ->label('الاستخراج التلقائي من المحتوى')
                             ->reactive()
-                            ->helperText('عند التفعيل يمكن للبوت استخدام هذه الصفحة كقالب رد جاهز')
+                            ->helperText('عند التفعيل، سيتم استخراج نص الرد والأزرار والمرفقات تلقائياً من المحتوى الرئيسي')
                             ->default(false),
 
-                        Grid::make()
-                            ->schema([
-                                Toggle::make('quick_response_send_link')
-                                    ->label('إرسال رابط الصفحة مع الرد')
-                                    ->default(true),
-                            ])
-                            ->columns(3)
-                            ->hidden(fn (Get $get) => ! $get('quick_response_enabled')),
+                        Toggle::make('quick_response_send_link')
+                            ->label('إرسال رابط الصفحة مع الرد')
+                            ->default(true),
+
+                        Toggle::make('quick_response_customize_message')
+                            ->label('تخصيص نص الرد')
+                            ->reactive()
+                            ->helperText('تجاوز النص المستخرج تلقائياً واستخدام نص مخصص')
+                            ->hidden(fn (Get $get) => ! $get('quick_response_auto_extract'))
+                            ->default(false),
+
+                        MarkdownEditor::make('quick_response_message')
+                            ->label('نص الرد')
+                            ->helperText('نص قصير يمكن للبوت إرساله مع الرابط في التيليجرام. يمكنك استخدام Markdown للتنسيق. الصيغة المدعومة: **للخط العريض**، *للخط المائل*، [رابط](url)، `كود`، ~خط مشطوب~')
+                            ->columnSpanFull()
+                            ->visible(fn (Get $get) => 
+                                ! $get('quick_response_auto_extract') 
+                                || ($get('quick_response_auto_extract') && $get('quick_response_customize_message'))
+                            ),
+
+                        Toggle::make('quick_response_customize_buttons')
+                            ->label('تخصيص الأزرار')
+                            ->reactive()
+                            ->helperText('تجاوز الأزرار المستخرجة تلقائياً واستخدام أزرار مخصصة')
+                            ->hidden(fn (Get $get) => ! $get('quick_response_auto_extract'))
+                            ->default(false),
 
                         Repeater::make('quick_response_buttons')
                             ->label('الأزرار')
@@ -134,7 +152,10 @@ class PageForm
                                     ->required()
                                     ->helperText('عدد الأزرار في السطر الواحد'),
                             ])
-                            ->hidden(fn (Get $get) => ! $get('quick_response_enabled'))
+                            ->visible(fn (Get $get) => 
+                                ! $get('quick_response_auto_extract') 
+                                || ($get('quick_response_auto_extract') && $get('quick_response_customize_buttons'))
+                            )
                             ->addActionLabel('إضافة زر')
                             ->columns(3)
                             ->reorderable()
@@ -145,11 +166,12 @@ class PageForm
                                     : null
                             ),
 
-                        MarkdownEditor::make('quick_response_message')
-                            ->label('نص الرد')
-                            ->helperText('نص قصير يمكن للبوت إرساله مع الرابط في التيليجرام. يمكنك استخدام Markdown للتنسيق. الصيغة المدعومة: **للخط العريض**، *للخط المائل*، [رابط](url)، `كود`، ~خط مشطوب~')
-                            ->columnSpanFull()
-                            ->hidden(fn (Get $get) => ! $get('quick_response_enabled')),
+                        Toggle::make('quick_response_customize_attachments')
+                            ->label('تخصيص المرفقات')
+                            ->reactive()
+                            ->helperText('تجاوز المرفقات المستخرجة تلقائياً واستخدام مرفقات مخصصة')
+                            ->hidden(fn (Get $get) => ! $get('quick_response_auto_extract'))
+                            ->default(false),
 
                         FileUpload::make('quick_response_attachments')
                             ->disk('public')
@@ -166,7 +188,10 @@ class PageForm
                                     : 'تُرفع مع الرد في حال احتجنا لإضافة صور أو ملفات داعمة'
                             )
                             ->columnSpanFull()
-                            ->hidden(fn (Get $get) => ! $get('quick_response_enabled')),
+                            ->visible(fn (Get $get) => 
+                                ! $get('quick_response_auto_extract') 
+                                || ($get('quick_response_auto_extract') && $get('quick_response_customize_attachments'))
+                            ),
                     ]),
             ]);
     }

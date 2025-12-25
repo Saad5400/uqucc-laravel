@@ -5,7 +5,10 @@ namespace App\Services\Telegram\Handlers;
 use App\Models\Page;
 use App\Services\QuickResponseService;
 use App\Services\TelegramMarkdownService;
+use App\Services\TipTapContentExtractor;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Spatie\Browsershot\Browsershot;
@@ -19,7 +22,8 @@ class UquccSearchHandler extends BaseHandler
     public function __construct(
         \Telegram\Bot\Api $telegram,
         protected QuickResponseService $quickResponses,
-        protected TelegramMarkdownService $markdownService
+        protected TelegramMarkdownService $markdownService,
+        protected TipTapContentExtractor $contentExtractor
     ) {
         parent::__construct($telegram);
     }
@@ -64,22 +68,22 @@ class UquccSearchHandler extends BaseHandler
 
     protected function sendPageResult(Message $message, Page $page): void
     {
-        $textContent = $this->buildTextContent($page);
-        $replyMarkup = $this->buildReplyMarkup($page);
+        // Get the resolved content (auto-extracted or custom)
+        $resolvedContent = $this->resolveQuickResponseContent($page);
+        
+        $textContent = $this->buildTextContent($page, $resolvedContent);
+        $replyMarkup = $this->buildReplyMarkup($page, $resolvedContent['buttons']);
 
         // Check if there are attachments
-        $attachments = collect($page->quick_response_attachments ?? [])
+        $attachments = collect($resolvedContent['attachments'])
             ->filter()
             ->values();
 
-        if ($attachments->isNotEmpty() && $page->quick_response_enabled) {
+        if ($attachments->isNotEmpty()) {
             // Send attachments with text as caption
-            $this->sendQuickResponseAttachments($message, $page, $textContent, $replyMarkup);
-        } elseif (!$page->quick_response_enabled) {
-            // When quick response is disabled, send screenshot with text as caption
-            $this->sendScreenshotWithText($message, $page, $textContent, $replyMarkup);
-        } else {
-            // Send text message only
+            $this->sendQuickResponseAttachments($message, $page, $textContent, $replyMarkup, $attachments);
+        } elseif ($resolvedContent['message'] || $replyMarkup) {
+            // Send text message with optional buttons
             $params = [
                 'chat_id' => $message->getChat()->getId(),
                 'text' => $textContent,
@@ -91,10 +95,55 @@ class UquccSearchHandler extends BaseHandler
             }
 
             $this->telegram->sendMessage($params);
+        } else {
+            // Fallback: send screenshot with text as caption
+            $this->sendScreenshotWithText($message, $page, $textContent, $replyMarkup);
         }
     }
 
-    protected function buildTextContent(Page $page): string
+    /**
+     * Resolve the quick response content based on settings.
+     * 
+     * Logic:
+     * - If auto_extract is ON: use extracted content, unless customize toggles override
+     * - If auto_extract is OFF: use custom values from DB
+     * 
+     * @return array{message: string|null, buttons: array, attachments: array}
+     */
+    protected function resolveQuickResponseContent(Page $page): array
+    {
+        if ($page->quick_response_auto_extract) {
+            // Get auto-extracted content
+            $extracted = $this->contentExtractor->getExtractedContent($page);
+
+            return [
+                'message' => $page->quick_response_customize_message
+                    ? $page->quick_response_message
+                    : $extracted['message'],
+                'buttons' => $page->quick_response_customize_buttons
+                    ? ($page->quick_response_buttons ?? [])
+                    : $extracted['buttons'],
+                'attachments' => $page->quick_response_customize_attachments
+                    ? ($page->quick_response_attachments ?? [])
+                    : $extracted['attachments'],
+            ];
+        }
+
+        // Manual mode: use custom values from DB
+        return [
+            'message' => $page->quick_response_message,
+            'buttons' => $page->quick_response_buttons ?? [],
+            'attachments' => $page->quick_response_attachments ?? [],
+        ];
+    }
+
+    /**
+     * Build the text content for the message.
+     * 
+     * @param Page $page The page being sent
+     * @param array{message: string|null, buttons: array, attachments: array} $resolvedContent The resolved content
+     */
+    protected function buildTextContent(Page $page, array $resolvedContent): string
     {
         $pageUrl = url($page->slug);
 
@@ -103,33 +152,25 @@ class UquccSearchHandler extends BaseHandler
         $title = $this->escapeMarkdownV2($title);
         $lines = ["*{$title}*"];
 
-        if ($page->quick_response_enabled) {
-            if ($page->quick_response_message) {
-                // Ensure message is a string
-                $messageText = is_string($page->quick_response_message) 
-                    ? $page->quick_response_message 
-                    : (string) $page->quick_response_message;
+        // Add message content if available
+        if ($resolvedContent['message']) {
+            $messageText = is_string($resolvedContent['message']) 
+                ? $resolvedContent['message'] 
+                : (string) $resolvedContent['message'];
+            
+            // Check if message is already in MarkdownV2 format (from auto-extraction)
+            // Auto-extracted messages are already converted, manual messages need conversion
+            if ($page->quick_response_auto_extract && !$page->quick_response_customize_message) {
+                // Already in MarkdownV2 format from extractor
+                $lines[] = $messageText;
+            } else {
                 // Convert markdown to Telegram MarkdownV2 format
                 $lines[] = $this->markdownService->toMarkdownV2($messageText);
             }
+        }
 
-            if ($page->quick_response_send_link) {
-                $escapedUrl = $this->escapeMarkdownV2($pageUrl);
-                $lines[] = "🔗 الرابط: [{$escapedUrl}]({$pageUrl})";
-            }
-        } else {
-            // Fallback content when quick responses are not configured
-            $htmlContent = $page->html_content;
-            if (is_array($htmlContent)) {
-                // If html_content is an array (JSON decoded), skip preview
-                $preview = '';
-            } else {
-                $preview = Str::limit(strip_tags((string) $htmlContent), 300);
-            }
-            if ($preview) {
-                $lines[] = $this->escapeMarkdownV2($preview);
-            }
-
+        // Add page link if enabled (always shown by default)
+        if ($page->quick_response_send_link) {
             $escapedUrl = $this->escapeMarkdownV2($pageUrl);
             $lines[] = "🔗 الرابط: [{$escapedUrl}]({$pageUrl})";
         }
@@ -137,13 +178,19 @@ class UquccSearchHandler extends BaseHandler
         return implode("\n\n", array_filter($lines));
     }
 
-    protected function buildReplyMarkup(Page $page): ?string
+    /**
+     * Build the inline keyboard markup for buttons.
+     * 
+     * @param Page $page The page (for context)
+     * @param array $buttonsData The resolved buttons array
+     */
+    protected function buildReplyMarkup(Page $page, array $buttonsData): ?string
     {
-        if (!$page->quick_response_buttons || !is_array($page->quick_response_buttons)) {
+        if (empty($buttonsData)) {
             return null;
         }
 
-        $buttons = collect($page->quick_response_buttons)
+        $buttons = collect($buttonsData)
             ->filter(function ($btn) {
                 if (!is_array($btn)) {
                     return false;
@@ -304,24 +351,207 @@ class UquccSearchHandler extends BaseHandler
         // Note: We don't delete the screenshot file as it's cached for reuse
     }
 
-    protected function sendQuickResponseAttachments(Message $message, Page $page, string $caption, ?string $replyMarkup = null): void
+    /**
+     * Check if a path is an external URL.
+     */
+    protected function isExternalUrl(string $path): bool
     {
-        $attachments = collect($page->quick_response_attachments ?? [])
-            ->filter()
-            ->values();
+        // Check if it's a full URL with http/https
+        if (!preg_match('#^https?://#i', $path)) {
+            return false;
+        }
+        
+        $appUrl = rtrim(config('app.url'), '/');
+        $parsedPath = parse_url($path);
+        $parsedAppUrl = parse_url($appUrl);
+        
+        $pathHost = $parsedPath['host'] ?? '';
+        $appHost = $parsedAppUrl['host'] ?? '';
+        
+        return $pathHost !== $appHost;
+    }
 
+    /**
+     * Resolve an attachment path to a local file path.
+     * 
+     * For internal paths, returns the disk path directly.
+     * For external URLs, fetches and caches the file, then returns the cached path.
+     * Returns null if the file cannot be resolved.
+     * 
+     * @return array{path: string, filename: string}|null
+     */
+    protected function resolveAttachmentPath(string $pathOrUrl): ?array
+    {
+        $disk = Storage::disk('public');
+        
+        if ($this->isExternalUrl($pathOrUrl)) {
+            // External URL - fetch and cache
+            return $this->fetchAndCacheExternalFile($pathOrUrl);
+        }
+        
+        // Internal path - use disk
+        $fullPath = $disk->path($pathOrUrl);
+        
+        if (!file_exists($fullPath)) {
+            Log::warning('Attachment file not found', ['path' => $pathOrUrl]);
+            return null;
+        }
+        
+        return [
+            'path' => $fullPath,
+            'filename' => basename($pathOrUrl),
+        ];
+    }
+
+    /**
+     * Fetch an external file and cache it locally.
+     * 
+     * @return array{path: string, filename: string}|null
+     */
+    protected function fetchAndCacheExternalFile(string $url): ?array
+    {
+        // Create a cache key based on the URL
+        $urlHash = md5($url);
+        $cacheKey = "external_attachment:{$urlHash}";
+        
+        // Check if we have a cached version
+        $cachedPath = Cache::get($cacheKey);
+        if ($cachedPath && file_exists($cachedPath)) {
+            return [
+                'path' => $cachedPath,
+                'filename' => basename($cachedPath),
+            ];
+        }
+        
+        try {
+            // Fetch the external file
+            $response = Http::timeout(30)->get($url);
+            
+            if (!$response->successful()) {
+                Log::warning('Failed to fetch external attachment', [
+                    'url' => $url,
+                    'status' => $response->status(),
+                ]);
+                return null;
+            }
+            
+            // Determine filename from URL or Content-Disposition header
+            $filename = $this->extractFilenameFromResponse($url, $response);
+            
+            // Save to cache directory
+            $cacheDir = storage_path('app/cache/external-attachments');
+            if (!is_dir($cacheDir)) {
+                mkdir($cacheDir, 0755, true);
+            }
+            
+            $localPath = $cacheDir . '/' . $urlHash . '_' . $filename;
+            file_put_contents($localPath, $response->body());
+            
+            // Cache the path for the configured TTL (same as screenshots)
+            $ttl = config('app-cache.screenshots.ttl', 86400);
+            Cache::put($cacheKey, $localPath, $ttl);
+            
+            return [
+                'path' => $localPath,
+                'filename' => $filename,
+            ];
+        } catch (\Exception $e) {
+            Log::warning('Exception fetching external attachment', [
+                'url' => $url,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Extract filename from URL or HTTP response headers.
+     */
+    protected function extractFilenameFromResponse(string $url, \Illuminate\Http\Client\Response $response): string
+    {
+        // Try Content-Disposition header first
+        $contentDisposition = $response->header('Content-Disposition');
+        if ($contentDisposition && preg_match('/filename[^;=\n]*=([\'"]?)([^\'";\n]+)\1/', $contentDisposition, $matches)) {
+            return $matches[2];
+        }
+        
+        // Extract from URL path
+        $urlPath = parse_url($url, PHP_URL_PATH);
+        $filename = $urlPath ? basename($urlPath) : null;
+        
+        // If no extension, try to determine from Content-Type
+        if ($filename && !pathinfo($filename, PATHINFO_EXTENSION)) {
+            $contentType = $response->header('Content-Type');
+            $extension = $this->mimeToExtension($contentType);
+            if ($extension) {
+                $filename .= '.' . $extension;
+            }
+        }
+        
+        return $filename ?: 'attachment_' . time();
+    }
+
+    /**
+     * Convert MIME type to file extension.
+     */
+    protected function mimeToExtension(?string $mimeType): ?string
+    {
+        if (!$mimeType) {
+            return null;
+        }
+        
+        // Extract base mime type (without charset etc.)
+        $mimeType = explode(';', $mimeType)[0];
+        $mimeType = trim($mimeType);
+        
+        $mimeMap = [
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/gif' => 'gif',
+            'image/webp' => 'webp',
+            'image/svg+xml' => 'svg',
+            'application/pdf' => 'pdf',
+            'application/zip' => 'zip',
+            'text/plain' => 'txt',
+            'text/html' => 'html',
+        ];
+        
+        return $mimeMap[$mimeType] ?? null;
+    }
+
+    /**
+     * Send quick response attachments (images/files).
+     * 
+     * @param Message $message The original message
+     * @param Page $page The page being sent
+     * @param string $caption The caption for the attachment
+     * @param string|null $replyMarkup The inline keyboard markup (JSON string)
+     * @param \Illuminate\Support\Collection $attachments The attachments collection
+     */
+    protected function sendQuickResponseAttachments(Message $message, Page $page, string $caption, ?string $replyMarkup, \Illuminate\Support\Collection $attachments): void
+    {
         if ($attachments->isEmpty()) {
             return;
         }
 
-        $disk = Storage::disk('public');
+        // Resolve all attachments to local paths, filtering out any that fail
+        $resolvedAttachments = $attachments
+            ->map(fn ($path) => $this->resolveAttachmentPath($path))
+            ->filter()
+            ->values();
+
+        if ($resolvedAttachments->isEmpty()) {
+            // All attachments failed to resolve, fall back to text-only or screenshot
+            Log::warning('All attachments failed to resolve', ['page_id' => $page->id]);
+            return;
+        }
+
         $chatId = $message->getChat()->getId();
 
-        if ($attachments->count() > 1) {
+        if ($resolvedAttachments->count() > 1) {
             // Check if all attachments are images
-            $allImages = $attachments->every(function ($path) use ($disk) {
-                $fullPath = $disk->path($path);
-                $mime = mime_content_type($fullPath) ?? '';
+            $allImages = $resolvedAttachments->every(function ($attachment) {
+                $mime = mime_content_type($attachment['path']) ?? '';
                 return str_starts_with($mime, 'image/');
             });
 
@@ -329,9 +559,9 @@ class UquccSearchHandler extends BaseHandler
             $media = [];
             $payload = [];
             
-            foreach ($attachments as $index => $path) {
-                $fullPath = $disk->path($path);
-                $filename = basename($path);
+            foreach ($resolvedAttachments as $index => $attachment) {
+                $fullPath = $attachment['path'];
+                $filename = $attachment['filename'];
                 $mime = mime_content_type($fullPath) ?? '';
                 
                 // Determine media type and create InputFile
@@ -376,9 +606,9 @@ class UquccSearchHandler extends BaseHandler
             $this->telegram->sendMediaGroup($payload);
         } else {
             // Single attachment - send as photo or document
-            $path = $attachments->first();
-            $fullPath = $disk->path($path);
-            $filename = basename($path);
+            $attachment = $resolvedAttachments->first();
+            $fullPath = $attachment['path'];
+            $filename = $attachment['filename'];
             $mime = mime_content_type($fullPath) ?? '';
 
             $payload = [

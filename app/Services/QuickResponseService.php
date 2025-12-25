@@ -21,7 +21,11 @@ class QuickResponseService
                     'slug',
                     'title',
                     'html_content',
-                    'quick_response_enabled',
+                    'updated_at',
+                    'quick_response_auto_extract',
+                    'quick_response_customize_message',
+                    'quick_response_customize_buttons',
+                    'quick_response_customize_attachments',
                     'quick_response_send_link',
                     'quick_response_message',
                     'quick_response_buttons',
@@ -46,11 +50,7 @@ class QuickResponseService
             $htmlContent = $page->html_content;
             $htmlContentString = is_array($htmlContent) ? '' : (string) $htmlContent;
 
-            return str_contains(mb_strtolower($page->title), $needle)
-                || str_contains(mb_strtolower($page->slug), $needle)
-                || str_contains(mb_strtolower((string) ($page->quick_response_message ?? '')), $needle)
-                || str_contains(mb_strtolower(strip_tags($htmlContentString)), $needle)
-                || $buttons->contains(fn ($btn) => str_contains(mb_strtolower($btn['text'] ?? ''), $needle));
+            return str_contains(mb_strtolower($page->title), $needle);
         });
     }
 }
