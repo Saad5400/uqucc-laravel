@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { usePage } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { Icon } from '@iconify/vue';
 import DocsLayout from '@/components/layout/DocsLayout.vue';
 import {
@@ -70,8 +70,10 @@ usePage().props.title = props.page.title;
             <BreadcrumbList>
                 <template v-for="(breadcrumb, index) in breadcrumbs" :key="index">
                     <BreadcrumbItem>
-                        <BreadcrumbLink v-if="index !== breadcrumbs.length - 1" :href="breadcrumb.path">
-                            {{ breadcrumb.title }}
+                        <BreadcrumbLink v-if="index !== breadcrumbs.length - 1" :href="breadcrumb.path" as-child>
+                            <Link :href="breadcrumb.path">
+                                {{ breadcrumb.title }}
+                            </Link>
                         </BreadcrumbLink>
                     </BreadcrumbItem>
                     <BreadcrumbSeparator v-if="index < breadcrumbs.length - 2" />
@@ -106,10 +108,10 @@ usePage().props.title = props.page.title;
                         variant="secondary"
                         class="p-8 text-2xl whitespace-normal size-full flex justify-start text-start"
                     >
-                        <a :href="child.slug" class="flex items-center gap-2 w-full no-underline text-current">
+                        <Link :href="child.slug" class="flex items-center gap-2 w-full no-underline text-current">
                             <Icon v-if="child.icon" :icon="child.icon" class="!size-8 me-1" />
                             {{ child.title }}
-                        </a>
+                        </Link>
                     </Button>
                 </div>
             </template>

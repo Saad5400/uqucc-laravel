@@ -14,6 +14,11 @@ createServer(
             title: (title) => (title ? `${title} - ${appName}` : appName),
             resolve: resolvePage,
             setup: ({ App, props, plugin }) => createSSRApp({ render: () => h(App, props) }).use(plugin),
+            defaults: {
+                visitOptions: (href, options) => {
+                    return { viewTransition: !options.preserveState }
+                },
+            },
         }),
     { cluster: true },
 );
