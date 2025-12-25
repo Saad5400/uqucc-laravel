@@ -140,9 +140,13 @@ class UquccSearchHandler extends BaseHandler
         ];
     }
 
-    // Content limits (shorter than Telegram max to keep messages readable)
-    protected const MESSAGE_CONTENT_LIMIT = 2000;
-    protected const CAPTION_CONTENT_LIMIT = 800;
+    // Content limits for auto-extracted content (shorter to keep messages readable)
+    protected const AUTO_MESSAGE_LIMIT = 1500;
+    protected const AUTO_CAPTION_LIMIT = 600;
+    
+    // Content limits for user-customized content (close to Telegram max)
+    protected const CUSTOM_MESSAGE_LIMIT = 4000;
+    protected const CUSTOM_CAPTION_LIMIT = 1000;
 
     /**
      * Build the text content for the message.
@@ -154,7 +158,16 @@ class UquccSearchHandler extends BaseHandler
     protected function buildTextContent(Page $page, array $resolvedContent, bool $isCaption = false): string
     {
         $pageUrl = url($page->slug);
-        $limit = $isCaption ? self::CAPTION_CONTENT_LIMIT : self::MESSAGE_CONTENT_LIMIT;
+        
+        // Use different limits based on whether content is auto-extracted or user-customized
+        // User-customized = auto_extract OFF, or auto_extract ON with customize_message ON
+        $isCustomContent = !$page->quick_response_auto_extract || $page->quick_response_customize_message;
+        
+        if ($isCaption) {
+            $limit = $isCustomContent ? self::CUSTOM_CAPTION_LIMIT : self::AUTO_CAPTION_LIMIT;
+        } else {
+            $limit = $isCustomContent ? self::CUSTOM_MESSAGE_LIMIT : self::AUTO_MESSAGE_LIMIT;
+        }
 
         // Ensure title is a string
         $title = is_string($page->title) ? $page->title : (string) $page->title;

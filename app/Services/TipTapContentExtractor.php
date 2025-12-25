@@ -76,8 +76,10 @@ class TipTapContentExtractor
 
     /**
      * Recursively traverse TipTap JSON nodes to extract content.
+     * 
+     * @param bool $inList Whether we're currently inside a list (for compact spacing)
      */
-    protected function traverseNodes(array $nodes, array &$textParts, array &$links, array &$attachments, array $marks = []): void
+    protected function traverseNodes(array $nodes, array &$textParts, array &$links, array &$attachments, array $marks = [], bool $inList = false): void
     {
         foreach ($nodes as $node) {
             $type = $node['type'] ?? null;
@@ -89,15 +91,16 @@ class TipTapContentExtractor
 
                 case 'paragraph':
                     if (!empty($node['content'])) {
-                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks);
+                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, $inList);
                     }
-                    $textParts[] = "\n\n";
+                    // Use single newline inside lists, double newline outside
+                    $textParts[] = $inList ? "\n" : "\n\n";
                     break;
 
                 case 'heading':
                     if (!empty($node['content'])) {
                         $textParts[] = '*';
-                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks);
+                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, $inList);
                         $textParts[] = '*';
                     }
                     $textParts[] = "\n\n";
@@ -106,14 +109,17 @@ class TipTapContentExtractor
                 case 'bulletList':
                 case 'orderedList':
                     if (!empty($node['content'])) {
-                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks);
+                        // Pass inList=true for list items
+                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, true);
                     }
+                    // Add extra newline after the list ends
+                    $textParts[] = "\n";
                     break;
 
                 case 'listItem':
                     $textParts[] = '• ';
                     if (!empty($node['content'])) {
-                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks);
+                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, true);
                     }
                     break;
 
@@ -129,7 +135,7 @@ class TipTapContentExtractor
                     }
                     // Also include in text
                     if (!empty($node['content'])) {
-                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks);
+                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, $inList);
                     }
                     break;
 
@@ -152,14 +158,14 @@ class TipTapContentExtractor
                 case 'blockquote':
                     $textParts[] = '> ';
                     if (!empty($node['content'])) {
-                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks);
+                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, $inList);
                     }
                     break;
 
                 case 'codeBlock':
                     $textParts[] = '```';
                     if (!empty($node['content'])) {
-                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks);
+                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, $inList);
                     }
                     $textParts[] = '```';
                     $textParts[] = "\n\n";
@@ -176,7 +182,7 @@ class TipTapContentExtractor
                 default:
                     // For any other node type, try to traverse its content
                     if (!empty($node['content'])) {
-                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks);
+                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, $inList);
                     }
                     break;
             }
