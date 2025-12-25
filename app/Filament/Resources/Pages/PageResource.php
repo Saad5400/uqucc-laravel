@@ -44,6 +44,7 @@ class PageResource extends Resource
     {
         return [
             RelationManagers\ChildrenRelationManager::class,
+            RelationManagers\AuthorsRelationManager::class,
         ];
     }
 

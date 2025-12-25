@@ -48,20 +48,20 @@ class Page extends Model implements Sortable
         // When a page is updated, the updated_at timestamp changes
         // This means the cache key will be different (includes timestamp)
         // So old cache entries will naturally expire, but we clean up old screenshot files for this page
-        
+
         $slug = str_replace('/', '_', trim($this->slug, '/')) ?: 'home';
         $screenshotsDir = storage_path('app/public/screenshots');
-        
+
         if (is_dir($screenshotsDir)) {
             // Delete all screenshot files for this page (regardless of version)
-            $pattern = $screenshotsDir . '/' . preg_quote($slug, '/') . '_*.webp';
+            $pattern = $screenshotsDir.'/'.preg_quote($slug, '/').'_*.webp';
             $files = glob($pattern);
-            
+
             foreach ($files as $file) {
                 @unlink($file);
             }
         }
-        
+
         // Note: We don't need to manually clear cache entries because:
         // 1. Cache keys include updated_at timestamp, so new updates get new keys
         // 2. Old cache entries expire naturally based on TTL
@@ -132,7 +132,7 @@ class Page extends Model implements Sortable
      */
     public function authors(): BelongsToMany
     {
-        return $this->belongsToMany(Author::class)->withTimestamps()->orderBy('order');
+        return $this->belongsToMany(Author::class)->withPivot('order')->withTimestamps()->orderBy('order');
     }
 
     protected function htmlContent(): Attribute

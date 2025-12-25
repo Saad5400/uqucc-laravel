@@ -19,6 +19,6 @@ class Author extends Model
      */
     public function pages(): BelongsToMany
     {
-        return $this->belongsToMany(Page::class)->withTimestamps();
+        return $this->belongsToMany(Page::class)->withPivot('order')->withTimestamps();
     }
 }
