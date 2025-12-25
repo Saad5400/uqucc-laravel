@@ -6,6 +6,10 @@ import StarterKit from '@tiptap/starter-kit';
 import TextAlign from '@tiptap/extension-text-align';
 import Underline from '@tiptap/extension-underline';
 import Image from '@tiptap/extension-image';
+import CustomTable from '@/tiptap/extensions/table';
+import TableRow from '@tiptap/extension-table-row';
+import TableCell from '@tiptap/extension-table-cell';
+import TableHeader from '@tiptap/extension-table-header';
 import DOMPurify from 'isomorphic-dompurify';
 import { computed, watch, ref, onMounted } from 'vue';
 
@@ -55,8 +59,8 @@ const transformedContent = computed(() => {
 const cleanHtml = computed(() =>
     typeof props.content === 'string' && props.content
         ? DOMPurify.sanitize(props.content, {
-              ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'a', 'img'],
-              ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'width', 'height', 'class'],
+              ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'a', 'img', 'table', 'thead', 'tbody', 'tr', 'th', 'td'],
+              ALLOWED_ATTR: ['href', 'target', 'rel', 'src', 'alt', 'width', 'height', 'class', 'colspan', 'rowspan', 'scope'],
               ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|sms|cid|xmpp|data):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
           })
         : '',
@@ -76,12 +80,18 @@ const extensions = [
         linkOnPaste: true,
     }),
     TextAlign.configure({
-        types: ['heading', 'paragraph'],
+        types: ['heading', 'paragraph', 'tableCell'],
     }),
     Image.configure({
         inline: true,
         allowBase64: true,
     }),
+    CustomTable.configure({
+        resizable: true,
+    }),
+    TableRow,
+    TableHeader,
+    TableCell,
     AlertBlock,
     CollapsibleBlock,
 ];

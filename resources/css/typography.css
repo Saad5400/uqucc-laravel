@@ -106,4 +106,34 @@
     .typography p.muted {
         @apply text-sm text-muted-foreground;
     }
+
+    /* Table wrapper - matches old project's Table component wrapper */
+    .typography > div[class*="overflow-auto"] {
+        @apply my-6;
+    }
+
+    /* Table styling - matches old project's Table component */
+    .typography table {
+        @apply w-full caption-bottom text-sm;
+    }
+
+    .typography thead {
+        @apply [&_tr]:border-b;
+    }
+
+    .typography tbody {
+        @apply [&_tr:last-child]:border-0;
+    }
+
+    .typography tr {
+        @apply hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors;
+    }
+
+    .typography th {
+        @apply text-muted-foreground h-10 px-2 text-start align-middle font-medium whitespace-nowrap;
+    }
+
+    .typography td {
+        @apply p-2 align-middle whitespace-nowrap;
+    }
 }
