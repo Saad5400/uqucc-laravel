@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl" @class(['dark' => ($appearance ?? 'system') == 'dark'])>
+<html lang="ar" dir="rtl" @class(['dark' => true])>
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">

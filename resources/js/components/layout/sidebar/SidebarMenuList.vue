@@ -18,7 +18,8 @@ defineProps<{
 
 <template>
     <ul class="space-y-1">
-        <li v-for="item in items" :key="item.id">
+        <!-- For leaf nodes: SidebarMenuItem itself renders a <li>, so no outer wrapper needed -->
+        <template v-for="item in items" :key="item.id">
             <!-- leaf node -->
             <SidebarMenuItem v-if="!item.children || !item.children.length">
                 <SidebarMenuLink :item="item" />
@@ -26,6 +27,6 @@ defineProps<{
 
             <!-- node with children -->
             <SidebarMenuCollapsible v-else :item="item" />
-        </li>
+        </template>
     </ul>
 </template>

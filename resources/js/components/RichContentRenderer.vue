@@ -1,26 +1,28 @@
 <script setup lang="ts">
 import { EditorContent, useEditor } from '@tiptap/vue-3';
+import { generateHTML } from '@tiptap/html';
 import Link from '@tiptap/extension-link';
 import StarterKit from '@tiptap/starter-kit';
 import TextAlign from '@tiptap/extension-text-align';
 import Underline from '@tiptap/extension-underline';
 import DOMPurify from 'isomorphic-dompurify';
-import { computed, watch } from 'vue';
+import { computed, watch, ref, onMounted } from 'vue';
 
 import AlertBlock from '@/tiptap/extensions/alertBlock';
 import CollapsibleBlock from '@/tiptap/extensions/collapsibleBlock';
 
-const props = withDefaults(
-    defineProps<{
-        content: unknown;
-    }>(),
-    {
-        content: null,
-    },
-);
+const props = defineProps<{
+    content?: unknown;
+}>();
+
+// Track if we're on the client side
+const isMounted = ref(false);
+onMounted(() => {
+    isMounted.value = true;
+});
 
 const isJsonContent = computed(
-    () => props.content !== null && typeof props.content === 'object' && !Array.isArray(props.content),
+    () => props.content != null && typeof props.content === 'object' && !Array.isArray(props.content),
 );
 
 const transformCustomBlocks = (node: any): any => {
@@ -55,27 +57,41 @@ const cleanHtml = computed(() =>
         : '',
 );
 
+// Extensions used for both SSR HTML generation and client-side editor
+const extensions = [
+    StarterKit.configure({
+        heading: {
+            levels: [1, 2, 3, 4, 5, 6],
+        },
+    }),
+    Underline,
+    Link.configure({
+        openOnClick: true,
+        autolink: true,
+        linkOnPaste: true,
+    }),
+    TextAlign.configure({
+        types: ['heading', 'paragraph'],
+    }),
+    AlertBlock,
+    CollapsibleBlock,
+];
+
+// Generate static HTML for SSR - this works without DOM
+const ssrHtml = computed(() => {
+    if (!isJsonContent.value || !transformedContent.value) return '';
+    try {
+        return generateHTML(transformedContent.value as Record<string, any>, extensions);
+    } catch {
+        return '';
+    }
+});
+
+// Client-side editor - only created after mount
 const editor = useEditor({
     editable: false,
     content: transformedContent.value as Record<string, unknown> | null,
-    extensions: [
-        StarterKit.configure({
-            heading: {
-                levels: [1, 2, 3, 4, 5, 6],
-            },
-        }),
-        Underline,
-        Link.configure({
-            openOnClick: true,
-            autolink: true,
-            linkOnPaste: true,
-        }),
-        TextAlign.configure({
-            types: ['heading', 'paragraph'],
-        }),
-        AlertBlock,
-        CollapsibleBlock,
-    ],
+    extensions,
     editorProps: {
         attributes: {
             class: 'typography',
@@ -98,6 +114,13 @@ watch(
 </script>
 
 <template>
-    <EditorContent v-if="isJsonContent" :editor="editor" />
+    <!-- For JSON content: use SSR HTML during SSR, then hydrate with TipTap editor -->
+    <template v-if="isJsonContent">
+        <!-- Client-side: use the interactive TipTap editor -->
+        <EditorContent v-if="isMounted" :editor="editor" />
+        <!-- SSR: render static HTML that matches the editor output -->
+        <div v-else class="typography" v-html="ssrHtml" />
+    </template>
+    <!-- For HTML string content -->
     <div v-else class="typography" v-html="cleanHtml" />
 </template>

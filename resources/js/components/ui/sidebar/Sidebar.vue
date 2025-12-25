@@ -5,6 +5,7 @@ import { Sheet, SheetContent } from '@/components/ui/sheet'
 import SheetDescription from '@/components/ui/sheet/SheetDescription.vue'
 import SheetHeader from '@/components/ui/sheet/SheetHeader.vue'
 import SheetTitle from '@/components/ui/sheet/SheetTitle.vue'
+import { ref, onMounted } from "vue"
 import { SIDEBAR_WIDTH_MOBILE, useSidebar } from "./utils"
 
 defineOptions({
@@ -18,6 +19,14 @@ const props = withDefaults(defineProps<SidebarProps>(), {
 })
 
 const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+
+// Track if component is mounted to prevent SSR/client mismatch
+// SSR always renders the desktop sidebar, mobile Sheet only renders after mount
+const isMounted = ref(false)
+
+onMounted(() => {
+  isMounted.value = true
+})
 </script>
 
 <template>
@@ -30,7 +39,9 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
     <slot />
   </div>
 
-  <Sheet v-else-if="isMobile" :open="openMobile" v-bind="$attrs" @update:open="setOpenMobile">
+  <!-- Mobile Sheet: Only render after mount AND when actually on mobile -->
+  <!-- This prevents SSR from rendering Sheet while client might render desktop sidebar -->
+  <Sheet v-else-if="isMounted && isMobile" :open="openMobile" v-bind="$attrs" @update:open="setOpenMobile">
     <SheetContent
       data-sidebar="sidebar"
       data-slot="sidebar"
@@ -51,6 +62,7 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
     </SheetContent>
   </Sheet>
 
+  <!-- Desktop Sidebar: Always render during SSR, hidden on mobile via CSS -->
   <div
     v-else
     class="hidden group peer text-sidebar-foreground md:block"

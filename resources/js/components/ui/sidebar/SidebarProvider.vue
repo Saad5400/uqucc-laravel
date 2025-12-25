@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { HTMLAttributes, Ref } from "vue"
-import { defaultDocument, useEventListener, useMediaQuery, useVModel } from "@vueuse/core"
+import { useMediaQuery } from "@vueuse/core"
 import { TooltipProvider } from "reka-ui"
-import { computed, ref } from "vue"
+import { computed, ref, onMounted, watch } from "vue"
 import { cn } from "@/lib/utils"
 import { provideSidebarContext, SIDEBAR_COOKIE_MAX_AGE, SIDEBAR_COOKIE_NAME, SIDEBAR_KEYBOARD_SHORTCUT, SIDEBAR_WIDTH, SIDEBAR_WIDTH_ICON } from "./utils"
 
@@ -11,7 +11,7 @@ const props = withDefaults(defineProps<{
   open?: boolean
   class?: HTMLAttributes["class"]
 }>(), {
-  defaultOpen: !defaultDocument?.cookie.includes(`${SIDEBAR_COOKIE_NAME}=false`),
+  defaultOpen: true,
   open: undefined,
 })
 
@@ -19,46 +19,107 @@ const emits = defineEmits<{
   "update:open": [open: boolean]
 }>()
 
-const isMobile = useMediaQuery("(max-width: 768px)")
+// Track if we're mounted (client-side)
+const isMounted = ref(false)
+
+// Media query - but we'll only use it after mount to avoid SSR mismatch
+const mediaQueryMobile = useMediaQuery("(max-width: 768px)")
+
+// Start with false during SSR, then sync with actual value after mount
+// This ensures SSR always renders the desktop sidebar
+const isMobile = ref(false)
+
 const openMobile = ref(false)
 
-const open = useVModel(props, "open", emits, {
-  defaultValue: props.defaultOpen ?? false,
-  passive: (props.open === undefined) as false,
-}) as Ref<boolean>
+// Determine initial open state
+// During SSR, use defaultOpen prop
+// On client, try to read from cookie after mount
+const getInitialOpen = () => {
+  if (props.open !== undefined) return props.open
+  return props.defaultOpen ?? true
+}
+
+const open = ref(getInitialOpen())
+
+// Sync with v-model if provided
+watch(() => props.open, (newVal) => {
+  if (newVal !== undefined) {
+    open.value = newVal
+  }
+})
+
+// Emit changes
+watch(open, (newVal) => {
+  emits("update:open", newVal)
+})
+
+onMounted(() => {
+  isMounted.value = true
+  
+  // Now that we're on the client, sync with actual mobile state
+  // Use nextTick-like delay to ensure hydration completes first
+  requestAnimationFrame(() => {
+    isMobile.value = mediaQueryMobile.value
+  })
+  
+  // Try to read cookie state on client
+  if (props.open === undefined) {
+    const cookieValue = document.cookie
+      .split('; ')
+      .find(row => row.startsWith(`${SIDEBAR_COOKIE_NAME}=`))
+      ?.split('=')[1]
+    
+    if (cookieValue !== undefined) {
+      open.value = cookieValue !== 'false'
+    }
+  }
+})
+
+// Keep isMobile in sync with media query after mount
+watch(mediaQueryMobile, (newVal) => {
+  if (isMounted.value) {
+    isMobile.value = newVal
+  }
+})
 
 function setOpen(value: boolean) {
-  open.value = value // emits('update:open', value)
+  open.value = value
 
-  // This sets the cookie to keep the sidebar state.
-  document.cookie = `${SIDEBAR_COOKIE_NAME}=${open.value}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+  // Only set cookie on client
+  if (typeof document !== 'undefined') {
+    document.cookie = `${SIDEBAR_COOKIE_NAME}=${value}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`
+  }
 }
 
 function setOpenMobile(value: boolean) {
   openMobile.value = value
 }
 
-// Helper to toggle the sidebar.
 function toggleSidebar() {
   return isMobile.value ? setOpenMobile(!openMobile.value) : setOpen(!open.value)
 }
 
-useEventListener("keydown", (event: KeyboardEvent) => {
-  if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
-    event.preventDefault()
-    toggleSidebar()
+// Keyboard shortcut - only on client
+onMounted(() => {
+  const handleKeydown = (event: KeyboardEvent) => {
+    if (event.key === SIDEBAR_KEYBOARD_SHORTCUT && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault()
+      toggleSidebar()
+    }
   }
+  
+  document.addEventListener("keydown", handleKeydown)
+  
+  // Cleanup handled by Vue's onUnmounted if needed
 })
 
-// We add a state so that we can do data-state="expanded" or "collapsed".
-// This makes it easier to style the sidebar with Tailwind classes.
 const state = computed(() => open.value ? "expanded" : "collapsed")
 
 provideSidebarContext({
   state,
-  open,
+  open: open as Ref<boolean>,
   setOpen,
-  isMobile,
+  isMobile: isMobile as Ref<boolean>,
   openMobile,
   setOpenMobile,
   toggleSidebar,
