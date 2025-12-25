@@ -17,7 +17,9 @@ use Telegram\Bot\Objects\Message;
 
 class UquccSearchHandler extends BaseHandler
 {
-    protected array $exceptionWords = ['لابتوب'];
+    protected array $exceptionWords = [
+        // 'لابتوب'
+    ];
 
     public function __construct(
         \Telegram\Bot\Api $telegram,
@@ -70,8 +72,6 @@ class UquccSearchHandler extends BaseHandler
     {
         // Get the resolved content (auto-extracted or custom)
         $resolvedContent = $this->resolveQuickResponseContent($page);
-        
-        $textContent = $this->buildTextContent($page, $resolvedContent);
         $replyMarkup = $this->buildReplyMarkup($page, $resolvedContent['buttons']);
 
         // Check if there are attachments
@@ -80,10 +80,12 @@ class UquccSearchHandler extends BaseHandler
             ->values();
 
         if ($attachments->isNotEmpty()) {
-            // Send attachments with text as caption
-            $this->sendQuickResponseAttachments($message, $page, $textContent, $replyMarkup, $attachments);
+            // Send attachments with text as caption (shorter limit)
+            $captionContent = $this->buildTextContent($page, $resolvedContent, isCaption: true);
+            $this->sendQuickResponseAttachments($message, $page, $captionContent, $replyMarkup, $attachments);
         } elseif ($resolvedContent['message'] || $replyMarkup) {
-            // Send text message with optional buttons
+            // Send text message with optional buttons (full message limit)
+            $textContent = $this->buildTextContent($page, $resolvedContent, isCaption: false);
             $params = [
                 'chat_id' => $message->getChat()->getId(),
                 'text' => $textContent,
@@ -96,8 +98,9 @@ class UquccSearchHandler extends BaseHandler
 
             $this->telegram->sendMessage($params);
         } else {
-            // Fallback: send screenshot with text as caption
-            $this->sendScreenshotWithText($message, $page, $textContent, $replyMarkup);
+            // Fallback: send screenshot with text as caption (shorter limit)
+            $captionContent = $this->buildTextContent($page, $resolvedContent, isCaption: true);
+            $this->sendScreenshotWithText($message, $page, $captionContent, $replyMarkup);
         }
     }
 
@@ -137,22 +140,29 @@ class UquccSearchHandler extends BaseHandler
         ];
     }
 
+    // Content limits (shorter than Telegram max to keep messages readable)
+    protected const MESSAGE_CONTENT_LIMIT = 2000;
+    protected const CAPTION_CONTENT_LIMIT = 800;
+
     /**
      * Build the text content for the message.
      * 
      * @param Page $page The page being sent
      * @param array{message: string|null, buttons: array, attachments: array} $resolvedContent The resolved content
+     * @param bool $isCaption Whether this is for a caption (shorter limit)
      */
-    protected function buildTextContent(Page $page, array $resolvedContent): string
+    protected function buildTextContent(Page $page, array $resolvedContent, bool $isCaption = false): string
     {
         $pageUrl = url($page->slug);
+        $limit = $isCaption ? self::CAPTION_CONTENT_LIMIT : self::MESSAGE_CONTENT_LIMIT;
 
         // Ensure title is a string
         $title = is_string($page->title) ? $page->title : (string) $page->title;
-        $title = $this->escapeMarkdownV2($title);
-        $lines = ["*{$title}*"];
+        $escapedTitle = $this->escapeMarkdownV2($title);
+        $lines = ["*{$escapedTitle}*"];
 
         // Add message content if available
+        $messageText = null;
         if ($resolvedContent['message']) {
             $messageText = is_string($resolvedContent['message']) 
                 ? $resolvedContent['message'] 
@@ -160,22 +170,152 @@ class UquccSearchHandler extends BaseHandler
             
             // Check if message is already in MarkdownV2 format (from auto-extraction)
             // Auto-extracted messages are already converted, manual messages need conversion
-            if ($page->quick_response_auto_extract && !$page->quick_response_customize_message) {
-                // Already in MarkdownV2 format from extractor
-                $lines[] = $messageText;
-            } else {
+            if (!$page->quick_response_auto_extract || $page->quick_response_customize_message) {
                 // Convert markdown to Telegram MarkdownV2 format
-                $lines[] = $this->markdownService->toMarkdownV2($messageText);
+                $messageText = $this->markdownService->toMarkdownV2($messageText);
             }
+            
+            $lines[] = $messageText;
         }
 
-        // Add page link if enabled (always shown by default)
+        // Build links - escape URL for display, escape only ) and \ for URL in markdown link
+        $escapedUrlDisplay = $this->escapeMarkdownV2($pageUrl);
+        $escapedUrlLink = $this->escapeMarkdownV2Url($pageUrl);
+        $readMoreLink = "📖 [اقرأ المزيد على الموقع]({$escapedUrlLink})";
+        $regularLink = "🔗 الرابط: [{$escapedUrlDisplay}]({$escapedUrlLink})";
+
+        // Check if we need to truncate
+        $resultWithoutLink = implode("\n\n", array_filter($lines));
+        $needsTruncation = mb_strlen($resultWithoutLink) > $limit;
+
+        if ($needsTruncation) {
+            // Reserve space for the "read more" link
+            $readMoreLength = mb_strlen("\n\n\\.\\.\\.\n\n" . $readMoreLink);
+            $truncated = $this->truncateMarkdownSafe($resultWithoutLink, $limit - $readMoreLength - 50);
+            
+            return $truncated . "\n\n\\.\\.\\.\n\n" . $readMoreLink;
+        }
+
+        // No truncation needed - add regular link if enabled
         if ($page->quick_response_send_link) {
-            $escapedUrl = $this->escapeMarkdownV2($pageUrl);
-            $lines[] = "🔗 الرابط: [{$escapedUrl}]({$pageUrl})";
+            $lines[] = $regularLink;
         }
 
         return implode("\n\n", array_filter($lines));
+    }
+
+    /**
+     * Truncate markdown text safely without breaking formatting.
+     * Ensures we don't cut in the middle of markdown links.
+     */
+    protected function truncateMarkdownSafe(string $text, int $maxLength): string
+    {
+        if (mb_strlen($text) <= $maxLength) {
+            return $text;
+        }
+
+        // First, try to find a safe break point (paragraph break)
+        $truncated = mb_substr($text, 0, $maxLength);
+        
+        // Try to break at last double newline (paragraph break) - safest option
+        $lastParagraph = mb_strrpos($truncated, "\n\n");
+        if ($lastParagraph !== false && $lastParagraph > $maxLength * 0.3) {
+            $candidate = mb_substr($truncated, 0, $lastParagraph);
+            if ($this->isMarkdownBalanced($candidate)) {
+                return $candidate;
+            }
+        }
+        
+        // Try to break at last newline
+        $lastNewline = mb_strrpos($truncated, "\n");
+        if ($lastNewline !== false && $lastNewline > $maxLength * 0.3) {
+            $candidate = mb_substr($truncated, 0, $lastNewline);
+            if ($this->isMarkdownBalanced($candidate)) {
+                return $candidate;
+            }
+        }
+
+        // Try to break at last bullet point
+        $lastBullet = mb_strrpos($truncated, "\n\n•");
+        if ($lastBullet !== false && $lastBullet > $maxLength * 0.3) {
+            $candidate = mb_substr($truncated, 0, $lastBullet);
+            if ($this->isMarkdownBalanced($candidate)) {
+                return $candidate;
+            }
+        }
+
+        // If we still can't find a good break, find a point before any markdown link
+        // and ensure we don't break inside a link
+        $safeText = $this->truncateBeforeUnbalancedMarkdown($truncated);
+        if (mb_strlen($safeText) > $maxLength * 0.3) {
+            return $safeText;
+        }
+
+        // Last resort: just return what we have, but ensure it's balanced
+        return $this->truncateBeforeUnbalancedMarkdown($truncated);
+    }
+
+    /**
+     * Check if markdown brackets are balanced (no unclosed links).
+     */
+    protected function isMarkdownBalanced(string $text): bool
+    {
+        // Count unescaped [ and ]
+        $openBrackets = preg_match_all('/(?<!\\\\)\[/', $text);
+        $closeBrackets = preg_match_all('/(?<!\\\\)\]/', $text);
+        
+        if ($openBrackets !== $closeBrackets) {
+            return false;
+        }
+        
+        // Count unescaped ( and ) - but be careful, we only care about those in link syntax
+        // A proper link is [text](url) - so after each ] there should be (url)
+        // For simplicity, just check if we're not in the middle of a link
+        $lastOpenBracket = mb_strrpos($text, '[');
+        $lastCloseBracket = mb_strrpos($text, ']');
+        
+        if ($lastOpenBracket !== false && $lastCloseBracket !== false) {
+            if ($lastOpenBracket > $lastCloseBracket) {
+                // We have an unclosed [
+                return false;
+            }
+            
+            // Check if there's an unclosed ( after the last ]
+            $afterLastClose = mb_substr($text, $lastCloseBracket);
+            if (mb_substr_count($afterLastClose, '(') > mb_substr_count($afterLastClose, ')')) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+
+    /**
+     * Truncate text to a point before any unbalanced markdown.
+     */
+    protected function truncateBeforeUnbalancedMarkdown(string $text): string
+    {
+        // Find the last position where markdown is balanced
+        // Start from the end and work backwards
+        $length = mb_strlen($text);
+        
+        for ($i = $length; $i > $length * 0.3; $i -= 50) {
+            $candidate = mb_substr($text, 0, $i);
+            
+            // Try to end at a paragraph or newline
+            $lastNewline = mb_strrpos($candidate, "\n");
+            if ($lastNewline !== false && $lastNewline > $i * 0.8) {
+                $candidate = mb_substr($candidate, 0, $lastNewline);
+            }
+            
+            if ($this->isMarkdownBalanced($candidate)) {
+                return $candidate;
+            }
+        }
+        
+        // If nothing works, just strip all markdown links and return plain text
+        $plainText = preg_replace('/\[([^\]]+)\]\([^\)]+\)/', '$1', $text);
+        return mb_substr($plainText, 0, $length);
     }
 
     /**

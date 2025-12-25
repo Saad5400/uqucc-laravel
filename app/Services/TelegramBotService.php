@@ -11,6 +11,7 @@ use App\Services\Telegram\Handlers\JavaExecutionHandler;
 use App\Services\Telegram\Handlers\DeepSeekChatHandler;
 use App\Services\QuickResponseService;
 use App\Services\TelegramMarkdownService;
+use App\Services\TipTapContentExtractor;
 
 class TelegramBotService
 {

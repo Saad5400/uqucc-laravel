@@ -85,4 +85,17 @@ abstract class BaseHandler
 
         return $text;
     }
+
+    /**
+     * Escape URL for use inside markdown link parentheses.
+     * In MarkdownV2, only ) and \ need to be escaped inside link URLs.
+     */
+    protected function escapeMarkdownV2Url(string $url): string
+    {
+        // Escape backslash first, then closing parenthesis
+        $url = str_replace('\\', '\\\\', $url);
+        $url = str_replace(')', '\\)', $url);
+        
+        return $url;
+    }
 }

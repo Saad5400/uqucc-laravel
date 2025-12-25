@@ -44,13 +44,13 @@ class QuickResponseService
         $needle = mb_strtolower($query);
 
         return $this->getCachedResponses()->first(function (Page $page) use ($needle) {
-            $buttons = collect($page->quick_response_buttons ?? []);
+            // $buttons = collect($page->quick_response_buttons ?? []);
 
             // Ensure html_content is a string (it can be an array from JSON decoding)
             $htmlContent = $page->html_content;
-            $htmlContentString = is_array($htmlContent) ? '' : (string) $htmlContent;
+            // $htmlContentString = is_array($htmlContent) ? '' : (string) $htmlContent;
 
-            return str_contains(mb_strtolower($page->title), $needle);
+            return mb_strtolower($page->title) === $needle;
         });
     }
 }
