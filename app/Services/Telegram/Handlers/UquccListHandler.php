@@ -41,7 +41,7 @@ class UquccListHandler extends BaseHandler
     {
         // Add indentation based on level
         $indent = str_repeat('  ', $level);
-        $arrow = $level > 0 ? '↳ ' : '';
+        $arrow = $level > 0 ? '⮜ ' : '';
 
         $list[] = "{$indent}{$arrow}`دليل {$page->title}`";
 
