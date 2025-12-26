@@ -270,7 +270,8 @@ class UquccSearchHandler extends BaseHandler
         // Build links in HTML format
         $escapedUrl = $this->escapeHtml($pageUrl);
         $readMoreLink = "📖 <a href=\"{$escapedUrl}\">اقرأ المزيد على الموقع</a>";
-        $regularLink = "🔗 اقرأ المزيد على الموقع: <a href=\"{$escapedUrl}\">{$escapedUrl}</a>";
+        $regularLink = $readMoreLink;
+        // $regularLink = "🔗 اقرأ المزيد على الموقع: <a href=\"{$escapedUrl}\">{$escapedUrl}</a>";
 
         // Check if we need to truncate
         $resultWithoutLink = implode("\n\n", array_filter($lines));
