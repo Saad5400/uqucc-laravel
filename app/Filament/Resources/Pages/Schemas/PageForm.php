@@ -110,6 +110,11 @@ class PageForm
                             ->label('إرسال رابط الصفحة مع الرد')
                             ->default(true),
 
+                        Toggle::make('quick_response_require_prefix')
+                            ->label('يتطلب كتابة "دليل" قبل العنوان')
+                            ->helperText('عند التفعيل، يجب كتابة كلمة "دليل" قبل اسم الصفحة في بوت التيليجرام')
+                            ->default(true),
+
                         Toggle::make('quick_response_customize_message')
                             ->label('تخصيص نص الرد')
                             ->reactive()

@@ -84,6 +84,7 @@ class PageManagementHandler extends BaseHandler
             'toggle_smart' => 'smart_search',
             'toggle_update_content' => 'update_main_content',
             'toggle_send_link' => 'send_link',
+            'toggle_require_prefix' => 'require_prefix',
         ];
 
         foreach ($toggleMap as $prefix => $stateKey) {
@@ -108,6 +109,7 @@ class PageManagementHandler extends BaseHandler
                     'smart_search' => ['تم تفعيل البحث الذكي', 'تم تعطيل البحث الذكي'],
                     'update_main_content' => ['سيتم تحديث محتوى الصفحة', 'لن يتم تحديث محتوى الصفحة'],
                     'send_link' => ['سيتم إرسال رابط الصفحة', 'لن يتم إرسال رابط الصفحة'],
+                    'require_prefix' => ['سيتطلب كتابة "دليل"', 'لن يتطلب كتابة "دليل"'],
                 ];
 
                 $this->telegram->answerCallbackQuery([
@@ -138,6 +140,7 @@ class PageManagementHandler extends BaseHandler
             'smart_search' => false,
             'update_main_content' => false,
             'send_link' => false,
+            'require_prefix' => false,
         ];
 
         $this->setState($userId, $state);
@@ -276,6 +279,7 @@ class PageManagementHandler extends BaseHandler
         if ($existingPage) {
             $state['smart_search'] = $existingPage->smart_search ?? false;
             $state['send_link'] = $existingPage->quick_response_send_link ?? false;
+            $state['require_prefix'] = $existingPage->quick_response_require_prefix ?? true;
             // update_main_content stays as user set it (default false)
         }
 
@@ -350,6 +354,7 @@ class PageManagementHandler extends BaseHandler
         $smartSearch = $state['smart_search'] ?? false;
         $updateMainContent = $state['update_main_content'] ?? false;
         $sendLink = $state['send_link'] ?? false;
+        $requirePrefix = $state['require_prefix'] ?? true;
 
         try {
             if ($state['existing_page_id']) {
@@ -363,6 +368,7 @@ class PageManagementHandler extends BaseHandler
                     'quick_response_message' => $formattedMessage,
                     'quick_response_buttons' => $buttons,
                     'quick_response_send_link' => $sendLink,
+                    'quick_response_require_prefix' => $requirePrefix,
                 ];
 
                 // Only update main content if toggle is ON
@@ -405,6 +411,7 @@ class PageManagementHandler extends BaseHandler
                     'quick_response_buttons' => $buttons,
                     'quick_response_attachments' => $attachments,
                     'quick_response_send_link' => $sendLink,
+                    'quick_response_require_prefix' => $requirePrefix,
                 ];
 
                 $page = Page::create($pageData);
@@ -588,10 +595,12 @@ class PageManagementHandler extends BaseHandler
         $smartSearch = $state['smart_search'] ?? false;
         $updateContent = $state['update_main_content'] ?? false;
         $sendLink = $state['send_link'] ?? false;
+        $requirePrefix = $state['require_prefix'] ?? true;
 
         $smartIcon = $smartSearch ? '✅' : '❌';
         $updateIcon = $updateContent ? '✅' : '❌';
         $linkIcon = $sendLink ? '✅' : '❌';
+        $prefixIcon = $requirePrefix ? '✅' : '❌';
 
         return Keyboard::make()
             ->inline()
@@ -611,6 +620,12 @@ class PageManagementHandler extends BaseHandler
                 Keyboard::inlineButton([
                     'text' => "إرسال رابط الصفحة مع الرد {$linkIcon}",
                     'callback_data' => 'toggle_send_link_'.($sendLink ? '1' : '0'),
+                ]),
+            ])
+            ->row([
+                Keyboard::inlineButton([
+                    'text' => "يتطلب كتابة \"دليل\" {$prefixIcon}",
+                    'callback_data' => 'toggle_require_prefix_'.($requirePrefix ? '1' : '0'),
                 ]),
             ]);
     }

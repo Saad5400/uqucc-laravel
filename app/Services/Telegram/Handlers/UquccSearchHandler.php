@@ -59,7 +59,15 @@ class UquccSearchHandler extends BaseHandler
             return;
         }
 
-        // Check for smart search pages - ANY message that contains a smart page title
+        $directMatch = $this->quickResponses->searchWithoutPrefix($content);
+
+        if ($directMatch) {
+            $this->sendPageResult($message, $directMatch);
+
+            return;
+        }
+
+        // Check for smart search pages - ANY message that contains a smart page title and doesn't require the prefix
         $this->checkSmartSearch($message, $content);
     }
 
@@ -72,7 +80,9 @@ class UquccSearchHandler extends BaseHandler
 
         // Search through all cached responses for smart search pages
         $page = $this->quickResponses->getCachedResponses()->first(function (Page $page) use ($needle) {
-            if (! $page->smart_search) {
+            $requiresPrefix = $page->quick_response_require_prefix ?? true;
+
+            if ($requiresPrefix || ! $page->smart_search) {
                 return false;
             }
 

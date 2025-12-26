@@ -28,6 +28,7 @@ class QuickResponseService
                     'quick_response_customize_buttons',
                     'quick_response_customize_attachments',
                     'quick_response_send_link',
+                    'quick_response_require_prefix',
                     'quick_response_message',
                     'quick_response_buttons',
                     'quick_response_attachments',
@@ -35,6 +36,36 @@ class QuickResponseService
                 ->orderBy('order')
                 ->get()
         );
+    }
+
+    /**
+     * Look up a page without requiring the "دليل" prefix.
+     */
+    public function searchWithoutPrefix(string $query): ?Page
+    {
+        $needle = mb_strtolower($query);
+
+        return $this->getCachedResponses()->first(function (Page $page) use ($needle) {
+            $requiresPrefix = $page->quick_response_require_prefix ?? true;
+
+            if ($requiresPrefix) {
+                return false;
+            }
+
+            $title = mb_strtolower($page->title);
+
+            // Exact match
+            if ($title === $needle) {
+                return true;
+            }
+
+            // Smart search: substring match if enabled
+            if ($page->smart_search && str_contains($needle, $title)) {
+                return true;
+            }
+
+            return false;
+        });
     }
 
     /**
