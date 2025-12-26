@@ -469,14 +469,6 @@ class UquccSearchHandler extends BaseHandler
                 'aggressive-cache-discard',
             ]);
 
-            // Inject CSS to hide .screenshot-hidden elements and adjust scrollbar
-            // Using CSS is more reliable than JavaScript evaluation
-            $browsershot->setOption('addStyleTag', [
-                [
-                    'content' => '.screenshot-hidden { display: none !important; visibility: hidden !important; } html { scrollbar-gutter: auto !important; }',
-                ],
-            ]);
-
             $browsershot->save($screenshotPath);
 
             // Cache the screenshot path for the configured TTL
