@@ -196,7 +196,7 @@ class UquccSearchHandler extends BaseHandler
         $escapedUrlDisplay = $this->escapeMarkdownV2($pageUrl);
         $escapedUrlLink = $this->escapeMarkdownV2Url($pageUrl);
         $readMoreLink = "📖 [اقرأ المزيد على الموقع]({$escapedUrlLink})";
-        $regularLink = "🔗 الرابط: [{$escapedUrlDisplay}]({$escapedUrlLink})";
+        $regularLink = "🔗 اقرأ المزيد على الموقع: [{$escapedUrlDisplay}]({$escapedUrlLink})";
 
         // Check if we need to truncate
         $resultWithoutLink = implode("\n\n", array_filter($lines));
