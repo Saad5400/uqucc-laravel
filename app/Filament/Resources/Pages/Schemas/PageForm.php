@@ -5,7 +5,6 @@ namespace App\Filament\Resources\Pages\Schemas;
 use App\Filament\Forms\Blocks\AlertBlock;
 use App\Filament\Forms\Blocks\CollapsibleBlock;
 use Filament\Forms\Components\FileUpload;
-use Filament\Forms\Components\MarkdownEditor;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
@@ -118,9 +117,14 @@ class PageForm
                             ->hidden(fn (Get $get) => ! $get('quick_response_auto_extract'))
                             ->default(false),
 
-                        MarkdownEditor::make('quick_response_message')
+                        RichEditor::make('quick_response_message')
                             ->label('نص الرد')
-                            ->helperText('نص قصير يمكن للبوت إرساله مع الرابط في التيليجرام. يمكنك استخدام Markdown للتنسيق. الصيغة المدعومة: **للخط العريض**، *للخط المائل*، [رابط](url)، `كود`، ~خط مشطوب~')
+                            ->helperText('نص قصير يمكن للبوت إرساله مع الرابط في التيليجرام. التنسيقات المدعومة: عريض، مائل، تسطير، شطب، كود، روابط')
+                            ->toolbarButtons([
+                                ['bold', 'italic', 'underline', 'strike', 'link'],
+                                ['codeBlock'],
+                                ['undo', 'redo'],
+                            ])
                             ->columnSpanFull()
                             ->visible(fn (Get $get) => ! $get('quick_response_auto_extract')
                                 || ($get('quick_response_auto_extract') && $get('quick_response_customize_message'))

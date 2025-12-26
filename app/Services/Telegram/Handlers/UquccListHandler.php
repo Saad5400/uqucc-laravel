@@ -35,7 +35,7 @@ class UquccListHandler extends BaseHandler
             $this->addPageToList($page, $list, 0);
         }
 
-        $this->replyMarkdown($message, $this->escapeMarkdownV2("الفهرس:\n\n").implode("\n", $list));
+        $this->replyHtml($message, "<b>الفهرس:</b>\n\n".implode("\n", $list));
     }
 
     protected function addPageToList(Page $page, array &$list, int $level): void
@@ -43,8 +43,9 @@ class UquccListHandler extends BaseHandler
         // Add indentation based on level
         $indent = str_repeat('  ', $level);
         $arrow = $level > 0 ? '⮜ ' : '';
+        $escapedTitle = $this->escapeHtml($page->title);
 
-        $list[] = "{$indent}{$arrow}`دليل {$page->title}`";
+        $list[] = "{$indent}{$arrow}<code>دليل {$escapedTitle}</code>";
 
         // Recursively add all visible (in bot) children
         $children = $page->children()->where('hidden_from_bot', false)->orderBy('order')->get();

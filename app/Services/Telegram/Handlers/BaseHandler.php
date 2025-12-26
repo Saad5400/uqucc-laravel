@@ -23,6 +23,7 @@ abstract class BaseHandler
         $text = $message->getText();
         // Ensure getText() returns a string (handle edge cases where it might be an array)
         $content = is_string($text) ? trim($text) : '';
+
         return preg_match($pattern, $content) === 1;
     }
 
@@ -45,6 +46,11 @@ abstract class BaseHandler
         $this->reply($message, $text, 'MarkdownV2');
     }
 
+    protected function replyHtml(Message $message, string $text): void
+    {
+        $this->reply($message, $text, 'HTML');
+    }
+
     protected function replyPhoto(Message $message, string $photoUrl, ?string $caption = null): void
     {
         $params = [
@@ -54,10 +60,18 @@ abstract class BaseHandler
 
         if ($caption) {
             $params['caption'] = $caption;
-            $params['parse_mode'] = 'MarkdownV2';
+            $params['parse_mode'] = 'HTML';
         }
 
         $this->telegram->sendPhoto($params);
+    }
+
+    /**
+     * Escape HTML entities for safe display in Telegram.
+     */
+    protected function escapeHtml(string $text): string
+    {
+        return htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
     protected function getUserState(int $userId): ?array
@@ -80,7 +94,7 @@ abstract class BaseHandler
         $specialChars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'];
 
         foreach ($specialChars as $char) {
-            $text = str_replace($char, '\\' . $char, $text);
+            $text = str_replace($char, '\\'.$char, $text);
         }
 
         return $text;
@@ -95,7 +109,7 @@ abstract class BaseHandler
         // Escape backslash first, then closing parenthesis
         $url = str_replace('\\', '\\\\', $url);
         $url = str_replace(')', '\\)', $url);
-        
+
         return $url;
     }
 }
