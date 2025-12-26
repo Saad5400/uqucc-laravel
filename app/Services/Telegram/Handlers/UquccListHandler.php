@@ -42,7 +42,7 @@ class UquccListHandler extends BaseHandler
     {
         // Add indentation based on level
         $indent = str_repeat('  ', $level);
-        $arrow = $level > 0 ? '⮜ ' : '';
+        $arrow = $level > 0 ? '| ' : '';
         $escapedTitle = $this->escapeHtml($page->title);
 
         $list[] = "{$indent}{$arrow}<code>دليل {$escapedTitle}</code>";

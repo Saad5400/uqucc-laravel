@@ -8,9 +8,9 @@
     "require": {
         "php": "^8.2",
         "filament/filament": "^4.0",
-        "geniusts/hijri-dates": "^1.2",
         "inertiajs/inertia-laravel": "^2.0",
         "irazasyed/telegram-bot-sdk": "^3.14",
+        "khaled.alshamaa/ar-php": "^7.0",
         "laravel/framework": "^12.0",
         "laravel/tinker": "^2.10.1",
         "laravel/wayfinder": "^0.1.11",

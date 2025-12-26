@@ -82,6 +82,7 @@ class PageForm
                         Toggle::make('hidden')
                             ->label('إخفاء من الموقع')
                             ->helperText('إخفاء الصفحة من الموقع الإلكتروني')
+                            ->reactive()
                             ->default(false),
 
                         Toggle::make('hidden_from_bot')
@@ -119,6 +120,7 @@ class PageForm
                             ->label('إرسال لقطة شاشة للصفحة')
                             ->reactive()
                             ->helperText('عند التفعيل، سيتم إرسال لقطة شاشة من الصفحة مع المحتوى المخصص')
+                            ->visible(fn (Get $get) => ! $get('hidden'))
                             ->default(false),
 
                         Toggle::make('quick_response_customize_message')
