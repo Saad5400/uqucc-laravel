@@ -50,6 +50,7 @@ return [
     'browsershot' => [
         'chrome_path' => env('CHROME_PATH'),
         'node_binary' => env('NODE_BINARY'),
+        'node_modules_path' => env('NODE_PATH'),
     ],
 
 ];

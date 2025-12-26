@@ -439,6 +439,9 @@ class UquccSearchHandler extends BaseHandler
             if ($nodeBinary = config('services.browsershot.node_binary')) {
                 $browsershot->setNodeBinary($nodeBinary);
             }
+            if ($nodeModulesPath = config('services.browsershot.node_modules_path')) {
+                $browsershot->setNodeModulePath($nodeModulesPath);
+            }
 
             $browsershot->addChromiumArguments([
                 'no-sandbox',
