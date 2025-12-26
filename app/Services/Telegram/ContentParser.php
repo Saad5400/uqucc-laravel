@@ -293,6 +293,15 @@ class ContentParser
         if ($diff->d > 0) {
             $parts[] = $diff->d.' يوم';
         }
+        if ($diff->h > 0) {
+            $parts[] = $diff->h.' ساعة';
+        }
+        if ($diff->i > 0) {
+            $parts[] = $diff->i.' دقيقة';
+        }
+        if ($diff->s > 0) {
+            $parts[] = $diff->s.' ثانية';
+        }
 
         if (empty($parts)) {
             return 'اليوم';
