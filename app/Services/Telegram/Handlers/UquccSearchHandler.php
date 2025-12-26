@@ -2,10 +2,10 @@
 
 namespace App\Services\Telegram\Handlers;
 
-use App\Helpers\ArabicNormalizer;
 use App\Models\Page;
 use App\Services\QuickResponseService;
 use App\Services\Telegram\ContentParser;
+use App\Services\Telegram\Traits\SearchesPages;
 use App\Services\TipTapContentExtractor;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -17,6 +17,8 @@ use Telegram\Bot\Objects\Message;
 
 class UquccSearchHandler extends BaseHandler
 {
+    use SearchesPages;
+
     protected array $exceptionWords = [
         // 'لابتوب'
     ];
@@ -101,31 +103,7 @@ class UquccSearchHandler extends BaseHandler
      */
     protected function checkDirectTitleMatch(Message $message, string $content): bool
     {
-        $normalizedQuery = ArabicNormalizer::normalize($content);
-        $normalizedQueryWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($content);
-
-        // Search for pages that don't require prefix and match the title
-        $page = $this->quickResponses->getCachedResponses()->first(function (Page $page) use ($normalizedQuery, $normalizedQueryWithoutAl) {
-            // Skip pages that require prefix
-            if ($page->requires_prefix ?? true) {
-                return false;
-            }
-
-            $normalizedTitle = ArabicNormalizer::normalize($page->title);
-            $normalizedTitleWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($page->title);
-
-            // Exact match with normalization
-            if ($normalizedTitle === $normalizedQuery) {
-                return true;
-            }
-
-            // Match allowing ال variations (e.g., "هياكل" matches "الهياكل")
-            if ($normalizedTitleWithoutAl === $normalizedQueryWithoutAl) {
-                return true;
-            }
-
-            return false;
-        });
+        $page = $this->findPageByDirectTitleMatch($content);
 
         if ($page) {
             $this->sendPageResult($message, $page);
@@ -142,19 +120,7 @@ class UquccSearchHandler extends BaseHandler
      */
     protected function checkSmartSearch(Message $message, string $content): void
     {
-        $normalizedContent = ArabicNormalizer::normalize($content);
-
-        // Search through all cached responses for smart search pages
-        $page = $this->quickResponses->getCachedResponses()->first(function (Page $page) use ($normalizedContent) {
-            if (! $page->smart_search) {
-                return false;
-            }
-
-            $normalizedTitle = ArabicNormalizer::normalize($page->title);
-
-            // Check if the message contains the page title (using normalized comparison)
-            return str_contains($normalizedContent, $normalizedTitle);
-        });
+        $page = $this->findPageBySmartSearch($content);
 
         if ($page) {
             $this->sendPageResult($message, $page);
@@ -163,7 +129,7 @@ class UquccSearchHandler extends BaseHandler
 
     protected function searchAndRespond(Message $message, string $query): void
     {
-        $page = $this->quickResponses->search($query);
+        $page = $this->searchPage($query);
 
         if (! $page) {
             $this->reply($message, 'الصفحة غير موجودة');
