@@ -86,6 +86,7 @@ class Page extends Model implements Sortable
         'quick_response_customize_buttons',
         'quick_response_customize_attachments',
         'quick_response_send_link',
+        'quick_response_send_screenshot',
         'quick_response_message',
         'quick_response_buttons',
         'quick_response_attachments',
@@ -103,6 +104,7 @@ class Page extends Model implements Sortable
         'quick_response_customize_buttons' => 'boolean',
         'quick_response_customize_attachments' => 'boolean',
         'quick_response_send_link' => 'boolean',
+        'quick_response_send_screenshot' => 'boolean',
         'quick_response_buttons' => 'array',
         'quick_response_attachments' => 'array',
     ];

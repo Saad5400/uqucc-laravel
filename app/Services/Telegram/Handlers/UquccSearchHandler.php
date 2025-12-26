@@ -189,6 +189,10 @@ class UquccSearchHandler extends BaseHandler
             // Send attachments with text as caption (shorter limit)
             $captionContent = $this->buildTextContent($page, $resolvedContent, isCaption: true);
             $this->sendQuickResponseAttachments($message, $page, $captionContent, $replyMarkup, $attachments);
+        } elseif ($page->quick_response_send_screenshot && ($resolvedContent['message'] || $replyMarkup)) {
+            // Send screenshot with custom content as caption
+            $captionContent = $this->buildTextContent($page, $resolvedContent, isCaption: true);
+            $this->sendScreenshotWithText($message, $page, $captionContent, $replyMarkup);
         } elseif ($resolvedContent['message'] || $replyMarkup) {
             // Send text message with optional buttons (full message limit)
             $textContent = $this->buildTextContent($page, $resolvedContent, isCaption: false);
