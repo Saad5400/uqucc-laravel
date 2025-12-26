@@ -61,7 +61,7 @@ class PageManagementHandler extends BaseHandler
         match (true) {
             $text === 'أضف صفحة' || $text === 'اضف صفحة' => $this->startAddPage($message),
             $text === 'حذف صفحة' => $this->startDeletePage($message),
-            $text === 'الفهرس' || $text === 'فهرس الصفحات' => $this->showIndex($message),
+            // $text === 'الفهرس' || $text === 'فهرس الصفحات' => $this->showIndex($message),
             $text === 'الصفحات الذكية' => $this->showSmartPages($message),
             default => null,
         };
