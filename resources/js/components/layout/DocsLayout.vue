@@ -9,7 +9,7 @@ import DocsNavbar from './DocsNavbar.vue';
 // Show Friday greeting
 onMounted(async () => {
     if (new Date().getDay() === 5) {
-        setTimeout(() => toast.info('اللهم صل وسلم على نبينا محمد'), 100);
+        setTimeout(() => toast.info('اللهم صل وسلم على نبينا محمد'), 1500);
     }
 });
 </script>
