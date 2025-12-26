@@ -235,10 +235,14 @@ class PageManagementHandler extends BaseHandler
         $userId = $message->getFrom()->getId();
         $text = trim($message->getText() ?? '');
 
-        // Get caption from photo/document if no text
+        // Get caption and entities from photo/document if no text
         $caption = $message->getCaption();
         $photo = $message->getPhoto();
         $document = $message->getDocument();
+
+        // Get entities for formatting preservation
+        $entities = $message->get('entities');
+        $captionEntities = $message->get('caption_entities');
 
         switch ($state['step']) {
             case 'awaiting_name':
@@ -246,7 +250,7 @@ class PageManagementHandler extends BaseHandler
                 break;
 
             case 'awaiting_content':
-                $this->handlePageContent($message, $text, $caption, $photo, $document, $state);
+                $this->handlePageContent($message, $text, $caption, $photo, $document, $entities, $captionEntities, $state);
                 break;
 
             case 'awaiting_delete_name':
@@ -285,15 +289,20 @@ class PageManagementHandler extends BaseHandler
         $this->reply($message, "اسم الصفحة: {$name} {$mode}\n\nأرسل محتوى الصفحة:\n\n(أرسل 'إلغاء' للإلغاء)");
     }
 
-    protected function handlePageContent(Message $message, string $content, ?string $caption, $photo, $document, array $state): void
+    protected function handlePageContent(Message $message, string $content, ?string $caption, $photo, $document, $entities, $captionEntities, array $state): void
     {
         $userId = $message->getFrom()->getId();
 
         // Use caption if photo/document sent, otherwise use text content
         $textContent = $content;
+        $activeEntities = $entities;
         if (empty($textContent) && $caption) {
             $textContent = $caption;
+            $activeEntities = $captionEntities;
         }
+
+        // Apply formatting from entities to get HTML-formatted text
+        $formattedContent = $this->applyEntitiesFormatting($textContent, $activeEntities);
 
         // Handle attachment if sent
         $attachments = [];
@@ -303,7 +312,7 @@ class PageManagementHandler extends BaseHandler
             if ($photoSizes->isNotEmpty()) {
                 // Get the last (largest) photo
                 $largestPhoto = $photoSizes->last();
-                $fileId = is_array($largestPhoto) ? ($largestPhoto['file_id'] ?? null) : $largestPhoto->getFileId();
+                $fileId = is_array($largestPhoto) ? ($largestPhoto['file_id'] ?? null) : $largestPhoto->get('file_id');
                 if ($fileId) {
                     $savedPath = $this->downloadAndSaveFile($fileId, 'photo');
                     if ($savedPath) {
@@ -312,8 +321,8 @@ class PageManagementHandler extends BaseHandler
                 }
             }
         } elseif ($document) {
-            $fileId = is_array($document) ? ($document['file_id'] ?? null) : $document->getFileId();
-            $fileName = is_array($document) ? ($document['file_name'] ?? 'document') : ($document->getFileName() ?? 'document');
+            $fileId = is_array($document) ? ($document['file_id'] ?? null) : $document->get('file_id');
+            $fileName = is_array($document) ? ($document['file_name'] ?? 'document') : ($document->get('file_name') ?? 'document');
             if ($fileId) {
                 $savedPath = $this->downloadAndSaveFile($fileId, 'document', $fileName);
                 if ($savedPath) {
@@ -329,7 +338,8 @@ class PageManagementHandler extends BaseHandler
         }
 
         // Parse content for buttons (don't process dates - save raw format)
-        $parsed = $this->contentParser->parseContentWithoutDates($textContent ?? '');
+        // Use formatted content for the message
+        $parsed = $this->contentParser->parseContentWithoutDates($formattedContent ?? '');
 
         // Convert buttons to quick response format
         $buttons = $this->contentParser->convertButtonsToQuickResponseFormat(
@@ -421,18 +431,13 @@ class PageManagementHandler extends BaseHandler
     protected function downloadAndSaveFile(string $fileId, string $type, ?string $fileName = null): ?string
     {
         try {
+            // Get file info from Telegram
             $file = $this->telegram->getFile(['file_id' => $fileId]);
             $filePath = $file->getFilePath();
 
             if (! $filePath) {
-                return null;
-            }
+                \Illuminate\Support\Facades\Log::error('Telegram file download: No file path returned', ['file_id' => $fileId]);
 
-            // Download the file
-            $fileUrl = 'https://api.telegram.org/file/bot'.config('services.telegram.token')."/{$filePath}";
-            $contents = file_get_contents($fileUrl);
-
-            if (! $contents) {
                 return null;
             }
 
@@ -444,14 +449,90 @@ class PageManagementHandler extends BaseHandler
                 $savedFileName = 'telegram_'.time().'_'.uniqid().'.'.$extension;
             }
 
-            // Save to storage
-            $storagePath = 'quick-responses/'.$savedFileName;
-            \Illuminate\Support\Facades\Storage::disk('public')->put($storagePath, $contents);
+            // Create directory if needed
+            $storageDir = storage_path('app/public/quick-responses');
+            if (! is_dir($storageDir)) {
+                mkdir($storageDir, 0755, true);
+            }
 
-            return $storagePath;
+            // Use SDK's downloadFile method
+            $localPath = $storageDir.'/'.$savedFileName;
+            $this->telegram->downloadFile($file, $localPath);
+
+            // Verify file was saved
+            if (! file_exists($localPath)) {
+                \Illuminate\Support\Facades\Log::error('Telegram file download: File not saved', ['path' => $localPath]);
+
+                return null;
+            }
+
+            return 'quick-responses/'.$savedFileName;
         } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Telegram file download error', [
+                'file_id' => $fileId,
+                'error' => $e->getMessage(),
+            ]);
+
             return null;
         }
+    }
+
+    /**
+     * Apply Telegram entities formatting to convert to HTML.
+     */
+    protected function applyEntitiesFormatting(?string $text, $entities): string
+    {
+        if (empty($text) || empty($entities)) {
+            return $text ?? '';
+        }
+
+        // Convert entities to array if it's a collection
+        $entitiesArray = $entities instanceof \Illuminate\Support\Collection ? $entities->toArray() : (array) $entities;
+
+        if (empty($entitiesArray)) {
+            return $text;
+        }
+
+        // Sort entities by offset in reverse order to apply from end to start
+        // This prevents offset shifting when inserting tags
+        usort($entitiesArray, function ($a, $b) {
+            $offsetA = is_array($a) ? ($a['offset'] ?? 0) : ($a->offset ?? 0);
+            $offsetB = is_array($b) ? ($b['offset'] ?? 0) : ($b->offset ?? 0);
+
+            return $offsetB - $offsetA;
+        });
+
+        // Convert text to array of UTF-16 code units for proper offset handling
+        $result = $text;
+
+        foreach ($entitiesArray as $entity) {
+            $type = is_array($entity) ? ($entity['type'] ?? '') : ($entity->type ?? '');
+            $offset = is_array($entity) ? ($entity['offset'] ?? 0) : ($entity->offset ?? 0);
+            $length = is_array($entity) ? ($entity['length'] ?? 0) : ($entity->length ?? 0);
+            $url = is_array($entity) ? ($entity['url'] ?? null) : ($entity->url ?? null);
+
+            // Extract the text portion using UTF-16 offset/length
+            $beforeText = mb_substr($result, 0, $offset, 'UTF-8');
+            $entityText = mb_substr($result, $offset, $length, 'UTF-8');
+            $afterText = mb_substr($result, $offset + $length, null, 'UTF-8');
+
+            // Apply formatting based on entity type
+            $formattedText = match ($type) {
+                'bold' => "<b>{$entityText}</b>",
+                'italic' => "<i>{$entityText}</i>",
+                'underline' => "<u>{$entityText}</u>",
+                'strikethrough' => "<s>{$entityText}</s>",
+                'code' => "<code>{$entityText}</code>",
+                'pre' => "<pre>{$entityText}</pre>",
+                'text_link' => $url ? "<a href=\"{$url}\">{$entityText}</a>" : $entityText,
+                'url' => "<a href=\"{$entityText}\">{$entityText}</a>",
+                default => $entityText,
+            };
+
+            $result = $beforeText.$formattedText.$afterText;
+        }
+
+        return $result;
     }
 
     protected function handleDeletePage(Message $message, string $name): void
