@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Helpers\ArabicNormalizer;
 use App\Models\Page;
 use Illuminate\Support\Collection;
 
@@ -23,6 +24,7 @@ class QuickResponseService
                     'html_content',
                     'updated_at',
                     'smart_search',
+                    'requires_prefix',
                     'quick_response_auto_extract',
                     'quick_response_customize_message',
                     'quick_response_customize_buttons',
@@ -39,21 +41,29 @@ class QuickResponseService
 
     /**
      * Search cached payloads with exact match or smart search (substring match).
+     * Uses Arabic normalization to handle همزة and ال variations.
      */
     public function search(string $query): ?Page
     {
-        $needle = mb_strtolower($query);
+        $normalizedQuery = ArabicNormalizer::normalize($query);
+        $normalizedQueryWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($query);
 
-        return $this->getCachedResponses()->first(function (Page $page) use ($needle) {
-            $title = mb_strtolower($page->title);
+        return $this->getCachedResponses()->first(function (Page $page) use ($normalizedQuery, $normalizedQueryWithoutAl) {
+            $normalizedTitle = ArabicNormalizer::normalize($page->title);
+            $normalizedTitleWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($page->title);
 
-            // Exact match always works
-            if ($title === $needle) {
+            // Exact match with normalization
+            if ($normalizedTitle === $normalizedQuery) {
                 return true;
             }
 
-            // Smart search: substring match if enabled
-            if ($page->smart_search && str_contains($title, $needle)) {
+            // Match allowing ال variations (e.g., "هياكل" matches "الهياكل")
+            if ($normalizedTitleWithoutAl === $normalizedQueryWithoutAl) {
+                return true;
+            }
+
+            // Smart search: substring match if enabled (using normalized text)
+            if ($page->smart_search && str_contains($normalizedTitle, $normalizedQuery)) {
                 return true;
             }
 

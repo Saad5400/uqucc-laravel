@@ -2,6 +2,7 @@
 
 namespace App\Services\Telegram\Handlers;
 
+use App\Helpers\ArabicNormalizer;
 use App\Models\Page;
 use App\Services\QuickResponseService;
 use App\Services\Telegram\ContentParser;
@@ -41,6 +42,13 @@ class UquccSearchHandler extends BaseHandler
             return;
         }
 
+        // Check if user is in an active state (page management, login, etc.)
+        // Don't respond to queries if they're in the middle of another operation
+        $userId = $message->getFrom()->getId();
+        if ($this->hasActiveState($userId)) {
+            return;
+        }
+
         // Check if it matches "دليل <query>" or is one of the exception words
         $isCommand = false;
         $query = null;
@@ -59,27 +67,93 @@ class UquccSearchHandler extends BaseHandler
             return;
         }
 
+        // Check for pages that don't require prefix - direct title match
+        $directMatch = $this->checkDirectTitleMatch($message, $content);
+        if ($directMatch) {
+            return;
+        }
+
         // Check for smart search pages - ANY message that contains a smart page title
         $this->checkSmartSearch($message, $content);
     }
 
     /**
+     * Check if user has an active state (login, page management, etc.).
+     */
+    protected function hasActiveState(int $userId): bool
+    {
+        // Check for page management state
+        if (Cache::has('telegram_page_mgmt_state_'.$userId)) {
+            return true;
+        }
+
+        // Check for login state
+        if (Cache::has('telegram_login_state_'.$userId)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Check if the message matches a page title that doesn't require prefix.
+     * Uses Arabic normalization to handle همزة and ال variations.
+     */
+    protected function checkDirectTitleMatch(Message $message, string $content): bool
+    {
+        $normalizedQuery = ArabicNormalizer::normalize($content);
+        $normalizedQueryWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($content);
+
+        // Search for pages that don't require prefix and match the title
+        $page = $this->quickResponses->getCachedResponses()->first(function (Page $page) use ($normalizedQuery, $normalizedQueryWithoutAl) {
+            // Skip pages that require prefix
+            if ($page->requires_prefix ?? true) {
+                return false;
+            }
+
+            $normalizedTitle = ArabicNormalizer::normalize($page->title);
+            $normalizedTitleWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($page->title);
+
+            // Exact match with normalization
+            if ($normalizedTitle === $normalizedQuery) {
+                return true;
+            }
+
+            // Match allowing ال variations (e.g., "هياكل" matches "الهياكل")
+            if ($normalizedTitleWithoutAl === $normalizedQueryWithoutAl) {
+                return true;
+            }
+
+            return false;
+        });
+
+        if ($page) {
+            $this->sendPageResult($message, $page);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
      * Check if the message contains a smart search page title.
+     * Uses Arabic normalization to handle همزة and ال variations.
      */
     protected function checkSmartSearch(Message $message, string $content): void
     {
-        $needle = mb_strtolower($content);
+        $normalizedContent = ArabicNormalizer::normalize($content);
 
         // Search through all cached responses for smart search pages
-        $page = $this->quickResponses->getCachedResponses()->first(function (Page $page) use ($needle) {
+        $page = $this->quickResponses->getCachedResponses()->first(function (Page $page) use ($normalizedContent) {
             if (! $page->smart_search) {
                 return false;
             }
 
-            $title = mb_strtolower($page->title);
+            $normalizedTitle = ArabicNormalizer::normalize($page->title);
 
-            // Check if the message contains the page title
-            return str_contains($needle, $title);
+            // Check if the message contains the page title (using normalized comparison)
+            return str_contains($normalizedContent, $normalizedTitle);
         });
 
         if ($page) {

@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "6fee10821fd9afb49f4b96e13243c191",
+    "content-hash": "a542493d76ecc5a9ef5a548476ede44d",
     "packages": [
         {
             "name": "anourvalar/eloquent-serialize",
@@ -1545,6 +1545,47 @@
                 }
             ],
             "time": "2025-12-03T09:33:47+00:00"
+        },
+        {
+            "name": "geniusts/hijri-dates",
+            "version": "1.2.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/GeniusTS/hijri-dates.git",
+                "reference": "7e9a6ffaca8083cfd99a2d9d3c02b67139f3706c"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/GeniusTS/hijri-dates/zipball/7e9a6ffaca8083cfd99a2d9d3c02b67139f3706c",
+                "reference": "7e9a6ffaca8083cfd99a2d9d3c02b67139f3706c",
+                "shasum": ""
+            },
+            "require": {
+                "nesbot/carbon": "^2.16|^1.22|^3.0",
+                "php": ">=7.1"
+            },
+            "type": "library",
+            "autoload": {
+                "psr-4": {
+                    "GeniusTS\\HijriDate\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "Abdul-Kader Zein-Eddin",
+                    "email": "aboudeh1987@gmail.com"
+                }
+            ],
+            "description": "PHP library to convert Gregorian date to Hijri date and vice versa",
+            "support": {
+                "issues": "https://github.com/GeniusTS/hijri-dates/issues",
+                "source": "https://github.com/GeniusTS/hijri-dates/tree/1.2.1"
+            },
+            "time": "2025-04-29T08:44:14+00:00"
         },
         {
             "name": "graham-campbell/result-type",

@@ -93,6 +93,11 @@ class PageForm
                             ->label('البحث الذكي')
                             ->helperText('عند التفعيل، يمكن العثور على الصفحة بالبحث في أي جزء من العنوان')
                             ->default(false),
+
+                        Toggle::make('requires_prefix')
+                            ->label('يتطلب كلمة "دليل"')
+                            ->helperText('عند التفعيل، يجب على المستخدم كتابة "دليل" قبل اسم الصفحة للبحث عنها')
+                            ->default(true),
                     ])
                     ->columns(2),
 

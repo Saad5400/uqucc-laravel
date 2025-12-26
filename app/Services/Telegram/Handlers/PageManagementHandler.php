@@ -2,6 +2,7 @@
 
 namespace App\Services\Telegram\Handlers;
 
+use App\Helpers\ArabicNormalizer;
 use App\Models\Page;
 use App\Models\User;
 use App\Services\Telegram\ContentParser;
@@ -76,7 +77,7 @@ class PageManagementHandler extends BaseHandler
         $userId = $callback->getFrom()->getId();
 
         $state = $this->getState($userId);
-        if (! $state || $state['step'] !== 'awaiting_name') {
+        if (! $state || $state['step'] !== 'awaiting_content') {
             return;
         }
 
@@ -84,6 +85,7 @@ class PageManagementHandler extends BaseHandler
             'toggle_smart' => 'smart_search',
             'toggle_update_content' => 'update_main_content',
             'toggle_send_link' => 'send_link',
+            'toggle_prefix' => 'requires_prefix',
         ];
 
         foreach ($toggleMap as $prefix => $stateKey) {
@@ -108,6 +110,7 @@ class PageManagementHandler extends BaseHandler
                     'smart_search' => ['تم تفعيل البحث الذكي', 'تم تعطيل البحث الذكي'],
                     'update_main_content' => ['سيتم تحديث محتوى الصفحة', 'لن يتم تحديث محتوى الصفحة'],
                     'send_link' => ['سيتم إرسال رابط الصفحة', 'لن يتم إرسال رابط الصفحة'],
+                    'requires_prefix' => ['يجب كتابة "دليل" قبل اسم الصفحة', 'يمكن البحث بالاسم مباشرة'],
                 ];
 
                 $this->telegram->answerCallbackQuery([
@@ -132,23 +135,14 @@ class PageManagementHandler extends BaseHandler
             return;
         }
 
-        // Default state for new pages
+        // Initial state - just waiting for name
         $state = [
             'step' => 'awaiting_name',
-            'smart_search' => false,
-            'update_main_content' => false,
-            'send_link' => false,
         ];
 
         $this->setState($userId, $state);
 
-        $keyboard = $this->buildOptionsKeyboard($state);
-
-        $this->telegram->sendMessage([
-            'chat_id' => $message->getChat()->getId(),
-            'text' => "أرسل اسم الصفحة:\n\n(أرسل 'إلغاء' للإلغاء)",
-            'reply_markup' => $keyboard,
-        ]);
+        $this->reply($message, "أرسل اسم الصفحة:\n\n(أرسل 'إلغاء' للإلغاء)");
     }
 
     protected function startDeletePage(Message $message): void
@@ -269,14 +263,32 @@ class PageManagementHandler extends BaseHandler
             return;
         }
 
-        // Check if page exists (for edit mode)
-        $existingPage = Page::where('title', $name)->first();
+        // Check if page exists using normalized comparison (handles همزة and ال variations)
+        $normalizedName = ArabicNormalizer::normalize($name);
+        $normalizedNameWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($name);
 
-        // If editing existing page, load its current state for toggles
+        $existingPage = Page::all()->first(function ($page) use ($normalizedName, $normalizedNameWithoutAl) {
+            $normalizedTitle = ArabicNormalizer::normalize($page->title);
+            $normalizedTitleWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($page->title);
+
+            // Match with full normalization or without ال
+            return $normalizedTitle === $normalizedName ||
+                   $normalizedTitleWithoutAl === $normalizedNameWithoutAl;
+        });
+
+        // Set toggle states based on existing page or defaults for new pages
         if ($existingPage) {
+            // Editing existing page - load its current settings
             $state['smart_search'] = $existingPage->smart_search ?? false;
             $state['send_link'] = $existingPage->quick_response_send_link ?? false;
-            // update_main_content stays as user set it (default false)
+            $state['requires_prefix'] = $existingPage->requires_prefix ?? true;
+            $state['update_main_content'] = false; // Always default to false for edits
+        } else {
+            // New page from bot - default requires_prefix to false
+            $state['smart_search'] = false;
+            $state['send_link'] = false;
+            $state['requires_prefix'] = false;
+            $state['update_main_content'] = false;
         }
 
         $state['step'] = 'awaiting_content';
@@ -286,7 +298,13 @@ class PageManagementHandler extends BaseHandler
         $this->setState($userId, $state);
 
         $mode = $existingPage ? '(تعديل)' : '(جديدة)';
-        $this->reply($message, "اسم الصفحة: {$name} {$mode}\n\nأرسل محتوى الصفحة:\n\n(أرسل 'إلغاء' للإلغاء)");
+        $keyboard = $this->buildOptionsKeyboard($state);
+
+        $this->telegram->sendMessage([
+            'chat_id' => $message->getChat()->getId(),
+            'text' => "اسم الصفحة: {$name} {$mode}\n\nأرسل محتوى الصفحة:\n\n(أرسل 'إلغاء' للإلغاء)",
+            'reply_markup' => $keyboard,
+        ]);
     }
 
     protected function handlePageContent(Message $message, string $content, ?string $caption, $photo, $document, $entities, $captionEntities, array $state): void
@@ -350,6 +368,7 @@ class PageManagementHandler extends BaseHandler
         $smartSearch = $state['smart_search'] ?? false;
         $updateMainContent = $state['update_main_content'] ?? false;
         $sendLink = $state['send_link'] ?? false;
+        $requiresPrefix = $state['requires_prefix'] ?? true;
 
         try {
             if ($state['existing_page_id']) {
@@ -358,6 +377,7 @@ class PageManagementHandler extends BaseHandler
 
                 $updateData = [
                     'smart_search' => $smartSearch,
+                    'requires_prefix' => $requiresPrefix,
                     'hidden_from_bot' => false,
                     'quick_response_auto_extract' => false,
                     'quick_response_message' => $formattedMessage,
@@ -400,6 +420,7 @@ class PageManagementHandler extends BaseHandler
                     'hidden' => $hiddenFromWebsite,
                     'hidden_from_bot' => false,
                     'smart_search' => $smartSearch,
+                    'requires_prefix' => $requiresPrefix,
                     'quick_response_auto_extract' => false,
                     'quick_response_message' => $formattedMessage,
                     'quick_response_buttons' => $buttons,
@@ -414,11 +435,12 @@ class PageManagementHandler extends BaseHandler
             $this->clearState($userId);
 
             $smartText = $page->smart_search ? ' (بحث ذكي)' : '';
+            $prefixText = $page->requires_prefix ? '' : ' (بدون دليل)';
             $buttonsText = count($buttons) > 0 ? "\nالأزرار: ".count($buttons) : '';
             $attachmentsText = ! empty($attachments) ? "\nالمرفقات: ".count($attachments) : '';
             $contentUpdated = $updateMainContent ? "\n(تم تحديث محتوى الصفحة)" : '';
 
-            $this->reply($message, "✅ تم {$action} الصفحة بنجاح!\n\nالعنوان: {$page->title}{$smartText}{$buttonsText}{$attachmentsText}{$contentUpdated}");
+            $this->reply($message, "✅ تم {$action} الصفحة بنجاح!\n\nالعنوان: {$page->title}{$smartText}{$prefixText}{$buttonsText}{$attachmentsText}{$contentUpdated}");
         } catch (\Exception $e) {
             $this->reply($message, "حدث خطأ أثناء حفظ الصفحة: {$e->getMessage()}");
         }
@@ -557,10 +579,21 @@ class PageManagementHandler extends BaseHandler
     {
         $userId = $message->getFrom()->getId();
 
-        $page = Page::where('title', $name)->first();
+        // Find page using normalized comparison (handles همزة and ال variations)
+        $normalizedName = ArabicNormalizer::normalize($name);
+        $normalizedNameWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($name);
+
+        $page = Page::all()->first(function ($page) use ($normalizedName, $normalizedNameWithoutAl) {
+            $normalizedTitle = ArabicNormalizer::normalize($page->title);
+            $normalizedTitleWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($page->title);
+
+            // Match with full normalization or without ال
+            return $normalizedTitle === $normalizedName ||
+                   $normalizedTitleWithoutAl === $normalizedNameWithoutAl;
+        });
 
         if (! $page) {
-            $this->reply($message, "لم يتم العثور على صفحة بهذا الاسم.\n\nأرسل اسم الصفحة كما هو مكتوب في الفهرس:");
+            $this->reply($message, "لم يتم العثور على صفحة بهذا الاسم.\n\nأرسل اسم الصفحة:");
 
             return;
         }
@@ -588,10 +621,12 @@ class PageManagementHandler extends BaseHandler
         $smartSearch = $state['smart_search'] ?? false;
         $updateContent = $state['update_main_content'] ?? false;
         $sendLink = $state['send_link'] ?? false;
+        $requiresPrefix = $state['requires_prefix'] ?? true;
 
         $smartIcon = $smartSearch ? '✅' : '❌';
         $updateIcon = $updateContent ? '✅' : '❌';
         $linkIcon = $sendLink ? '✅' : '❌';
+        $prefixIcon = $requiresPrefix ? '✅' : '❌';
 
         return Keyboard::make()
             ->inline()
@@ -599,6 +634,12 @@ class PageManagementHandler extends BaseHandler
                 Keyboard::inlineButton([
                     'text' => "البحث في كامل الجملة {$smartIcon}",
                     'callback_data' => 'toggle_smart_'.($smartSearch ? '1' : '0'),
+                ]),
+            ])
+            ->row([
+                Keyboard::inlineButton([
+                    'text' => "يتطلب كلمة \"دليل\" {$prefixIcon}",
+                    'callback_data' => 'toggle_prefix_'.($requiresPrefix ? '1' : '0'),
                 ]),
             ])
             ->row([

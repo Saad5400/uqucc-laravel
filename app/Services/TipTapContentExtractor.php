@@ -7,13 +7,9 @@ use Illuminate\Support\Facades\Cache;
 
 class TipTapContentExtractor
 {
-    public function __construct(
-        protected TelegramMarkdownService $markdownService
-    ) {}
-
     /**
      * Get extracted content for a page with caching.
-     * 
+     *
      * @return array{message: string|null, buttons: array, attachments: array}
      */
     public function getExtractedContent(Page $page): array
@@ -33,12 +29,13 @@ class TipTapContentExtractor
     protected function getCacheKey(Page $page): string
     {
         $version = $page->updated_at ? $page->updated_at->timestamp : '0';
+
         return "quick_response_extracted:{$page->id}:{$version}";
     }
 
     /**
      * Extract message, buttons, and attachments from TipTap JSON content.
-     * 
+     *
      * @return array{message: string|null, buttons: array, attachments: array}
      */
     protected function extractFromContent(Page $page): array
@@ -46,7 +43,7 @@ class TipTapContentExtractor
         $content = $page->html_content;
 
         // If content is a string (legacy HTML), return empty extraction
-        if (!is_array($content)) {
+        if (! is_array($content)) {
             return [
                 'message' => null,
                 'buttons' => [],
@@ -76,8 +73,8 @@ class TipTapContentExtractor
 
     /**
      * Recursively traverse TipTap JSON nodes to extract content.
-     * 
-     * @param bool $inList Whether we're currently inside a list (for compact spacing)
+     *
+     * @param  bool  $inList  Whether we're currently inside a list (for compact spacing)
      */
     protected function traverseNodes(array $nodes, array &$textParts, array &$links, array &$attachments, array $marks = [], bool $inList = false): void
     {
@@ -90,7 +87,7 @@ class TipTapContentExtractor
                     break;
 
                 case 'paragraph':
-                    if (!empty($node['content'])) {
+                    if (! empty($node['content'])) {
                         $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, $inList);
                     }
                     // Use single newline inside lists, double newline outside
@@ -98,17 +95,17 @@ class TipTapContentExtractor
                     break;
 
                 case 'heading':
-                    if (!empty($node['content'])) {
-                        $textParts[] = '*';
+                    if (! empty($node['content'])) {
+                        $textParts[] = '<b>';
                         $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, $inList);
-                        $textParts[] = '*';
+                        $textParts[] = '</b>';
                     }
                     $textParts[] = "\n\n";
                     break;
 
                 case 'bulletList':
                 case 'orderedList':
-                    if (!empty($node['content'])) {
+                    if (! empty($node['content'])) {
                         // Pass inList=true for list items
                         $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, true);
                     }
@@ -118,7 +115,7 @@ class TipTapContentExtractor
 
                 case 'listItem':
                     $textParts[] = '• ';
-                    if (!empty($node['content'])) {
+                    if (! empty($node['content'])) {
                         $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, true);
                     }
                     break;
@@ -134,7 +131,7 @@ class TipTapContentExtractor
                         ];
                     }
                     // Also include in text
-                    if (!empty($node['content'])) {
+                    if (! empty($node['content'])) {
                         $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, $inList);
                     }
                     break;
@@ -157,17 +154,17 @@ class TipTapContentExtractor
 
                 case 'blockquote':
                     $textParts[] = '> ';
-                    if (!empty($node['content'])) {
+                    if (! empty($node['content'])) {
                         $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, $inList);
                     }
                     break;
 
                 case 'codeBlock':
-                    $textParts[] = '```';
-                    if (!empty($node['content'])) {
+                    $textParts[] = '<pre>';
+                    if (! empty($node['content'])) {
                         $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, $inList);
                     }
-                    $textParts[] = '```';
+                    $textParts[] = '</pre>';
                     $textParts[] = "\n\n";
                     break;
 
@@ -181,7 +178,7 @@ class TipTapContentExtractor
 
                 default:
                     // For any other node type, try to traverse its content
-                    if (!empty($node['content'])) {
+                    if (! empty($node['content'])) {
                         $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, $inList);
                     }
                     break;
@@ -190,37 +187,41 @@ class TipTapContentExtractor
     }
 
     /**
-     * Format text with markdown marks (bold, italic, etc.).
+     * Format text with HTML marks (bold, italic, etc.).
      * Also extracts links from marks and adds them to the links array.
      */
     protected function formatText(string $text, array $marks, array &$links = []): string
     {
         if (empty($marks) || empty($text)) {
-            return $text;
+            return htmlspecialchars($text, ENT_NOQUOTES, 'UTF-8');
         }
 
-        $formatted = $text;
+        $formatted = htmlspecialchars($text, ENT_NOQUOTES, 'UTF-8');
 
         foreach ($marks as $mark) {
             $markType = $mark['type'] ?? null;
 
             switch ($markType) {
                 case 'bold':
-                    $formatted = '**' . $formatted . '**';
+                    $formatted = '<b>'.$formatted.'</b>';
                     break;
                 case 'italic':
-                    $formatted = '*' . $formatted . '*';
+                    $formatted = '<i>'.$formatted.'</i>';
                     break;
                 case 'strike':
-                    $formatted = '~' . $formatted . '~';
+                    $formatted = '<s>'.$formatted.'</s>';
+                    break;
+                case 'underline':
+                    $formatted = '<u>'.$formatted.'</u>';
                     break;
                 case 'code':
-                    $formatted = '`' . $formatted . '`';
+                    $formatted = '<code>'.$formatted.'</code>';
                     break;
                 case 'link':
                     $href = $mark['attrs']['href'] ?? '';
                     if ($href) {
-                        $formatted = '[' . $formatted . '](' . $href . ')';
+                        $escapedHref = htmlspecialchars($href, ENT_QUOTES, 'UTF-8');
+                        $formatted = '<a href="'.$escapedHref.'">'.$formatted.'</a>';
                         // Also add to links array for button extraction
                         $links[] = [
                             'text' => $text,
@@ -244,7 +245,7 @@ class TipTapContentExtractor
         foreach ($nodes as $node) {
             if (($node['type'] ?? null) === 'text') {
                 $text .= $node['text'] ?? '';
-            } elseif (!empty($node['content'])) {
+            } elseif (! empty($node['content'])) {
                 $text .= $this->extractTextFromNodes($node['content']);
             }
         }
@@ -254,7 +255,7 @@ class TipTapContentExtractor
 
     /**
      * Normalize attachment path.
-     * 
+     *
      * For internal URLs (matching app.url), returns storage-relative path.
      * For external URLs, returns the full URL as-is.
      */
@@ -263,18 +264,18 @@ class TipTapContentExtractor
         // Check if this is an external URL
         $appUrl = rtrim(config('app.url'), '/');
         $parsedSrc = parse_url($src);
-        
+
         // If the URL has a host and it doesn't match our app URL, it's external
         if (isset($parsedSrc['host'])) {
             $parsedAppUrl = parse_url($appUrl);
             $appHost = $parsedAppUrl['host'] ?? '';
-            
+
             // If hosts don't match, keep the full external URL
             if ($parsedSrc['host'] !== $appHost) {
                 return $src; // Return full external URL
             }
         }
-        
+
         // Internal URL - extract the path
         $path = $parsedSrc['path'] ?? $src;
 
@@ -302,8 +303,8 @@ class TipTapContentExtractor
             return null;
         }
 
-        // Convert the message to MarkdownV2 format
-        return $this->markdownService->toMarkdownV2($message);
+        // Return HTML formatted message
+        return $message;
     }
 
     /**
@@ -340,4 +341,3 @@ class TipTapContentExtractor
         return $buttons;
     }
 }
-
