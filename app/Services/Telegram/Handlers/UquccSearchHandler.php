@@ -393,7 +393,7 @@ class UquccSearchHandler extends BaseHandler
 
         // Default dimensions matching screenshot.ts (720x377 for 1.91:1 aspect ratio)
         $width = 720;
-        $height = 377;
+        $height = 720;
 
         $pageUrl = url($page->slug);
 
@@ -411,7 +411,7 @@ class UquccSearchHandler extends BaseHandler
                 ->delay(500) // Wait 500ms after network idle to ensure DOM is fully rendered
                 ->timeout(60)
                 ->dismissDialogs()
-                ->setScreenshotType('webp', 90)
+                ->setScreenshotType('webp')
                 ->setOption('addStyleTag', json_encode([
                     'content' => '.screenshot-hidden { display: none !important; } html { scrollbar-gutter: auto !important; }',
                 ]));
