@@ -24,6 +24,11 @@ class UserForm
                     ->label('البريد الإلكتروني')
                     ->email()
                     ->required(),
+                TextInput::make('telegram_id')
+                    ->label('معرّف تيليجرام')
+                    ->helperText('يتم تعيينه تلقائياً عند تسجيل الدخول عبر البوت')
+                    ->disabled()
+                    ->dehydrated(false),
                 DateTimePicker::make('email_verified_at')
                     ->label('تاريخ التحقق من البريد الإلكتروني'),
                 Toggle::make('change_password')

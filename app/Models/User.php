@@ -23,6 +23,7 @@ class User extends Authenticatable implements FilamentUser
     protected $fillable = [
         'name',
         'email',
+        'telegram_id',
         'password',
     ];
 
@@ -52,5 +53,21 @@ class User extends Authenticatable implements FilamentUser
     public function canAccessPanel(Panel $panel): bool
     {
         return $this->hasAnyRole(['admin', 'editor']);
+    }
+
+    /**
+     * Find a user by their Telegram ID
+     */
+    public static function findByTelegramId(string $telegramId): ?self
+    {
+        return static::where('telegram_id', $telegramId)->first();
+    }
+
+    /**
+     * Check if user can manage pages via Telegram bot
+     */
+    public function canManagePagesViaTelegram(): bool
+    {
+        return $this->hasAnyRole(['admin', 'editor']) || $this->can('manage-pages');
     }
 }

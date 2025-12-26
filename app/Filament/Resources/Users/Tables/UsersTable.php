@@ -20,6 +20,10 @@ class UsersTable
                 TextColumn::make('email')
                     ->label('البريد الإلكتروني')
                     ->searchable(),
+                TextColumn::make('telegram_id')
+                    ->label('معرّف تيليجرام')
+                    ->searchable()
+                    ->toggleable(isToggledHiddenByDefault: true),
                 TextColumn::make('roles.name')
                     ->label('الأدوار')
                     ->badge()

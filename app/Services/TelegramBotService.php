@@ -2,19 +2,19 @@
 
 namespace App\Services;
 
-use Telegram\Bot\Api;
-use Telegram\Bot\Objects\Update;
-use App\Services\Telegram\Handlers\UquccSearchHandler;
-use App\Services\Telegram\Handlers\UquccListHandler;
-use App\Services\Telegram\Handlers\PythonExecutionHandler;
-use App\Services\Telegram\Handlers\JavaExecutionHandler;
+use App\Services\Telegram\ContentParser;
 use App\Services\Telegram\Handlers\DeepSeekChatHandler;
 use App\Services\Telegram\Handlers\InfoHandler;
-use App\Services\Telegram\Handlers\PrivateForwardHandler;
 use App\Services\Telegram\Handlers\InviteLinkHandler;
-use App\Services\QuickResponseService;
-use App\Services\TelegramMarkdownService;
-use App\Services\TipTapContentExtractor;
+use App\Services\Telegram\Handlers\JavaExecutionHandler;
+use App\Services\Telegram\Handlers\LoginHandler;
+use App\Services\Telegram\Handlers\PageManagementHandler;
+use App\Services\Telegram\Handlers\PrivateForwardHandler;
+use App\Services\Telegram\Handlers\PythonExecutionHandler;
+use App\Services\Telegram\Handlers\UquccListHandler;
+use App\Services\Telegram\Handlers\UquccSearchHandler;
+use Telegram\Bot\Api;
+use Telegram\Bot\Objects\Update;
 
 class TelegramBotService
 {
@@ -22,12 +22,19 @@ class TelegramBotService
 
     protected array $handlers = [];
 
+    protected PageManagementHandler $pageManagementHandler;
+
     public function __construct()
     {
         $this->telegram = new Api(config('services.telegram.token'));
 
+        // Initialize page management handler (needs special handling for callbacks)
+        $this->pageManagementHandler = new PageManagementHandler($this->telegram, app(ContentParser::class));
+
         // Initialize handlers
         $this->handlers = [
+            new LoginHandler($this->telegram),
+            $this->pageManagementHandler,
             new UquccSearchHandler($this->telegram, app(QuickResponseService::class), app(TelegramMarkdownService::class), app(TipTapContentExtractor::class)),
             new UquccListHandler($this->telegram),
             new PythonExecutionHandler($this->telegram),
@@ -41,8 +48,8 @@ class TelegramBotService
 
     public function run(): void
     {
-        echo "Bot is ready!", PHP_EOL;
-        echo "Logged in as " . $this->telegram->getMe()->getFirstName(), PHP_EOL;
+        echo 'Bot is ready!', PHP_EOL;
+        echo 'Logged in as '.$this->telegram->getMe()->getFirstName(), PHP_EOL;
 
         $offset = 0;
 
@@ -58,9 +65,9 @@ class TelegramBotService
                     $offset = $update->getUpdateId() + 1;
                 }
             } catch (\Exception $e) {
-                echo "Error: " . $e->getMessage() . PHP_EOL;
-                echo "File: " . $e->getFile() . ":" . $e->getLine() . PHP_EOL;
-                echo "Trace: " . $e->getTraceAsString() . PHP_EOL;
+                echo 'Error: '.$e->getMessage().PHP_EOL;
+                echo 'File: '.$e->getFile().':'.$e->getLine().PHP_EOL;
+                echo 'Trace: '.$e->getTraceAsString().PHP_EOL;
                 sleep(5);
             }
         }
@@ -69,9 +76,22 @@ class TelegramBotService
     protected function handleUpdate(Update $update): void
     {
         try {
+            // Handle callback queries (inline button presses)
+            $callbackQuery = $update->getCallbackQuery();
+            if ($callbackQuery) {
+                try {
+                    $this->pageManagementHandler->handleCallback($callbackQuery);
+                } catch (\Exception $e) {
+                    echo 'Callback error: '.$e->getMessage().PHP_EOL;
+                    echo 'File: '.$e->getFile().':'.$e->getLine().PHP_EOL;
+                }
+
+                return;
+            }
+
             $message = $update->getMessage();
 
-            if (!$message || $message->getFrom()->getIsBot()) {
+            if (! $message || $message->getFrom()->getIsBot()) {
                 return;
             }
 
@@ -79,13 +99,13 @@ class TelegramBotService
                 try {
                     $handler->handle($message);
                 } catch (\Exception $e) {
-                    echo "Handler error: " . get_class($handler) . " - " . $e->getMessage() . PHP_EOL;
-                    echo "File: " . $e->getFile() . ":" . $e->getLine() . PHP_EOL;
+                    echo 'Handler error: '.get_class($handler).' - '.$e->getMessage().PHP_EOL;
+                    echo 'File: '.$e->getFile().':'.$e->getLine().PHP_EOL;
                 }
             }
         } catch (\Exception $e) {
-            echo "Update handling error: " . $e->getMessage() . PHP_EOL;
-            echo "File: " . $e->getFile() . ":" . $e->getLine() . PHP_EOL;
+            echo 'Update handling error: '.$e->getMessage().PHP_EOL;
+            echo 'File: '.$e->getFile().':'.$e->getLine().PHP_EOL;
         }
     }
 }

@@ -9,15 +9,12 @@ use Filament\Forms\Components\MarkdownEditor;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\RichEditor;
 use Filament\Forms\Components\Select;
-use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
-use Filament\Schemas\Components\Grid;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Components\Utilities\Get;
 use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
-use Filament\Support\Enums\Operation;
 
 class PageForm
 {
@@ -34,7 +31,7 @@ class PageForm
                             ->live(onBlur: true)
                             ->afterStateUpdated(function ($state, Set $set, string $operation) {
                                 if ($operation == 'create') {
-                                    $set('slug', '/' . str($state)->slug());
+                                    $set('slug', '/'.str($state)->slug());
                                 }
                             }),
 
@@ -84,8 +81,18 @@ class PageForm
                             ->helperText('اسم الأيقونة من Heroicons'),
 
                         Toggle::make('hidden')
-                            ->label('مخفية')
-                            ->helperText('إخفاء الصفحة من القوائم العامة')
+                            ->label('إخفاء من الموقع')
+                            ->helperText('إخفاء الصفحة من الموقع الإلكتروني')
+                            ->default(false),
+
+                        Toggle::make('hidden_from_bot')
+                            ->label('إخفاء من البوت')
+                            ->helperText('إخفاء الصفحة من بوت التيليجرام')
+                            ->default(false),
+
+                        Toggle::make('smart_search')
+                            ->label('البحث الذكي')
+                            ->helperText('عند التفعيل، يمكن العثور على الصفحة بالبحث في أي جزء من العنوان')
                             ->default(false),
                     ])
                     ->columns(2),
@@ -115,8 +122,7 @@ class PageForm
                             ->label('نص الرد')
                             ->helperText('نص قصير يمكن للبوت إرساله مع الرابط في التيليجرام. يمكنك استخدام Markdown للتنسيق. الصيغة المدعومة: **للخط العريض**، *للخط المائل*، [رابط](url)، `كود`، ~خط مشطوب~')
                             ->columnSpanFull()
-                            ->visible(fn (Get $get) => 
-                                ! $get('quick_response_auto_extract') 
+                            ->visible(fn (Get $get) => ! $get('quick_response_auto_extract')
                                 || ($get('quick_response_auto_extract') && $get('quick_response_customize_message'))
                             ),
 
@@ -152,16 +158,14 @@ class PageForm
                                     ->required()
                                     ->helperText('عدد الأزرار في السطر الواحد'),
                             ])
-                            ->visible(fn (Get $get) => 
-                                ! $get('quick_response_auto_extract') 
+                            ->visible(fn (Get $get) => ! $get('quick_response_auto_extract')
                                 || ($get('quick_response_auto_extract') && $get('quick_response_customize_buttons'))
                             )
                             ->addActionLabel('إضافة زر')
                             ->columns(3)
                             ->reorderable()
                             ->collapsed()
-                            ->helperText(fn (Get $get) => 
-                                !empty($get('quick_response_attachments')) 
+                            ->helperText(fn (Get $get) => ! empty($get('quick_response_attachments'))
                                     ? '⚠️ ملاحظة: لا يمكن استخدام الأزرار مع المرفقات في نفس الوقت بسبب قيود واجهة برمجة تطبيقات تيليجرام. سيتم تجاهل الأزرار عند وجود مرفقات.'
                                     : null
                             ),
@@ -182,14 +186,12 @@ class PageForm
                             ->downloadable()
                             ->openable()
                             ->preserveFilenames()
-                            ->helperText(fn (Get $get) => 
-                                !empty($get('quick_response_buttons')) 
+                            ->helperText(fn (Get $get) => ! empty($get('quick_response_buttons'))
                                     ? '⚠️ ملاحظة: لا يمكن استخدام المرفقات مع الأزرار في نفس الوقت بسبب قيود واجهة برمجة تطبيقات تيليجرام. سيتم تجاهل الأزرار عند وجود مرفقات.'
                                     : 'تُرفع مع الرد في حال احتجنا لإضافة صور أو ملفات داعمة'
                             )
                             ->columnSpanFull()
-                            ->visible(fn (Get $get) => 
-                                ! $get('quick_response_auto_extract') 
+                            ->visible(fn (Get $get) => ! $get('quick_response_auto_extract')
                                 || ($get('quick_response_auto_extract') && $get('quick_response_customize_attachments'))
                             ),
                     ]),

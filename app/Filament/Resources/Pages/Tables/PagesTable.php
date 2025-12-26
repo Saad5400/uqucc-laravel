@@ -2,15 +2,12 @@
 
 namespace App\Filament\Resources\Pages\Tables;
 
-use App\Filament\Resources\Pages\PageResource;
 use App\Filament\Resources\Pages\Pages\ListPages;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteBulkAction;
 use Filament\Actions\EditAction;
 use Filament\Actions\ForceDeleteBulkAction;
 use Filament\Actions\RestoreBulkAction;
-use Filament\Actions\ViewAction;
-use Filament\Support\Enums\Operation;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\Filter;
@@ -44,9 +41,20 @@ class PagesTable
                     ->color('success'),
 
                 IconColumn::make('hidden')
-                    ->label('مخفية')
+                    ->label('مخفية (الموقع)')
                     ->boolean()
                     ->sortable(),
+
+                IconColumn::make('hidden_from_bot')
+                    ->label('مخفية (البوت)')
+                    ->boolean()
+                    ->sortable(),
+
+                IconColumn::make('smart_search')
+                    ->label('بحث ذكي')
+                    ->boolean()
+                    ->sortable()
+                    ->toggleable(isToggledHiddenByDefault: true),
 
                 IconColumn::make('quick_response_enabled')
                     ->label('رد سريع')
@@ -69,7 +77,7 @@ class PagesTable
                 Filter::make('root_only')
                     ->label('الصفحات الرئيسية فقط')
                     ->query(fn (Builder $query): Builder => $query->whereNull('parent_id'))
-                    ->default(fn(Component $livewire) => $livewire instanceof ListPages),
+                    ->default(fn (Component $livewire) => $livewire instanceof ListPages),
 
                 TrashedFilter::make()
                     ->label('المحذوفة'),
