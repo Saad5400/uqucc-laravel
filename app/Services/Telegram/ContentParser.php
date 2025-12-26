@@ -209,6 +209,10 @@ class ContentParser
         // Apply day-of-week rules if provided
         if (! empty($rulesString)) {
             $date = $this->applyDayOfWeekRules($date, $rulesString);
+            // Update day/month/year from adjusted date for formatting
+            $day = $date->day;
+            $month = $date->month;
+            $year = $date->year;
         }
 
         // Format with Arabic month names
