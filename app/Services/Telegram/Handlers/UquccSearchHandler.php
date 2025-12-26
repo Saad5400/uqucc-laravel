@@ -4,6 +4,7 @@ namespace App\Services\Telegram\Handlers;
 
 use App\Models\Page;
 use App\Services\QuickResponseService;
+use App\Services\Telegram\ContentParser;
 use App\Services\TelegramMarkdownService;
 use App\Services\TipTapContentExtractor;
 use Illuminate\Support\Facades\Cache;
@@ -20,6 +21,8 @@ class UquccSearchHandler extends BaseHandler
         // 'لابتوب'
     ];
 
+    protected ContentParser $contentParser;
+
     public function __construct(
         \Telegram\Bot\Api $telegram,
         protected QuickResponseService $quickResponses,
@@ -27,6 +30,7 @@ class UquccSearchHandler extends BaseHandler
         protected TipTapContentExtractor $contentExtractor
     ) {
         parent::__construct($telegram);
+        $this->contentParser = app(ContentParser::class);
     }
 
     public function handle(Message $message): void
@@ -34,6 +38,10 @@ class UquccSearchHandler extends BaseHandler
         $text = $message->getText();
         // Ensure getText() returns a string (handle edge cases where it might be an array)
         $content = is_string($text) ? trim($text) : '';
+
+        if (empty($content)) {
+            return;
+        }
 
         // Check if it matches "دليل <query>" or is one of the exception words
         $isCommand = false;
@@ -47,11 +55,38 @@ class UquccSearchHandler extends BaseHandler
             $query = $content;
         }
 
-        if (! $isCommand) {
+        if ($isCommand) {
+            $this->searchAndRespond($message, $query);
+
             return;
         }
 
-        $this->searchAndRespond($message, $query);
+        // Check for smart search pages - ANY message that contains a smart page title
+        $this->checkSmartSearch($message, $content);
+    }
+
+    /**
+     * Check if the message contains a smart search page title.
+     */
+    protected function checkSmartSearch(Message $message, string $content): void
+    {
+        $needle = mb_strtolower($content);
+
+        // Search through all cached responses for smart search pages
+        $page = $this->quickResponses->getCachedResponses()->first(function (Page $page) use ($needle) {
+            if (! $page->smart_search) {
+                return false;
+            }
+
+            $title = mb_strtolower($page->title);
+
+            // Check if the message contains the page title
+            return str_contains($needle, $title);
+        });
+
+        if ($page) {
+            $this->sendPageResult($message, $page);
+        }
     }
 
     protected function searchAndRespond(Message $message, string $query): void
@@ -181,6 +216,9 @@ class UquccSearchHandler extends BaseHandler
             $messageText = is_string($resolvedContent['message'])
                 ? $resolvedContent['message']
                 : (string) $resolvedContent['message'];
+
+            // Process date placeholders at send time (calculates countdown dynamically)
+            $messageText = $this->contentParser->processDates($messageText);
 
             // Check if message is already in MarkdownV2 format (from auto-extraction)
             // Auto-extracted messages are already converted, manual messages need conversion

@@ -8,6 +8,7 @@ class ContentParser
 {
     /**
      * Parse content for inline buttons and extract message text.
+     * Processes dates in the message.
      *
      * Button format: (button text|url)
      * Row layout format: [صف:X-Y-Z] where X, Y, Z are buttons per row
@@ -15,6 +16,25 @@ class ContentParser
      * @return array{message: string, buttons: array, row_layout: array}
      */
     public function parseContent(string $content): array
+    {
+        $parsed = $this->parseContentWithoutDates($content);
+
+        // Process dates in the message
+        $parsed['message'] = $this->processDates($parsed['message']);
+
+        return $parsed;
+    }
+
+    /**
+     * Parse content for inline buttons and extract message text.
+     * Does NOT process dates - preserves raw date format for later processing.
+     *
+     * Button format: (button text|url)
+     * Row layout format: [صف:X-Y-Z] where X, Y, Z are buttons per row
+     *
+     * @return array{message: string, buttons: array, row_layout: array}
+     */
+    public function parseContentWithoutDates(string $content): array
     {
         $lines = explode("\n", $content);
         $message = [];
@@ -45,12 +65,8 @@ class ContentParser
             $message[] = $line;
         }
 
-        // Process dates in the message
-        $messageText = implode("\n", $message);
-        $messageText = $this->processDates($messageText);
-
         return [
-            'message' => trim($messageText),
+            'message' => trim(implode("\n", $message)),
             'buttons' => $buttons,
             'row_layout' => $rowLayout,
         ];
@@ -146,24 +162,35 @@ class ContentParser
      */
     protected function formatGregorianDate(array $matches): string
     {
-        $now = Carbon::now();
+        $now = Carbon::now()->startOfDay();
 
-        $year = $matches[1] === '*' ? $now->year : (int) $matches[1];
-        $month = $matches[2] === '*' ? $now->month : (int) $matches[2];
-        $day = $matches[3] === '*' ? $now->day : (int) $matches[3];
+        $yearPattern = $matches[1];
+        $monthPattern = $matches[2];
+        $dayPattern = $matches[3];
+
+        // Start with current date values for wildcards
+        $year = $yearPattern === '*' ? $now->year : (int) $yearPattern;
+        $month = $monthPattern === '*' ? $now->month : (int) $monthPattern;
+        $day = $dayPattern === '*' ? $now->day : (int) $dayPattern;
 
         // Handle recurring dates - calculate next occurrence
-        if ($matches[1] === '*' || $matches[2] === '*' || $matches[3] === '*') {
-            $targetDate = Carbon::create($year, $month, $day);
+        if ($yearPattern === '*' || $monthPattern === '*' || $dayPattern === '*') {
+            // Create target date with resolved values
+            $targetDate = Carbon::create($year, $month, min($day, Carbon::create($year, $month, 1)->daysInMonth));
 
-            // If yearly recurring and date has passed, use next year
-            if ($matches[1] === '*' && $targetDate->isPast()) {
-                $targetDate->addYear();
-            }
-
-            // If monthly recurring and date has passed, use next month
-            if ($matches[2] === '*' && $targetDate->isPast()) {
-                $targetDate->addMonth();
+            // If the target is in the past, calculate next occurrence
+            if ($targetDate->startOfDay()->lt($now)) {
+                if ($dayPattern === '*') {
+                    // Daily recurring - already set to today
+                } elseif ($monthPattern === '*') {
+                    // Monthly recurring - if day has passed, go to next month
+                    $targetDate->addMonth();
+                    // Adjust day if it exceeds days in new month
+                    $targetDate->day = min($day, $targetDate->daysInMonth);
+                } elseif ($yearPattern === '*') {
+                    // Yearly recurring - if date has passed, go to next year
+                    $targetDate->addYear();
+                }
             }
 
             $year = $targetDate->year;
@@ -171,6 +198,9 @@ class ContentParser
             $day = $targetDate->day;
         }
 
+        // Create final date ensuring valid day for the month
+        $daysInMonth = Carbon::create($year, $month, 1)->daysInMonth;
+        $day = min($day, $daysInMonth);
         $date = Carbon::create($year, $month, $day);
 
         // Format with Arabic month names

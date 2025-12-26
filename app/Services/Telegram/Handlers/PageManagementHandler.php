@@ -214,13 +214,18 @@ class PageManagementHandler extends BaseHandler
         $userId = $message->getFrom()->getId();
         $text = trim($message->getText() ?? '');
 
+        // Get caption from photo/document if no text
+        $caption = $message->getCaption();
+        $photo = $message->getPhoto();
+        $document = $message->getDocument();
+
         switch ($state['step']) {
             case 'awaiting_name':
                 $this->handlePageName($message, $text, $state);
                 break;
 
             case 'awaiting_content':
-                $this->handlePageContent($message, $text, $state);
+                $this->handlePageContent($message, $text, $caption, $photo, $document, $state);
                 break;
 
             case 'awaiting_delete_name':
@@ -253,18 +258,44 @@ class PageManagementHandler extends BaseHandler
         $this->reply($message, "اسم الصفحة: {$name} {$mode}\n\nأرسل محتوى الصفحة:\n\n(أرسل 'إلغاء' للإلغاء)");
     }
 
-    protected function handlePageContent(Message $message, string $content, array $state): void
+    protected function handlePageContent(Message $message, string $content, ?string $caption, $photo, $document, array $state): void
     {
         $userId = $message->getFrom()->getId();
 
-        if (empty($content)) {
-            $this->reply($message, "محتوى الصفحة لا يمكن أن يكون فارغاً.\n\nأرسل محتوى الصفحة:");
+        // Use caption if photo/document sent, otherwise use text content
+        $textContent = $content;
+        if (empty($textContent) && $caption) {
+            $textContent = $caption;
+        }
+
+        // Handle attachment if sent
+        $attachments = [];
+        if ($photo) {
+            // Get the largest photo (last in array)
+            $photos = $photo;
+            if (is_array($photos) && ! empty($photos)) {
+                $largestPhoto = end($photos);
+                $fileId = $largestPhoto['file_id'] ?? null;
+                if ($fileId) {
+                    $attachments[] = $this->downloadAndSaveFile($fileId, 'photo');
+                }
+            }
+        } elseif ($document) {
+            $fileId = $document['file_id'] ?? null;
+            if ($fileId) {
+                $fileName = $document['file_name'] ?? 'document';
+                $attachments[] = $this->downloadAndSaveFile($fileId, 'document', $fileName);
+            }
+        }
+
+        if (empty($textContent) && empty($attachments)) {
+            $this->reply($message, "محتوى الصفحة لا يمكن أن يكون فارغاً.\n\nأرسل محتوى الصفحة (نص أو صورة مع تعليق):");
 
             return;
         }
 
-        // Parse content for buttons and dates
-        $parsed = $this->contentParser->parseContent($content);
+        // Parse content for buttons (don't process dates - save raw format)
+        $parsed = $this->contentParser->parseContentWithoutDates($textContent ?? '');
 
         // Convert buttons to quick response format
         $buttons = $this->contentParser->convertButtonsToQuickResponseFormat(
@@ -272,33 +303,55 @@ class PageManagementHandler extends BaseHandler
             $parsed['row_layout']
         );
 
-        $pageData = [
-            'title' => $state['name'],
-            'slug' => '/'.Str::slug($state['name']),
-            'html_content' => $this->convertToTipTap($parsed['message']),
-            'smart_search' => $state['smart_search'],
-            'hidden_from_bot' => false,
-            'quick_response_auto_extract' => false,
-            'quick_response_message' => $parsed['message'],
-            'quick_response_buttons' => $buttons,
-            'quick_response_send_link' => true,
-        ];
+        // Filter out any failed attachment downloads
+        $attachments = array_filter($attachments);
 
         try {
             if ($state['existing_page_id']) {
-                // Update existing page
+                // Update existing page - ONLY update quick response fields, NOT page content
                 $page = Page::find($state['existing_page_id']);
-                $page->update($pageData);
+
+                $quickResponseData = [
+                    'smart_search' => $state['smart_search'],
+                    'hidden_from_bot' => false,
+                    'quick_response_auto_extract' => false,
+                    'quick_response_message' => $parsed['message'],
+                    'quick_response_buttons' => $buttons,
+                    'quick_response_send_link' => true,
+                ];
+
+                // Only update attachments if new ones were provided
+                if (! empty($attachments)) {
+                    $quickResponseData['quick_response_attachments'] = $attachments;
+                }
+
+                $page->update($quickResponseData);
                 $action = 'تعديل';
             } else {
-                // Create new page
+                // Create new page - hidden from website, visible in bot only
+                $slug = '/'.Str::slug($state['name']);
+
                 // Generate unique slug if needed
-                $baseSlug = $pageData['slug'];
+                $baseSlug = $slug;
                 $counter = 1;
-                while (Page::where('slug', $pageData['slug'])->exists()) {
-                    $pageData['slug'] = $baseSlug.'-'.$counter;
+                while (Page::where('slug', $slug)->exists()) {
+                    $slug = $baseSlug.'-'.$counter;
                     $counter++;
                 }
+
+                $pageData = [
+                    'title' => $state['name'],
+                    'slug' => $slug,
+                    'html_content' => $this->convertToTipTap($parsed['message']),
+                    'hidden' => true, // Hidden from website
+                    'hidden_from_bot' => false, // Visible in bot
+                    'smart_search' => $state['smart_search'],
+                    'quick_response_auto_extract' => false,
+                    'quick_response_message' => $parsed['message'],
+                    'quick_response_buttons' => $buttons,
+                    'quick_response_attachments' => $attachments,
+                    'quick_response_send_link' => true,
+                ];
 
                 $page = Page::create($pageData);
                 $action = 'إضافة';
@@ -308,10 +361,50 @@ class PageManagementHandler extends BaseHandler
 
             $smartText = $page->smart_search ? ' (بحث ذكي)' : '';
             $buttonsText = count($buttons) > 0 ? "\nالأزرار: ".count($buttons) : '';
+            $attachmentsText = ! empty($attachments) ? "\nالمرفقات: ".count($attachments) : '';
 
-            $this->reply($message, "✅ تم {$action} الصفحة بنجاح!\n\nالعنوان: {$page->title}{$smartText}{$buttonsText}\nالرابط: ".url($page->slug));
+            $this->reply($message, "✅ تم {$action} الصفحة بنجاح!\n\nالعنوان: {$page->title}{$smartText}{$buttonsText}{$attachmentsText}");
         } catch (\Exception $e) {
             $this->reply($message, "حدث خطأ أثناء حفظ الصفحة: {$e->getMessage()}");
+        }
+    }
+
+    /**
+     * Download a file from Telegram and save it locally.
+     */
+    protected function downloadAndSaveFile(string $fileId, string $type, ?string $fileName = null): ?string
+    {
+        try {
+            $file = $this->telegram->getFile(['file_id' => $fileId]);
+            $filePath = $file->getFilePath();
+
+            if (! $filePath) {
+                return null;
+            }
+
+            // Download the file
+            $fileUrl = 'https://api.telegram.org/file/bot'.config('services.telegram.token')."/{$filePath}";
+            $contents = file_get_contents($fileUrl);
+
+            if (! $contents) {
+                return null;
+            }
+
+            // Determine extension and filename
+            $extension = pathinfo($filePath, PATHINFO_EXTENSION) ?: 'jpg';
+            if ($type === 'document' && $fileName) {
+                $savedFileName = $fileName;
+            } else {
+                $savedFileName = 'telegram_'.time().'_'.uniqid().'.'.$extension;
+            }
+
+            // Save to storage
+            $storagePath = 'quick-responses/'.$savedFileName;
+            \Illuminate\Support\Facades\Storage::disk('public')->put($storagePath, $contents);
+
+            return $storagePath;
+        } catch (\Exception $e) {
+            return null;
         }
     }
 
