@@ -1,13 +1,14 @@
 <template>
     <h2 :id="props.id ? slugifiedId : undefined">
-        <a v-if="props.id" class="text-foreground font-normal" :href="`#${slugifiedId}`">
+        <Link v-if="props.id" class="text-foreground font-normal" :href="`#${slugifiedId}`">
             <slot />
-        </a>
+        </Link>
         <slot v-else />
     </h2>
 </template>
 
 <script setup lang="ts">
+import { Link } from '@inertiajs/vue3';
 import { computed } from 'vue';
 
 const props = defineProps<{ id?: string }>();
