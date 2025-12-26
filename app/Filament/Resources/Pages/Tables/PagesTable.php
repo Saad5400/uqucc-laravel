@@ -21,6 +21,15 @@ class PagesTable
     public static function configure(Table $table): Table
     {
         return $table
+            ->modifyQueryUsing(function (Builder $query): Builder {
+                // sort by first showing pages with no parent, then by its website hidden status, then by order
+                return $query
+                    ->withCount('children')
+                    ->withTrashed()
+                    ->orderByRaw('CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END ASC')
+                    ->orderBy('hidden', 'ASC')
+                    ->orderBy('order', 'ASC');
+            })
             ->columns([
                 TextColumn::make('title')
                     ->label('العنوان')

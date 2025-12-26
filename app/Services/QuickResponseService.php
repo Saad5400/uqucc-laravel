@@ -23,6 +23,7 @@ class QuickResponseService
                     'html_content',
                     'updated_at',
                     'smart_search',
+                    'requires_prefix',
                     'quick_response_auto_extract',
                     'quick_response_customize_message',
                     'quick_response_customize_buttons',
