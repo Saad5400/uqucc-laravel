@@ -469,22 +469,13 @@ class UquccSearchHandler extends BaseHandler
                 'aggressive-cache-discard',
             ]);
 
-            // Inject CSS to hide .screenshot-hidden elements
-            // This is more reliable than JavaScript evaluation as it applies immediately
+            // Inject CSS to hide .screenshot-hidden elements and adjust scrollbar
+            // Using CSS is more reliable than JavaScript evaluation
             $browsershot->setOption('addStyleTag', [
                 [
-                    'content' => '.screenshot-hidden { display: none !important; visibility: hidden !important; }',
+                    'content' => '.screenshot-hidden { display: none !important; visibility: hidden !important; } html { scrollbar-gutter: auto !important; }',
                 ],
             ]);
-
-            // Also use evaluate as a fallback and to adjust scrollbar
-            $browsershot->evaluate("
-                document.querySelectorAll('.screenshot-hidden').forEach(e => {
-                    e.style.display = 'none';
-                    e.style.visibility = 'hidden';
-                });
-                document.documentElement.style.scrollbarGutter = 'auto';
-            ");
 
             $browsershot->save($screenshotPath);
 
