@@ -8,20 +8,21 @@ use Illuminate\Support\Collection;
 class QuickResponseService
 {
     /**
-     * Get cached quick-response-ready payloads for all visible pages.
+     * Get cached quick-response-ready payloads for all pages visible in bot.
      */
     public function getCachedResponses(): Collection
     {
         return cache()->remember(
             config('app-cache.keys.quick_responses'),
             config('app-cache.quick_responses.ttl'),
-            fn () => Page::visible()
+            fn () => Page::visibleInBot()
                 ->select([
                     'id',
                     'slug',
                     'title',
                     'html_content',
                     'updated_at',
+                    'smart_search',
                     'quick_response_auto_extract',
                     'quick_response_customize_message',
                     'quick_response_customize_buttons',
@@ -37,20 +38,26 @@ class QuickResponseService
     }
 
     /**
-     * Search cached payloads with a loose substring match.
+     * Search cached payloads with exact match or smart search (substring match).
      */
     public function search(string $query): ?Page
     {
         $needle = mb_strtolower($query);
 
         return $this->getCachedResponses()->first(function (Page $page) use ($needle) {
-            // $buttons = collect($page->quick_response_buttons ?? []);
+            $title = mb_strtolower($page->title);
 
-            // Ensure html_content is a string (it can be an array from JSON decoding)
-            $htmlContent = $page->html_content;
-            // $htmlContentString = is_array($htmlContent) ? '' : (string) $htmlContent;
+            // Exact match always works
+            if ($title === $needle) {
+                return true;
+            }
 
-            return mb_strtolower($page->title) === $needle;
+            // Smart search: substring match if enabled
+            if ($page->smart_search && str_contains($title, $needle)) {
+                return true;
+            }
+
+            return false;
         });
     }
 }

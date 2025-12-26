@@ -2,14 +2,14 @@
 
 namespace App\Services\Telegram\Handlers;
 
-use Telegram\Bot\Objects\Message;
 use Telegram\Bot\Exceptions\TelegramSDKException;
+use Telegram\Bot\Objects\Message;
 
 class InfoHandler extends BaseHandler
 {
     public function handle(Message $message): void
     {
-        if (!$this->matches($message, '/^\/info$/u')) {
+        if (! $this->matches($message, '/^\/info$/u')) {
             return;
         }
 
@@ -34,91 +34,90 @@ class InfoHandler extends BaseHandler
             $userLastName = $user->getLastName();
             $userUsername = $user->getUsername();
 
-            // Helper function to escape markdown values
-            $escape = fn($text) => $this->escapeMarkdownV2($text ?? '');
+            // Helper function to escape HTML entities
+            $escape = fn ($text) => $this->escapeHtml($text ?? '');
 
             // Build response based on chat type
-            $response = "📊 *معلومات الدردشة*\n\n";
+            $response = "📊 <b>معلومات الدردشة</b>\n\n";
 
             if ($chatType === 'private') {
-                $response .= "💬 *نوع الدردشة:* محادثة خاصة\n";
-                $response .= "🆔 *معرف المحادثة:* `" . $escape((string)$chatId) . "`\n\n";
-                $response .= "👤 *المستخدم:*\n";
-                $response .= "   • الاسم: " . $escape($userFirstName);
+                $response .= "💬 <b>نوع الدردشة:</b> محادثة خاصة\n";
+                $response .= '🆔 <b>معرف المحادثة:</b> <code>'.$escape((string) $chatId)."</code>\n\n";
+                $response .= "👤 <b>المستخدم:</b>\n";
+                $response .= '   • الاسم: '.$escape($userFirstName);
                 if ($userLastName) {
-                    $response .= " " . $escape($userLastName);
+                    $response .= ' '.$escape($userLastName);
                 }
                 $response .= "\n";
                 if ($userUsername) {
-                    $response .= "   • المعرف: @" . $escape($userUsername) . "\n";
+                    $response .= '   • المعرف: @'.$escape($userUsername)."\n";
                 }
-                $response .= "   • المعرف الرقمي: `" . $escape((string)$userId) . "`\n";
+                $response .= '   • المعرف الرقمي: <code>'.$escape((string) $userId)."</code>\n";
             } elseif (in_array($chatType, ['group', 'supergroup'])) {
-                $response .= "👥 *نوع الدردشة:* " . ($chatType === 'supergroup' ? 'مجموعة خارقة' : 'مجموعة') . "\n";
-                $response .= "📝 *اسم المجموعة:* " . $escape($chatTitle) . "\n";
-                $response .= "🆔 *معرف المجموعة:* `" . $escape((string)$chatId) . "`\n";
+                $response .= '👥 <b>نوع الدردشة:</b> '.($chatType === 'supergroup' ? 'مجموعة خارقة' : 'مجموعة')."\n";
+                $response .= '📝 <b>اسم المجموعة:</b> '.$escape($chatTitle)."\n";
+                $response .= '🆔 <b>معرف المجموعة:</b> <code>'.$escape((string) $chatId)."</code>\n";
                 if ($chatUsername) {
-                    $response .= "🔗 *المعرف:* @" . $escape($chatUsername) . "\n";
+                    $response .= '🔗 <b>المعرف:</b> @'.$escape($chatUsername)."\n";
                 }
                 if ($chatDescription) {
-                    $response .= "📄 *الوصف:* " . $escape($chatDescription) . "\n";
+                    $response .= '📄 <b>الوصف:</b> '.$escape($chatDescription)."\n";
                 }
                 if ($chatMembersCount) {
-                    $response .= "👥 *عدد الأعضاء:* " . $escape((string)$chatMembersCount) . "\n";
+                    $response .= '👥 <b>عدد الأعضاء:</b> '.$escape((string) $chatMembersCount)."\n";
                 }
                 if ($chatInviteLink) {
-                    $response .= "🔗 *رابط الدعوة:* " . $escape($chatInviteLink) . "\n";
+                    $response .= '🔗 <b>رابط الدعوة:</b> '.$escape($chatInviteLink)."\n";
                 }
                 $response .= "\n";
-                $response .= "👤 *المستخدم الحالي:*\n";
-                $response .= "   • الاسم: " . $escape($userFirstName);
+                $response .= "👤 <b>المستخدم الحالي:</b>\n";
+                $response .= '   • الاسم: '.$escape($userFirstName);
                 if ($userLastName) {
-                    $response .= " " . $escape($userLastName);
+                    $response .= ' '.$escape($userLastName);
                 }
                 $response .= "\n";
                 if ($userUsername) {
-                    $response .= "   • المعرف: @" . $escape($userUsername) . "\n";
+                    $response .= '   • المعرف: @'.$escape($userUsername)."\n";
                 }
-                $response .= "   • المعرف الرقمي: `" . $escape((string)$userId) . "`\n";
+                $response .= '   • المعرف الرقمي: <code>'.$escape((string) $userId)."</code>\n";
                 $response .= "\n";
-                $response .= "💡 *ملاحظة:* يمكنك استخدام معرف المجموعة مع الأمر `/pforward`";
+                $response .= '💡 <b>ملاحظة:</b> يمكنك استخدام معرف المجموعة مع الأمر <code>/pforward</code>';
             } elseif ($chatType === 'channel') {
-                $response .= "📢 *نوع الدردشة:* قناة\n";
-                $response .= "📝 *اسم القناة:* " . $escape($chatTitle) . "\n";
-                $response .= "🆔 *معرف القناة:* `" . $escape((string)$chatId) . "`\n";
+                $response .= "📢 <b>نوع الدردشة:</b> قناة\n";
+                $response .= '📝 <b>اسم القناة:</b> '.$escape($chatTitle)."\n";
+                $response .= '🆔 <b>معرف القناة:</b> <code>'.$escape((string) $chatId)."</code>\n";
                 if ($chatUsername) {
-                    $response .= "🔗 *المعرف:* @" . $escape($chatUsername) . "\n";
+                    $response .= '🔗 <b>المعرف:</b> @'.$escape($chatUsername)."\n";
                 }
                 if ($chatDescription) {
-                    $response .= "📄 *الوصف:* " . $escape($chatDescription) . "\n";
+                    $response .= '📄 <b>الوصف:</b> '.$escape($chatDescription)."\n";
                 }
                 if ($chatMembersCount) {
-                    $response .= "👥 *عدد المشتركين:* " . $escape((string)$chatMembersCount) . "\n";
+                    $response .= '👥 <b>عدد المشتركين:</b> '.$escape((string) $chatMembersCount)."\n";
                 }
                 $response .= "\n";
-                $response .= "👤 *المستخدم الحالي:*\n";
-                $response .= "   • الاسم: " . $escape($userFirstName);
+                $response .= "👤 <b>المستخدم الحالي:</b>\n";
+                $response .= '   • الاسم: '.$escape($userFirstName);
                 if ($userLastName) {
-                    $response .= " " . $escape($userLastName);
+                    $response .= ' '.$escape($userLastName);
                 }
                 $response .= "\n";
                 if ($userUsername) {
-                    $response .= "   • المعرف: @" . $escape($userUsername) . "\n";
+                    $response .= '   • المعرف: @'.$escape($userUsername)."\n";
                 }
-                $response .= "   • المعرف الرقمي: `" . $escape((string)$userId) . "`\n";
+                $response .= '   • المعرف الرقمي: <code>'.$escape((string) $userId)."</code>\n";
                 $response .= "\n";
-                $response .= "💡 *ملاحظة:* يمكنك استخدام معرف القناة مع الأمر `/pforward`";
+                $response .= '💡 <b>ملاحظة:</b> يمكنك استخدام معرف القناة مع الأمر <code>/pforward</code>';
             } else {
-                $response .= "🆔 *معرف الدردشة:* `" . $escape((string)$chatId) . "`\n";
-                $response .= "📝 *النوع:* " . $escape($chatType) . "\n";
+                $response .= '🆔 <b>معرف الدردشة:</b> <code>'.$escape((string) $chatId)."</code>\n";
+                $response .= '📝 <b>النوع:</b> '.$escape($chatType)."\n";
             }
-            
-            $this->replyMarkdown($message, $response);
+
+            $this->replyHtml($message, $response);
         } catch (TelegramSDKException $e) {
-            $this->reply($message, "❌ حدث خطأ في الحصول على معلومات الدردشة: " . $e->getMessage());
+            $this->reply($message, '❌ حدث خطأ في الحصول على معلومات الدردشة: '.$e->getMessage());
         } catch (\Exception $e) {
-            $this->reply($message, "❌ حدث خطأ غير متوقع: " . $e->getMessage());
+            $this->reply($message, '❌ حدث خطأ غير متوقع: '.$e->getMessage());
         }
     }
 }
-

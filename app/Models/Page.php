@@ -75,6 +75,8 @@ class Page extends Model implements Sortable
         'order',
         'icon',
         'hidden',
+        'hidden_from_bot',
+        'smart_search',
         'parent_id',
         'level',
         'extension',
@@ -90,6 +92,8 @@ class Page extends Model implements Sortable
 
     protected $casts = [
         'hidden' => 'boolean',
+        'hidden_from_bot' => 'boolean',
+        'smart_search' => 'boolean',
         'order' => 'integer',
         'level' => 'integer',
         'quick_response_auto_extract' => 'boolean',
@@ -153,11 +157,27 @@ class Page extends Model implements Sortable
     }
 
     /**
-     * Scope to filter only visible pages
+     * Scope to filter only visible pages (website)
      */
     public function scopeVisible($query)
     {
         return $query->where('hidden', false);
+    }
+
+    /**
+     * Scope to filter pages visible in Telegram bot
+     */
+    public function scopeVisibleInBot($query)
+    {
+        return $query->where('hidden_from_bot', false);
+    }
+
+    /**
+     * Scope to get smart search enabled pages
+     */
+    public function scopeSmartSearch($query)
+    {
+        return $query->where('smart_search', true);
     }
 
     /**
