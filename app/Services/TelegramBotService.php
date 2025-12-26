@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\Logic\TruthTableGenerator;
 use App\Services\Telegram\ContentParser;
 use App\Services\Telegram\Handlers\DeepSeekChatHandler;
 use App\Services\Telegram\Handlers\InfoHandler;
@@ -11,6 +12,7 @@ use App\Services\Telegram\Handlers\LoginHandler;
 use App\Services\Telegram\Handlers\PageManagementHandler;
 use App\Services\Telegram\Handlers\PrivateForwardHandler;
 use App\Services\Telegram\Handlers\PythonExecutionHandler;
+use App\Services\Telegram\Handlers\TruthTableHandler;
 use App\Services\Telegram\Handlers\UquccListHandler;
 use App\Services\Telegram\Handlers\UquccSearchHandler;
 use Telegram\Bot\Api;
@@ -43,6 +45,7 @@ class TelegramBotService
             new InfoHandler($this->telegram),
             new PrivateForwardHandler($this->telegram),
             new InviteLinkHandler($this->telegram),
+            new TruthTableHandler($this->telegram, app(TruthTableGenerator::class)),
         ];
     }
 
