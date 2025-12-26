@@ -75,20 +75,28 @@ class PageManagementHandler extends BaseHandler
         $data = $callback->getData();
         $userId = $callback->getFrom()->getId();
 
-        // Handle smart search toggle
-        if (str_starts_with($data, 'toggle_smart_')) {
-            $parts = explode('_', $data);
-            $currentValue = end($parts) === '1';
-            $newValue = ! $currentValue;
+        $state = $this->getState($userId);
+        if (! $state || $state['step'] !== 'awaiting_name') {
+            return;
+        }
 
-            // Update state
-            $state = $this->getState($userId);
-            if ($state && $state['step'] === 'awaiting_name') {
-                $state['smart_search'] = $newValue;
+        $toggleMap = [
+            'toggle_smart' => 'smart_search',
+            'toggle_update_content' => 'update_main_content',
+            'toggle_send_link' => 'send_link',
+        ];
+
+        foreach ($toggleMap as $prefix => $stateKey) {
+            if (str_starts_with($data, $prefix.'_')) {
+                $parts = explode('_', $data);
+                $currentValue = end($parts) === '1';
+                $newValue = ! $currentValue;
+
+                $state[$stateKey] = $newValue;
                 $this->setState($userId, $state);
 
-                // Update the button
-                $keyboard = $this->buildSmartSearchKeyboard($newValue);
+                // Update the keyboard with new state
+                $keyboard = $this->buildOptionsKeyboard($state);
 
                 $this->telegram->editMessageReplyMarkup([
                     'chat_id' => $callback->getMessage()->getChat()->getId(),
@@ -96,10 +104,18 @@ class PageManagementHandler extends BaseHandler
                     'reply_markup' => $keyboard,
                 ]);
 
+                $labels = [
+                    'smart_search' => ['تم تفعيل البحث الذكي', 'تم تعطيل البحث الذكي'],
+                    'update_main_content' => ['سيتم تحديث محتوى الصفحة', 'لن يتم تحديث محتوى الصفحة'],
+                    'send_link' => ['سيتم إرسال رابط الصفحة', 'لن يتم إرسال رابط الصفحة'],
+                ];
+
                 $this->telegram->answerCallbackQuery([
                     'callback_query_id' => $callback->getId(),
-                    'text' => $newValue ? 'تم تفعيل البحث الذكي' : 'تم تعطيل البحث الذكي',
+                    'text' => $newValue ? $labels[$stateKey][0] : $labels[$stateKey][1],
                 ]);
+
+                return;
             }
         }
     }
@@ -116,12 +132,17 @@ class PageManagementHandler extends BaseHandler
             return;
         }
 
-        $this->setState($userId, [
+        // Default state for new pages
+        $state = [
             'step' => 'awaiting_name',
             'smart_search' => false,
-        ]);
+            'update_main_content' => false,
+            'send_link' => false,
+        ];
 
-        $keyboard = $this->buildSmartSearchKeyboard(false);
+        $this->setState($userId, $state);
+
+        $keyboard = $this->buildOptionsKeyboard($state);
 
         $this->telegram->sendMessage([
             'chat_id' => $message->getChat()->getId(),
@@ -247,12 +268,18 @@ class PageManagementHandler extends BaseHandler
         // Check if page exists (for edit mode)
         $existingPage = Page::where('title', $name)->first();
 
-        $this->setState($userId, [
-            'step' => 'awaiting_content',
-            'name' => $name,
-            'smart_search' => $state['smart_search'] ?? false,
-            'existing_page_id' => $existingPage?->id,
-        ]);
+        // If editing existing page, load its current state for toggles
+        if ($existingPage) {
+            $state['smart_search'] = $existingPage->smart_search ?? false;
+            $state['send_link'] = $existingPage->quick_response_send_link ?? false;
+            // update_main_content stays as user set it (default false)
+        }
+
+        $state['step'] = 'awaiting_content';
+        $state['name'] = $name;
+        $state['existing_page_id'] = $existingPage?->id;
+
+        $this->setState($userId, $state);
 
         $mode = $existingPage ? '(تعديل)' : '(جديدة)';
         $this->reply($message, "اسم الصفحة: {$name} {$mode}\n\nأرسل محتوى الصفحة:\n\n(أرسل 'إلغاء' للإلغاء)");
@@ -271,20 +298,27 @@ class PageManagementHandler extends BaseHandler
         // Handle attachment if sent
         $attachments = [];
         if ($photo) {
-            // Get the largest photo (last in array)
-            $photos = $photo;
-            if (is_array($photos) && ! empty($photos)) {
-                $largestPhoto = end($photos);
-                $fileId = $largestPhoto['file_id'] ?? null;
+            // Photo is a Collection of PhotoSize objects - get the largest one
+            $photoSizes = collect($photo);
+            if ($photoSizes->isNotEmpty()) {
+                // Get the last (largest) photo
+                $largestPhoto = $photoSizes->last();
+                $fileId = is_array($largestPhoto) ? ($largestPhoto['file_id'] ?? null) : $largestPhoto->getFileId();
                 if ($fileId) {
-                    $attachments[] = $this->downloadAndSaveFile($fileId, 'photo');
+                    $savedPath = $this->downloadAndSaveFile($fileId, 'photo');
+                    if ($savedPath) {
+                        $attachments[] = $savedPath;
+                    }
                 }
             }
         } elseif ($document) {
-            $fileId = $document['file_id'] ?? null;
+            $fileId = is_array($document) ? ($document['file_id'] ?? null) : $document->getFileId();
+            $fileName = is_array($document) ? ($document['file_name'] ?? 'document') : ($document->getFileName() ?? 'document');
             if ($fileId) {
-                $fileName = $document['file_name'] ?? 'document';
-                $attachments[] = $this->downloadAndSaveFile($fileId, 'document', $fileName);
+                $savedPath = $this->downloadAndSaveFile($fileId, 'document', $fileName);
+                if ($savedPath) {
+                    $attachments[] = $savedPath;
+                }
             }
         }
 
@@ -303,32 +337,40 @@ class PageManagementHandler extends BaseHandler
             $parsed['row_layout']
         );
 
-        // Filter out any failed attachment downloads
-        $attachments = array_filter($attachments);
+        // Get toggle states
+        $smartSearch = $state['smart_search'] ?? false;
+        $updateMainContent = $state['update_main_content'] ?? false;
+        $sendLink = $state['send_link'] ?? false;
 
         try {
             if ($state['existing_page_id']) {
-                // Update existing page - ONLY update quick response fields, NOT page content
+                // Update existing page
                 $page = Page::find($state['existing_page_id']);
 
-                $quickResponseData = [
-                    'smart_search' => $state['smart_search'],
+                $updateData = [
+                    'smart_search' => $smartSearch,
                     'hidden_from_bot' => false,
                     'quick_response_auto_extract' => false,
                     'quick_response_message' => $parsed['message'],
                     'quick_response_buttons' => $buttons,
-                    'quick_response_send_link' => true,
+                    'quick_response_send_link' => $sendLink,
                 ];
+
+                // Only update main content if toggle is ON
+                if ($updateMainContent) {
+                    $updateData['html_content'] = $this->convertToTipTap($parsed['message']);
+                    // Don't change hidden state - leave as is
+                }
 
                 // Only update attachments if new ones were provided
                 if (! empty($attachments)) {
-                    $quickResponseData['quick_response_attachments'] = $attachments;
+                    $updateData['quick_response_attachments'] = $attachments;
                 }
 
-                $page->update($quickResponseData);
+                $page->update($updateData);
                 $action = 'تعديل';
             } else {
-                // Create new page - hidden from website, visible in bot only
+                // Create new page
                 $slug = '/'.Str::slug($state['name']);
 
                 // Generate unique slug if needed
@@ -339,18 +381,21 @@ class PageManagementHandler extends BaseHandler
                     $counter++;
                 }
 
+                // New pages: hidden from website unless update_main_content is ON
+                $hiddenFromWebsite = ! $updateMainContent;
+
                 $pageData = [
                     'title' => $state['name'],
                     'slug' => $slug,
                     'html_content' => $this->convertToTipTap($parsed['message']),
-                    'hidden' => true, // Hidden from website
-                    'hidden_from_bot' => false, // Visible in bot
-                    'smart_search' => $state['smart_search'],
+                    'hidden' => $hiddenFromWebsite,
+                    'hidden_from_bot' => false,
+                    'smart_search' => $smartSearch,
                     'quick_response_auto_extract' => false,
                     'quick_response_message' => $parsed['message'],
                     'quick_response_buttons' => $buttons,
                     'quick_response_attachments' => $attachments,
-                    'quick_response_send_link' => true,
+                    'quick_response_send_link' => $sendLink,
                 ];
 
                 $page = Page::create($pageData);
@@ -362,8 +407,9 @@ class PageManagementHandler extends BaseHandler
             $smartText = $page->smart_search ? ' (بحث ذكي)' : '';
             $buttonsText = count($buttons) > 0 ? "\nالأزرار: ".count($buttons) : '';
             $attachmentsText = ! empty($attachments) ? "\nالمرفقات: ".count($attachments) : '';
+            $contentUpdated = $updateMainContent ? "\n(تم تحديث محتوى الصفحة)" : '';
 
-            $this->reply($message, "✅ تم {$action} الصفحة بنجاح!\n\nالعنوان: {$page->title}{$smartText}{$buttonsText}{$attachmentsText}");
+            $this->reply($message, "✅ تم {$action} الصفحة بنجاح!\n\nالعنوان: {$page->title}{$smartText}{$buttonsText}{$attachmentsText}{$contentUpdated}");
         } catch (\Exception $e) {
             $this->reply($message, "حدث خطأ أثناء حفظ الصفحة: {$e->getMessage()}");
         }
@@ -438,17 +484,34 @@ class PageManagementHandler extends BaseHandler
         return $user;
     }
 
-    protected function buildSmartSearchKeyboard(bool $isEnabled): Keyboard
+    protected function buildOptionsKeyboard(array $state): Keyboard
     {
-        $icon = $isEnabled ? '✅' : '❌';
-        $callbackData = 'toggle_smart_'.($isEnabled ? '1' : '0');
+        $smartSearch = $state['smart_search'] ?? false;
+        $updateContent = $state['update_main_content'] ?? false;
+        $sendLink = $state['send_link'] ?? false;
+
+        $smartIcon = $smartSearch ? '✅' : '❌';
+        $updateIcon = $updateContent ? '✅' : '❌';
+        $linkIcon = $sendLink ? '✅' : '❌';
 
         return Keyboard::make()
             ->inline()
             ->row([
                 Keyboard::inlineButton([
-                    'text' => "البحث في كامل الجملة {$icon}",
-                    'callback_data' => $callbackData,
+                    'text' => "البحث في كامل الجملة {$smartIcon}",
+                    'callback_data' => 'toggle_smart_'.($smartSearch ? '1' : '0'),
+                ]),
+            ])
+            ->row([
+                Keyboard::inlineButton([
+                    'text' => "تحديث محتوى الصفحة {$updateIcon}",
+                    'callback_data' => 'toggle_update_content_'.($updateContent ? '1' : '0'),
+                ]),
+            ])
+            ->row([
+                Keyboard::inlineButton([
+                    'text' => "إرسال رابط الصفحة مع الرد {$linkIcon}",
+                    'callback_data' => 'toggle_send_link_'.($sendLink ? '1' : '0'),
                 ]),
             ]);
     }
