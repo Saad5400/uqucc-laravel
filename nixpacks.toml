@@ -4,7 +4,15 @@ nixPkgs = [
     "php84Packages.composer", # <--- Ensure composer matches the PHP version
     "nginx",                  # <-- ADDED (Required, because we removed the defaults)
     "python311Packages.supervisor",
-    "nodejs_22"               # Ensure you have node if you removed "..."
+    "nodejs_22",               # Ensure you have node if you removed "..."
+    "jdk",
+    # Browsershot / Puppeteer dependencies
+    "chromium",
+    "nss",
+    "freetype",
+    "harfbuzz",
+    "fontconfig",
+    "liberation_ttf",         # Fonts for proper text rendering
 ]
 
 [phases.install]
@@ -41,6 +49,12 @@ cmd = "/assets/start.sh"
 "start.sh" = '''
 #!/bin/bash
 set -e
+
+# --- Browsershot / Puppeteer environment variables
+export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+export PUPPETEER_EXECUTABLE_PATH=$(which chromium)
+export CHROME_PATH=$(which chromium)
+export NODE_BINARY=$(which node)
 
 # --- ensure Laravel writable paths (volume may be empty on first boot)
 mkdir -p /app/storage/framework/{cache,sessions,views} \
@@ -132,6 +146,7 @@ stopasgroup=true
 killasgroup=true
 stdout_logfile=/var/log/worker-horizon.log
 stderr_logfile=/var/log/worker-horizon.log
+environment=PUPPETEER_SKIP_CHROMIUM_DOWNLOAD="true"
 '''
 
 "worker-scheduler.conf" = '''
@@ -196,6 +211,9 @@ php_admin_value[opcache.enable] = 1
 php_admin_value[opcache.validate_timestamps] = 0
 php_admin_value[opcache.max_accelerated_files] = 20000
 php_admin_value[opcache.memory_consumption] = 128
+
+; Browsershot / Puppeteer environment
+env[PUPPETEER_SKIP_CHROMIUM_DOWNLOAD] = true
 '''
 
 "nginx.template.conf" = '''

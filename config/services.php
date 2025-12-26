@@ -47,4 +47,9 @@ return [
         'api_key' => env('OCR_SPACE_API_KEY'),
     ],
 
+    'browsershot' => [
+        'chrome_path' => env('CHROME_PATH'),
+        'node_binary' => env('NODE_BINARY'),
+    ],
+
 ];
