@@ -73,6 +73,7 @@ class PageController extends Controller
                 'quick_response' => [
                     'enabled' => $page->quick_response_enabled,
                     'send_link' => $page->quick_response_send_link,
+                    'send_screenshot' => $page->quick_response_send_screenshot,
                     'message' => $page->quick_response_message,
                     'buttons' => collect($page->quick_response_buttons ?? [])
                         ->filter(fn ($btn) => filled($btn['text'] ?? null) && filled($btn['url'] ?? null))

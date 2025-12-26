@@ -93,6 +93,7 @@ class MarkdownMigrationService
             'extension' => pathinfo($filePath, PATHINFO_EXTENSION),
             'quick_response_enabled' => $frontmatter['quickResponseEnabled'] ?? false,
             'quick_response_send_link' => $frontmatter['quickResponseSendLink'] ?? true,
+            'quick_response_send_screenshot' => $frontmatter['quickResponseSendScreenshot'] ?? false,
             'quick_response_message' => $frontmatter['quickResponseMessage'] ?? null,
             'quick_response_buttons' => $frontmatter['quickResponseButtons'] ?? [],
             'quick_response_attachments' => $frontmatter['quickResponseAttachments'] ?? [],

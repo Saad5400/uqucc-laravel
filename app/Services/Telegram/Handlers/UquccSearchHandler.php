@@ -105,6 +105,7 @@ class UquccSearchHandler extends BaseHandler
         // Get the resolved content (auto-extracted or custom)
         $resolvedContent = $this->resolveQuickResponseContent($page);
         $replyMarkup = $this->buildReplyMarkup($page, $resolvedContent['buttons']);
+        $shouldSendScreenshot = ($page->quick_response_send_screenshot ?? false);
 
         // Check if there are attachments
         $attachments = collect($resolvedContent['attachments'])
@@ -115,6 +116,10 @@ class UquccSearchHandler extends BaseHandler
             // Send attachments with text as caption (shorter limit)
             $captionContent = $this->buildTextContent($page, $resolvedContent, isCaption: true);
             $this->sendQuickResponseAttachments($message, $page, $captionContent, $replyMarkup, $attachments);
+        } elseif ($shouldSendScreenshot) {
+            // Send screenshot with caption and optional buttons
+            $captionContent = $this->buildTextContent($page, $resolvedContent, isCaption: true);
+            $this->sendScreenshotWithText($message, $page, $captionContent, $replyMarkup);
         } elseif ($resolvedContent['message'] || $replyMarkup) {
             // Send text message with optional buttons (full message limit)
             $textContent = $this->buildTextContent($page, $resolvedContent, isCaption: false);
