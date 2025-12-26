@@ -430,7 +430,15 @@ class UquccSearchHandler extends BaseHandler
                 ->delay(500) // Wait 500ms after network idle to ensure DOM is fully rendered
                 ->timeout(60)
                 ->dismissDialogs()
-                ->setScreenshotType('webp', 90);
+                ->setScreenshotType('webp', 90)
+                ->evaluate("
+                    const style = document.createElement('style');
+                    style.textContent = `
+                        .screenshot-hidden { display: none !important; }
+                        html { scrollbar-gutter: auto !important; }
+                    `;
+                    document.head.appendChild(style);
+                ");
 
             // Set Chrome/Node paths from config if available (for Nixpacks deployment)
             if ($chromePath = config('services.browsershot.chrome_path')) {
