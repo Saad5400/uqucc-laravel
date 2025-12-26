@@ -265,8 +265,15 @@ class PageManagementHandler extends BaseHandler
 
         // Check if page exists using normalized comparison (handles همزة and ال variations)
         $normalizedName = ArabicNormalizer::normalize($name);
-        $existingPage = Page::all()->first(function ($page) use ($normalizedName) {
-            return ArabicNormalizer::normalize($page->title) === $normalizedName;
+        $normalizedNameWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($name);
+
+        $existingPage = Page::all()->first(function ($page) use ($normalizedName, $normalizedNameWithoutAl) {
+            $normalizedTitle = ArabicNormalizer::normalize($page->title);
+            $normalizedTitleWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($page->title);
+
+            // Match with full normalization or without ال
+            return $normalizedTitle === $normalizedName ||
+                   $normalizedTitleWithoutAl === $normalizedNameWithoutAl;
         });
 
         // Set toggle states based on existing page or defaults for new pages
@@ -572,10 +579,17 @@ class PageManagementHandler extends BaseHandler
     {
         $userId = $message->getFrom()->getId();
 
-        // Find page using normalized comparison
+        // Find page using normalized comparison (handles همزة and ال variations)
         $normalizedName = ArabicNormalizer::normalize($name);
-        $page = Page::all()->first(function ($page) use ($normalizedName) {
-            return ArabicNormalizer::normalize($page->title) === $normalizedName;
+        $normalizedNameWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($name);
+
+        $page = Page::all()->first(function ($page) use ($normalizedName, $normalizedNameWithoutAl) {
+            $normalizedTitle = ArabicNormalizer::normalize($page->title);
+            $normalizedTitleWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($page->title);
+
+            // Match with full normalization or without ال
+            return $normalizedTitle === $normalizedName ||
+                   $normalizedTitleWithoutAl === $normalizedNameWithoutAl;
         });
 
         if (! $page) {

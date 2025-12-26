@@ -42,6 +42,13 @@ class UquccSearchHandler extends BaseHandler
             return;
         }
 
+        // Check if user is in an active state (page management, login, etc.)
+        // Don't respond to queries if they're in the middle of another operation
+        $userId = $message->getFrom()->getId();
+        if ($this->hasActiveState($userId)) {
+            return;
+        }
+
         // Check if it matches "دليل <query>" or is one of the exception words
         $isCommand = false;
         $query = null;
@@ -68,6 +75,24 @@ class UquccSearchHandler extends BaseHandler
 
         // Check for smart search pages - ANY message that contains a smart page title
         $this->checkSmartSearch($message, $content);
+    }
+
+    /**
+     * Check if user has an active state (login, page management, etc.).
+     */
+    protected function hasActiveState(int $userId): bool
+    {
+        // Check for page management state
+        if (Cache::has('telegram_page_mgmt_state_'.$userId)) {
+            return true;
+        }
+
+        // Check for login state
+        if (Cache::has('telegram_login_state_'.$userId)) {
+            return true;
+        }
+
+        return false;
     }
 
     /**
