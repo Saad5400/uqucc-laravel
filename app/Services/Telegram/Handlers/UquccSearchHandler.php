@@ -743,9 +743,21 @@ class UquccSearchHandler extends BaseHandler
             $payload['chat_id'] = $chatId;
             $payload['media'] = json_encode($media);
 
-            // Note: sendMediaGroup doesn't support reply_markup parameter
-            // If buttons are provided, they will be ignored
-            $this->telegram->sendMediaGroup($payload);
+            if ($replyMarkup) {
+                $payload['reply_markup'] = $replyMarkup;
+            }
+
+            try {
+                $this->telegram->sendMediaGroup($payload);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to send media group with buttons, retrying without buttons', [
+                    'page_id' => $page->id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                unset($payload['reply_markup']);
+                $this->telegram->sendMediaGroup($payload);
+            }
         } else {
             // Single attachment - send as photo or document
             $attachment = $resolvedAttachments->first();
@@ -763,12 +775,29 @@ class UquccSearchHandler extends BaseHandler
                 $payload['reply_markup'] = $replyMarkup;
             }
 
-            if (str_starts_with($mime, 'image/')) {
-                $payload['photo'] = InputFile::create($fullPath, $filename);
-                $this->telegram->sendPhoto($payload);
-            } else {
-                $payload['document'] = InputFile::create($fullPath, $filename);
-                $this->telegram->sendDocument($payload);
+            try {
+                if (str_starts_with($mime, 'image/')) {
+                    $payload['photo'] = InputFile::create($fullPath, $filename);
+                    $this->telegram->sendPhoto($payload);
+                } else {
+                    $payload['document'] = InputFile::create($fullPath, $filename);
+                    $this->telegram->sendDocument($payload);
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Failed to send attachment with buttons, retrying without buttons', [
+                    'page_id' => $page->id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                unset($payload['reply_markup']);
+
+                if (str_starts_with($mime, 'image/')) {
+                    $payload['photo'] = $payload['photo'] ?? InputFile::create($fullPath, $filename);
+                    $this->telegram->sendPhoto($payload);
+                } else {
+                    $payload['document'] = $payload['document'] ?? InputFile::create($fullPath, $filename);
+                    $this->telegram->sendDocument($payload);
+                }
             }
         }
     }
