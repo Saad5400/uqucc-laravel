@@ -3,6 +3,7 @@
 namespace App\Services\Telegram;
 
 use Carbon\Carbon;
+use GeniusTS\HijriDate\Hijri;
 
 class ContentParser
 {
@@ -215,33 +216,32 @@ class ContentParser
             $year = $date->year;
         }
 
-        // Format with Arabic month names
-        $arabicMonths = [
-            1 => 'يناير', 2 => 'فبراير', 3 => 'مارس', 4 => 'أبريل',
-            5 => 'مايو', 6 => 'يونيو', 7 => 'يوليو', 8 => 'أغسطس',
-            9 => 'سبتمبر', 10 => 'أكتوبر', 11 => 'نوفمبر', 12 => 'ديسمبر',
+        // Get Arabic day name
+        $arabicDays = [
+            0 => 'الأحد',
+            1 => 'الاثنين',
+            2 => 'الثلاثاء',
+            3 => 'الأربعاء',
+            4 => 'الخميس',
+            5 => 'الجمعة',
+            6 => 'السبت',
         ];
+        $dayName = $arabicDays[$date->dayOfWeek];
 
-        $formattedDate = $day.' '.$arabicMonths[$month].' '.$year;
+        // Format Gregorian date as YYYY-MM-DD
+        $gregorianFormatted = sprintf('%04d-%02d-%02d', $year, $month, $day);
 
-        // Add time if provided
-        if (isset($matches[4]) && isset($matches[5])) {
-            $hour = (int) $matches[4];
-            $minute = str_pad($matches[5], 2, '0', STR_PAD_LEFT);
-            $period = $matches[6] ?? null;
+        // Convert to Hijri and format as YYYY-MM-DD
+        $hijri = Hijri::convertToHijri($gregorianFormatted);
+        $hijriFormatted = sprintf('%04d-%02d-%02d', $hijri->year, $hijri->month, $hijri->day);
 
-            if ($period) {
-                $periodArabic = in_array($period, ['ص', 'AM']) ? 'ص' : 'م';
-                $formattedDate .= ' - '.$hour.':'.$minute.' '.$periodArabic;
-            } else {
-                $formattedDate .= ' - '.$hour.':'.$minute;
-            }
-        }
+        // Build formatted date: Day [Hijri] [Gregorian] [Countdown]
+        $formattedDate = "{$dayName} [{$hijriFormatted}هـ] [{$gregorianFormatted}مـ]";
 
         // Calculate countdown
         $countdown = $this->calculateCountdown($date);
         if ($countdown) {
-            $formattedDate .= ' ('.$countdown.')';
+            $formattedDate .= " [{$countdown}]";
         }
 
         return $formattedDate;
@@ -319,7 +319,7 @@ class ContentParser
             return 'الآن';
         }
 
-        return 'باقي '.implode(' و ', $parts);
+        return 'بعد '.implode(' و ', $parts);
     }
 
     /**
