@@ -133,12 +133,14 @@ class ContentParser
      * Gregorian format: {Y-M-D H:m [ص/م]}
      * Hijri format: <Y-M-D H:m [ص/م]>
      * Recurring: * for year/month/day
+     * Day-of-week rules: {Y-M-D|dayName:offset|dayName:offset}
+     *   Example: {*-*-27|جمعة:-1|سبت:+1} shifts Friday to Thursday, Saturday to Sunday
      */
     public function processDates(string $content): string
     {
-        // Process Gregorian dates {Y-M-D H:m [ص/م]} or {Y-M-D}
+        // Process Gregorian dates {Y-M-D H:m [ص/م]} or {Y-M-D} with optional day-of-week rules
         $content = preg_replace_callback(
-            '/\{(\*|\d{4})-(\*|\d{1,2})-(\*|\d{1,2})(?:\s+(\d{1,2}):(\d{2})(?:\s*(ص|م|AM|PM))?)?\}/',
+            '/\{(\*|\d{4})-(\*|\d{1,2})-(\*|\d{1,2})(?:\s+(\d{1,2}):(\d{2})(?:\s*(ص|م|AM|PM))?)?((?:\|[^|}]+:[+-]?\d+)*)\}/',
             function ($matches) {
                 return $this->formatGregorianDate($matches);
             },
@@ -167,6 +169,7 @@ class ContentParser
         $yearPattern = $matches[1];
         $monthPattern = $matches[2];
         $dayPattern = $matches[3];
+        $rulesString = $matches[7] ?? '';
 
         // Start with current date values for wildcards
         $year = $yearPattern === '*' ? $now->year : (int) $yearPattern;
@@ -202,6 +205,15 @@ class ContentParser
         $daysInMonth = Carbon::create($year, $month, 1)->daysInMonth;
         $day = min($day, $daysInMonth);
         $date = Carbon::create($year, $month, $day);
+
+        // Apply day-of-week rules if provided
+        if (! empty($rulesString)) {
+            $date = $this->applyDayOfWeekRules($date, $rulesString);
+            // Update day/month/year from adjusted date for formatting
+            $day = $date->day;
+            $month = $date->month;
+            $year = $date->year;
+        }
 
         // Format with Arabic month names
         $arabicMonths = [
@@ -304,10 +316,60 @@ class ContentParser
         }
 
         if (empty($parts)) {
-            return 'اليوم';
+            return 'الآن';
         }
 
         return 'باقي '.implode(' و ', $parts);
+    }
+
+    /**
+     * Apply day-of-week adjustment rules to a date.
+     *
+     * Rules format: |dayName:offset|dayName:offset
+     * Example: |جمعة:-1|سبت:+1 (Friday subtract 1 day, Saturday add 1 day)
+     *
+     * Arabic day names:
+     * - الأحد (Sunday) - 0
+     * - الاثنين (Monday) - 1
+     * - الثلاثاء (Tuesday) - 2
+     * - الأربعاء (Wednesday) - 3
+     * - الخميس (Thursday) - 4
+     * - الجمعة (Friday) - 5
+     * - السبت (Saturday) - 6
+     */
+    protected function applyDayOfWeekRules(Carbon $date, string $rulesString): Carbon
+    {
+        // Map Arabic day names to Carbon day of week (0=Sunday, 6=Saturday)
+        $dayNameToNumber = [
+            'الأحد' => 0, 'الاحد' => 0, 'أحد' => 0, 'احد' => 0,
+            'الاثنين' => 1, 'الإثنين' => 1, 'اثنين' => 1, 'إثنين' => 1,
+            'الثلاثاء' => 2, 'ثلاثاء' => 2,
+            'الأربعاء' => 3, 'الاربعاء' => 3, 'أربعاء' => 3, 'اربعاء' => 3,
+            'الخميس' => 4, 'خميس' => 4,
+            'الجمعة' => 5, 'جمعة' => 5,
+            'السبت' => 6, 'سبت' => 6,
+        ];
+
+        // Parse rules from string (format: |dayName:offset|dayName:offset)
+        $rules = [];
+        preg_match_all('/\|([^|:]+):([+-]?\d+)/', $rulesString, $ruleMatches, PREG_SET_ORDER);
+
+        foreach ($ruleMatches as $ruleMatch) {
+            $dayName = trim($ruleMatch[1]);
+            $offset = (int) $ruleMatch[2];
+
+            if (isset($dayNameToNumber[$dayName])) {
+                $rules[$dayNameToNumber[$dayName]] = $offset;
+            }
+        }
+
+        // Check if current day of week has a rule
+        $currentDayOfWeek = $date->dayOfWeek;
+        if (isset($rules[$currentDayOfWeek])) {
+            $date = $date->copy()->addDays($rules[$currentDayOfWeek]);
+        }
+
+        return $date;
     }
 
     /**
