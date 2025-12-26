@@ -115,6 +115,12 @@ class PageForm
                             ->label('إرسال رابط الصفحة مع الرد')
                             ->default(true),
 
+                        Toggle::make('quick_response_send_screenshot')
+                            ->label('إرسال لقطة شاشة للصفحة')
+                            ->reactive()
+                            ->helperText('عند التفعيل، سيتم إرسال لقطة شاشة من الصفحة مع المحتوى المخصص')
+                            ->default(false),
+
                         Toggle::make('quick_response_customize_message')
                             ->label('تخصيص نص الرد')
                             ->reactive()
