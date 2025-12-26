@@ -301,9 +301,6 @@ class PageManagementHandler extends BaseHandler
             $activeEntities = $captionEntities;
         }
 
-        // Apply formatting from entities to get HTML-formatted text
-        $formattedContent = $this->applyEntitiesFormatting($textContent, $activeEntities);
-
         // Handle attachment if sent
         $attachments = [];
         if ($photo) {
@@ -337,15 +334,17 @@ class PageManagementHandler extends BaseHandler
             return;
         }
 
-        // Parse content for buttons (don't process dates - save raw format)
-        // Use formatted content for the message
-        $parsed = $this->contentParser->parseContentWithoutDates($formattedContent ?? '');
+        // Parse buttons from RAW text first (before formatting) - URLs must be plain
+        $parsed = $this->contentParser->parseContentWithoutDates($textContent ?? '');
 
         // Convert buttons to quick response format
         $buttons = $this->contentParser->convertButtonsToQuickResponseFormat(
             $parsed['buttons'],
             $parsed['row_layout']
         );
+
+        // Now apply HTML formatting from entities to the message (after buttons are extracted)
+        $formattedMessage = $this->applyEntitiesFormatting($parsed['message'], $activeEntities);
 
         // Get toggle states
         $smartSearch = $state['smart_search'] ?? false;
@@ -361,7 +360,7 @@ class PageManagementHandler extends BaseHandler
                     'smart_search' => $smartSearch,
                     'hidden_from_bot' => false,
                     'quick_response_auto_extract' => false,
-                    'quick_response_message' => $parsed['message'],
+                    'quick_response_message' => $formattedMessage,
                     'quick_response_buttons' => $buttons,
                     'quick_response_send_link' => $sendLink,
                 ];
@@ -402,7 +401,7 @@ class PageManagementHandler extends BaseHandler
                     'hidden_from_bot' => false,
                     'smart_search' => $smartSearch,
                     'quick_response_auto_extract' => false,
-                    'quick_response_message' => $parsed['message'],
+                    'quick_response_message' => $formattedMessage,
                     'quick_response_buttons' => $buttons,
                     'quick_response_attachments' => $attachments,
                     'quick_response_send_link' => $sendLink,
