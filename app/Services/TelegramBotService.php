@@ -9,6 +9,9 @@ use App\Services\Telegram\Handlers\UquccListHandler;
 use App\Services\Telegram\Handlers\PythonExecutionHandler;
 use App\Services\Telegram\Handlers\JavaExecutionHandler;
 use App\Services\Telegram\Handlers\DeepSeekChatHandler;
+use App\Services\Telegram\Handlers\InfoHandler;
+use App\Services\Telegram\Handlers\PrivateForwardHandler;
+use App\Services\Telegram\Handlers\InviteLinkHandler;
 use App\Services\QuickResponseService;
 use App\Services\TelegramMarkdownService;
 use App\Services\TipTapContentExtractor;
@@ -30,6 +33,9 @@ class TelegramBotService
             new PythonExecutionHandler($this->telegram),
             new JavaExecutionHandler($this->telegram),
             new DeepSeekChatHandler($this->telegram),
+            new InfoHandler($this->telegram),
+            new PrivateForwardHandler($this->telegram),
+            new InviteLinkHandler($this->telegram),
         ];
     }
 
