@@ -59,8 +59,43 @@ class UquccSearchHandler extends BaseHandler
             return;
         }
 
+        // Check for pages that don't require prefix - direct title match
+        $directMatch = $this->checkDirectTitleMatch($message, $content);
+        if ($directMatch) {
+            return;
+        }
+
         // Check for smart search pages - ANY message that contains a smart page title
         $this->checkSmartSearch($message, $content);
+    }
+
+    /**
+     * Check if the message matches a page title that doesn't require prefix.
+     */
+    protected function checkDirectTitleMatch(Message $message, string $content): bool
+    {
+        $needle = mb_strtolower($content);
+
+        // Search for pages that don't require prefix and match the title
+        $page = $this->quickResponses->getCachedResponses()->first(function (Page $page) use ($needle) {
+            // Skip pages that require prefix
+            if ($page->requires_prefix ?? true) {
+                return false;
+            }
+
+            $title = mb_strtolower($page->title);
+
+            // Exact match for direct title search
+            return $needle === $title;
+        });
+
+        if ($page) {
+            $this->sendPageResult($message, $page);
+
+            return true;
+        }
+
+        return false;
     }
 
     /**
