@@ -37,19 +37,19 @@ class PageManagementHandler extends BaseHandler
             return;
         }
 
-        // Check for cancel command first
-        if ($text === 'إلغاء') {
-            $state = $this->getState($userId);
+        // Check if user is in a page management state
+        $state = $this->getState($userId);
+
+        // Check for cancel command - only cancel if there's an active state
+        if ($text === 'إلغاء' || $text === 'الغاء') {
             if ($state) {
                 $this->clearState($userId);
                 $this->reply($message, 'تم إلغاء العملية.');
-
-                return;
             }
-        }
+            // Don't respond if no active state - let other handlers handle it
 
-        // Check if user is in a page management state
-        $state = $this->getState($userId);
+            return;
+        }
 
         if ($state) {
             $this->handleState($message, $state);
@@ -57,9 +57,9 @@ class PageManagementHandler extends BaseHandler
             return;
         }
 
-        // Check for management commands
+        // Check for management commands (with and without hamza)
         match (true) {
-            $text === 'أضف صفحة' => $this->startAddPage($message),
+            $text === 'أضف صفحة' || $text === 'اضف صفحة' => $this->startAddPage($message),
             $text === 'حذف صفحة' => $this->startDeletePage($message),
             $text === 'الفهرس' || $text === 'فهرس الصفحات' => $this->showIndex($message),
             $text === 'الصفحات الذكية' => $this->showSmartPages($message),
@@ -478,6 +478,8 @@ class PageManagementHandler extends BaseHandler
 
     /**
      * Apply Telegram entities formatting to convert to HTML.
+     * Note: Only applies to entities that fit within the text bounds.
+     * Skips 'url' type since plain URLs auto-link in Telegram HTML mode.
      */
     protected function applyEntitiesFormatting(?string $text, $entities): string
     {
@@ -492,25 +494,43 @@ class PageManagementHandler extends BaseHandler
             return $text;
         }
 
+        $textLength = mb_strlen($text, 'UTF-8');
+
+        // Filter valid entities that fit within text bounds and are supported
+        $validEntities = array_filter($entitiesArray, function ($entity) use ($textLength) {
+            $type = is_array($entity) ? ($entity['type'] ?? '') : ($entity->type ?? '');
+            $offset = is_array($entity) ? ($entity['offset'] ?? 0) : ($entity->offset ?? 0);
+            $length = is_array($entity) ? ($entity['length'] ?? 0) : ($entity->length ?? 0);
+
+            // Skip 'url' type - plain URLs auto-link in Telegram HTML mode
+            // Skip entities that would be out of bounds (happens after button removal)
+            $supportedTypes = ['bold', 'italic', 'underline', 'strikethrough', 'code', 'pre', 'text_link'];
+
+            return in_array($type, $supportedTypes) && $offset >= 0 && ($offset + $length) <= $textLength;
+        });
+
+        if (empty($validEntities)) {
+            return $text;
+        }
+
         // Sort entities by offset in reverse order to apply from end to start
         // This prevents offset shifting when inserting tags
-        usort($entitiesArray, function ($a, $b) {
+        usort($validEntities, function ($a, $b) {
             $offsetA = is_array($a) ? ($a['offset'] ?? 0) : ($a->offset ?? 0);
             $offsetB = is_array($b) ? ($b['offset'] ?? 0) : ($b->offset ?? 0);
 
             return $offsetB - $offsetA;
         });
 
-        // Convert text to array of UTF-16 code units for proper offset handling
         $result = $text;
 
-        foreach ($entitiesArray as $entity) {
+        foreach ($validEntities as $entity) {
             $type = is_array($entity) ? ($entity['type'] ?? '') : ($entity->type ?? '');
             $offset = is_array($entity) ? ($entity['offset'] ?? 0) : ($entity->offset ?? 0);
             $length = is_array($entity) ? ($entity['length'] ?? 0) : ($entity->length ?? 0);
             $url = is_array($entity) ? ($entity['url'] ?? null) : ($entity->url ?? null);
 
-            // Extract the text portion using UTF-16 offset/length
+            // Extract the text portion
             $beforeText = mb_substr($result, 0, $offset, 'UTF-8');
             $entityText = mb_substr($result, $offset, $length, 'UTF-8');
             $afterText = mb_substr($result, $offset + $length, null, 'UTF-8');
@@ -524,7 +544,6 @@ class PageManagementHandler extends BaseHandler
                 'code' => "<code>{$entityText}</code>",
                 'pre' => "<pre>{$entityText}</pre>",
                 'text_link' => $url ? "<a href=\"{$url}\">{$entityText}</a>" : $entityText,
-                'url' => "<a href=\"{$entityText}\">{$entityText}</a>",
                 default => $entityText,
             };
 

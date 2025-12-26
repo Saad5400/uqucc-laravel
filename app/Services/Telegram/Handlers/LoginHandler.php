@@ -24,16 +24,19 @@ class LoginHandler extends BaseHandler
             return;
         }
 
-        // Check for cancel command
-        if ($text === 'إلغاء') {
-            $this->clearState($userId);
-            $this->reply($message, 'تم إلغاء عملية تسجيل الدخول.');
+        // Check if user is in a login state
+        $state = $this->getState($userId);
+
+        // Check for cancel command - only cancel if there's an active login state
+        if ($text === 'إلغاء' || $text === 'الغاء') {
+            if ($state) {
+                $this->clearState($userId);
+                $this->reply($message, 'تم إلغاء عملية تسجيل الدخول.');
+            }
+            // Don't respond if no active state - let other handlers handle it
 
             return;
         }
-
-        // Check if user is in a login state
-        $state = $this->getState($userId);
 
         if ($state) {
             $this->handleLoginState($message, $state);
@@ -41,8 +44,8 @@ class LoginHandler extends BaseHandler
             return;
         }
 
-        // Check for login command
-        if ($text === 'تسجيل دخول' || $text === 'تسجيل الدخول') {
+        // Check for login command (with and without hamza)
+        if (in_array($text, ['تسجيل دخول', 'تسجيل الدخول'])) {
             // Check if already linked
             $existingUser = User::findByTelegramId((string) $userId);
             if ($existingUser) {
