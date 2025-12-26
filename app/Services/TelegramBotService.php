@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Services\Telegram\ContentParser;
 use App\Services\Telegram\Handlers\DeepSeekChatHandler;
 use App\Services\Telegram\Handlers\EditLinkHandler;
+use App\Services\Telegram\Handlers\HelpHandler;
 use App\Services\Telegram\Handlers\InfoHandler;
 use App\Services\Telegram\Handlers\InviteLinkHandler;
 use App\Services\Telegram\Handlers\JavaExecutionHandler;
@@ -34,6 +35,7 @@ class TelegramBotService
 
         // Initialize handlers
         $this->handlers = [
+            new HelpHandler($this->telegram),
             new LoginHandler($this->telegram),
             $this->pageManagementHandler,
             new EditLinkHandler($this->telegram),
