@@ -2,6 +2,7 @@
 
 namespace App\Services\Telegram\Handlers;
 
+use App\Helpers\ArabicNormalizer;
 use App\Models\Page;
 use App\Services\QuickResponseService;
 use App\Services\Telegram\ContentParser;
@@ -71,22 +72,34 @@ class UquccSearchHandler extends BaseHandler
 
     /**
      * Check if the message matches a page title that doesn't require prefix.
+     * Uses Arabic normalization to handle همزة and ال variations.
      */
     protected function checkDirectTitleMatch(Message $message, string $content): bool
     {
-        $needle = mb_strtolower($content);
+        $normalizedQuery = ArabicNormalizer::normalize($content);
+        $normalizedQueryWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($content);
 
         // Search for pages that don't require prefix and match the title
-        $page = $this->quickResponses->getCachedResponses()->first(function (Page $page) use ($needle) {
+        $page = $this->quickResponses->getCachedResponses()->first(function (Page $page) use ($normalizedQuery, $normalizedQueryWithoutAl) {
             // Skip pages that require prefix
             if ($page->requires_prefix ?? true) {
                 return false;
             }
 
-            $title = mb_strtolower($page->title);
+            $normalizedTitle = ArabicNormalizer::normalize($page->title);
+            $normalizedTitleWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($page->title);
 
-            // Exact match for direct title search
-            return $needle === $title;
+            // Exact match with normalization
+            if ($normalizedTitle === $normalizedQuery) {
+                return true;
+            }
+
+            // Match allowing ال variations (e.g., "هياكل" matches "الهياكل")
+            if ($normalizedTitleWithoutAl === $normalizedQueryWithoutAl) {
+                return true;
+            }
+
+            return false;
         });
 
         if ($page) {
@@ -100,21 +113,22 @@ class UquccSearchHandler extends BaseHandler
 
     /**
      * Check if the message contains a smart search page title.
+     * Uses Arabic normalization to handle همزة and ال variations.
      */
     protected function checkSmartSearch(Message $message, string $content): void
     {
-        $needle = mb_strtolower($content);
+        $normalizedContent = ArabicNormalizer::normalize($content);
 
         // Search through all cached responses for smart search pages
-        $page = $this->quickResponses->getCachedResponses()->first(function (Page $page) use ($needle) {
+        $page = $this->quickResponses->getCachedResponses()->first(function (Page $page) use ($normalizedContent) {
             if (! $page->smart_search) {
                 return false;
             }
 
-            $title = mb_strtolower($page->title);
+            $normalizedTitle = ArabicNormalizer::normalize($page->title);
 
-            // Check if the message contains the page title
-            return str_contains($needle, $title);
+            // Check if the message contains the page title (using normalized comparison)
+            return str_contains($normalizedContent, $normalizedTitle);
         });
 
         if ($page) {

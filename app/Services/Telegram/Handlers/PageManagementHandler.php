@@ -2,6 +2,7 @@
 
 namespace App\Services\Telegram\Handlers;
 
+use App\Helpers\ArabicNormalizer;
 use App\Models\Page;
 use App\Models\User;
 use App\Services\Telegram\ContentParser;
@@ -262,8 +263,11 @@ class PageManagementHandler extends BaseHandler
             return;
         }
 
-        // Check if page exists (for edit mode)
-        $existingPage = Page::where('title', $name)->first();
+        // Check if page exists using normalized comparison (handles همزة and ال variations)
+        $normalizedName = ArabicNormalizer::normalize($name);
+        $existingPage = Page::all()->first(function ($page) use ($normalizedName) {
+            return ArabicNormalizer::normalize($page->title) === $normalizedName;
+        });
 
         // Set toggle states based on existing page or defaults for new pages
         if ($existingPage) {
@@ -568,10 +572,14 @@ class PageManagementHandler extends BaseHandler
     {
         $userId = $message->getFrom()->getId();
 
-        $page = Page::where('title', $name)->first();
+        // Find page using normalized comparison
+        $normalizedName = ArabicNormalizer::normalize($name);
+        $page = Page::all()->first(function ($page) use ($normalizedName) {
+            return ArabicNormalizer::normalize($page->title) === $normalizedName;
+        });
 
         if (! $page) {
-            $this->reply($message, "لم يتم العثور على صفحة بهذا الاسم.\n\nأرسل اسم الصفحة كما هو مكتوب في الفهرس:");
+            $this->reply($message, "لم يتم العثور على صفحة بهذا الاسم.\n\nأرسل اسم الصفحة:");
 
             return;
         }
