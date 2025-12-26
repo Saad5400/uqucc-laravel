@@ -431,14 +431,9 @@ class UquccSearchHandler extends BaseHandler
                 ->timeout(60)
                 ->dismissDialogs()
                 ->setScreenshotType('webp', 90)
-                ->evaluate("
-                    const style = document.createElement('style');
-                    style.textContent = `
-                        .screenshot-hidden { display: none !important; }
-                        html { scrollbar-gutter: auto !important; }
-                    `;
-                    document.head.appendChild(style);
-                ");
+                ->setOption('addStyleTag', json_encode([
+                    'content' => '.screenshot-hidden { display: none !important; } html { scrollbar-gutter: auto !important; }',
+                ]));
 
             // Set Chrome/Node paths from config if available (for Nixpacks deployment)
             if ($chromePath = config('services.browsershot.chrome_path')) {
