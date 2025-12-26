@@ -217,9 +217,9 @@ class UquccSearchHandler extends BaseHandler
     }
 
     // Content limits for auto-extracted content (shorter to keep messages readable)
-    protected const AUTO_MESSAGE_LIMIT = 1500;
+    protected const AUTO_MESSAGE_LIMIT = 2500;
 
-    protected const AUTO_CAPTION_LIMIT = 600;
+    protected const AUTO_CAPTION_LIMIT = 1000;
 
     // Content limits for user-customized content (close to Telegram max)
     protected const CUSTOM_MESSAGE_LIMIT = 4000;
