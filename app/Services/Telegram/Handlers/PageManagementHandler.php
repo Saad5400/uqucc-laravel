@@ -33,9 +33,9 @@ class PageManagementHandler extends BaseHandler
         $text = trim($message->getText() ?? '');
 
         // Only handle private messages for page management
-        if ($message->getChat()->getType() !== 'private') {
-            return;
-        }
+        // if ($message->getChat()->getType() !== 'private') {
+        //     return;
+        // }
 
         // Check if user is in a page management state
         $state = $this->getState($userId);
