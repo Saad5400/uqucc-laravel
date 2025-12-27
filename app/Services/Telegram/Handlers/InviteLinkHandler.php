@@ -22,6 +22,8 @@ class InviteLinkHandler extends BaseHandler
 
     protected function createInviteLink(Message $message): void
     {
+        $this->trackCommand($message, 'رابط');
+
         $userId = $message->getFrom()->getId();
         $chatId = $message->getChat()->getId();
         $chatType = $message->getChat()->getType();
@@ -87,10 +89,31 @@ class InviteLinkHandler extends BaseHandler
 
                 // Confirm in group that link was sent
                 $displayUsername = $user->getUsername() ? '@' . $user->getUsername() : $username;
-                $this->reply(
-                    $message,
-                    "✅ تم إرسال رابط دعوة خاص إلى {$displayUsername} في الرسائل الخاصة"
-                );
+                $confirmationMessage = $this->telegram->sendMessage([
+                    'chat_id' => $chatId,
+                    'text' => "✅ تم إرسال رابط دعوة خاص إلى {$displayUsername} في الرسائل الخاصة",
+                    'reply_to_message_id' => $message->getMessageId(),
+                ]);
+
+                // Delete both the user message and confirmation message after 5 seconds
+                sleep(5);
+                try {
+                    $this->telegram->deleteMessage([
+                        'chat_id' => $chatId,
+                        'message_id' => $message->getMessageId(),
+                    ]);
+                } catch (\Exception $e) {
+                    // Silently fail if we can't delete the user's message
+                }
+
+                try {
+                    $this->telegram->deleteMessage([
+                        'chat_id' => $chatId,
+                        'message_id' => $confirmationMessage->getMessageId(),
+                    ]);
+                } catch (\Exception $e) {
+                    // Silently fail if we can't delete the confirmation message
+                }
 
             } catch (TelegramSDKException $e) {
                 $errorMsg = strtolower($e->getMessage());

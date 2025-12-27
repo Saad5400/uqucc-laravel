@@ -2,6 +2,8 @@
 
 namespace App\Services\Telegram\Handlers;
 
+use App\Models\BotCommandStat;
+use App\Models\User;
 use Telegram\Bot\Api;
 use Telegram\Bot\Objects\Message;
 
@@ -18,6 +20,26 @@ abstract class BaseHandler
 
     abstract public function handle(Message $message): void;
 
+    /**
+     * Track command usage in statistics
+     */
+    protected function trackCommand(Message $message, string $commandName): void
+    {
+        try {
+            $telegramId = (string) $message->getFrom()->getId();
+            $user = User::findByTelegramId($telegramId);
+
+            BotCommandStat::track(
+                commandName: $commandName,
+                userId: $user?->id,
+                chatType: $message->getChat()->getType(),
+                chatId: $message->getChat()->getId()
+            );
+        } catch (\Exception $e) {
+            // Silently fail - don't break the bot
+        }
+    }
+
     protected function matches(Message $message, string $pattern): bool
     {
         $text = $message->getText();
@@ -32,6 +54,7 @@ abstract class BaseHandler
         $params = [
             'chat_id' => $message->getChat()->getId(),
             'text' => $text,
+            'reply_to_message_id' => $message->getMessageId(),
         ];
 
         if ($parseMode) {
@@ -56,6 +79,7 @@ abstract class BaseHandler
         $params = [
             'chat_id' => $message->getChat()->getId(),
             'photo' => $photoUrl,
+            'reply_to_message_id' => $message->getMessageId(),
         ];
 
         if ($caption) {
