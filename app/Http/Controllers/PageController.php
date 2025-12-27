@@ -34,7 +34,7 @@ class PageController extends Controller
 
         $page = Page::where('slug', $normalizedSlug)
             ->where('hidden', false)
-            ->with(['authors', 'children' => function ($query) {
+            ->with(['users', 'children' => function ($query) {
                 $query->where('hidden', false)->orderBy('order');
             }])
             ->firstOrFail();
@@ -57,11 +57,12 @@ class PageController extends Controller
                 'title' => $page->title,
                 'html_content' => $page->html_content,
                 'icon' => $page->icon,
-                'authors' => $page->authors->map(fn ($author) => [
-                    'id' => $author->id,
-                    'name' => $author->name,
-                    'username' => $author->username,
-                    'url' => $author->url,
+                'users' => $page->users->map(fn ($user) => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'username' => $user->username,
+                    'url' => $user->url,
+                    'avatar' => $user->avatar,
                 ])->toArray(),
                 'children' => $page->children->map(fn ($child) => [
                     'id' => $child->id,

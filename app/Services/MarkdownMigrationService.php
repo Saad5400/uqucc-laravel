@@ -2,8 +2,8 @@
 
 namespace App\Services;
 
-use App\Models\Author;
 use App\Models\Page;
+use App\Models\User;
 use Illuminate\Support\Facades\Log;
 use League\CommonMark\CommonMarkConverter;
 use League\CommonMark\Environment\Environment;
@@ -114,10 +114,10 @@ class MarkdownMigrationService
                 }
             }
 
-            // Attach authors
+            // Attach contributors (users)
             if (isset($frontmatter['authors']) && is_array($frontmatter['authors'])) {
-                $authorIds = Author::whereIn('username', $frontmatter['authors'])->pluck('id');
-                $page->authors()->sync($authorIds);
+                $userIds = User::whereIn('username', $frontmatter['authors'])->pluck('id');
+                $page->users()->sync($userIds);
             }
 
             $pageData['id'] = $page->id;

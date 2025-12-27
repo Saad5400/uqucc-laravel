@@ -2,10 +2,11 @@
 
 namespace App\Filament\Widgets;
 
-use App\Models\Author;
 use App\Models\Page;
+use App\Models\User;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
+use Illuminate\Support\Facades\DB;
 
 class StatsOverview extends StatsOverviewWidget
 {
@@ -14,7 +15,7 @@ class StatsOverview extends StatsOverviewWidget
         $totalPages = Page::count();
         $rootPages = Page::whereNull('parent_id')->count();
         $childPages = Page::whereNotNull('parent_id')->count();
-        $totalAuthors = Author::count();
+        $totalContributors = DB::table('page_user')->distinct('user_id')->count('user_id');
 
         // Get pages count from last 7 days for trend
         $pagesLastWeek = Page::where('created_at', '>=', now()->subWeek())->count();
@@ -37,8 +38,8 @@ class StatsOverview extends StatsOverviewWidget
                 ->descriptionIcon('heroicon-m-document-duplicate')
                 ->color('warning'),
 
-            Stat::make('المؤلفون', $totalAuthors)
-                ->description('عدد كتاب المحتوى')
+            Stat::make('المساهمون', $totalContributors)
+                ->description('عدد المستخدمين المساهمين في المحتوى')
                 ->descriptionIcon('heroicon-m-users')
                 ->color('info'),
         ];

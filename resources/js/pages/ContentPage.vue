@@ -16,11 +16,12 @@ defineOptions({
     layout: DocsLayout,
 });
 
-interface Author {
+interface User {
     id: number;
     name: string;
-    username: string;
+    username?: string;
     url?: string;
+    avatar?: string;
 }
 
 interface ChildPage {
@@ -36,7 +37,7 @@ interface PageData {
     title: string;
     html_content: string | Record<string, unknown> | null;
     icon?: string;
-    authors: Author[];
+    users: User[];
     children: ChildPage[];
     catalog: ChildPage[];
     quick_response?: {
@@ -117,19 +118,19 @@ usePage().props.title = props.page.title;
             </template>
         </div>
 
-        <!-- Authors -->
-        <div v-if="page.authors.length > 0" class="mt-8 flex gap-2 items-center text-sm text-muted-foreground">
+        <!-- Authors/Contributors -->
+        <div v-if="page.users.length > 0" class="mt-8 flex gap-2 items-center text-sm text-muted-foreground">
             <span>المساهمون:</span>
             <div class="flex gap-2 flex-wrap">
                 <a
-                    v-for="author in page.authors"
-                    :key="author.id"
-                    :href="author.url || '#'"
+                    v-for="user in page.users"
+                    :key="user.id"
+                    :href="user.url || '#'"
                     target="_blank"
                     rel="noopener noreferrer"
                     class="text-primary hover:underline"
                 >
-                    {{ author.name }}
+                    {{ user.name }}
                 </a>
             </div>
         </div>
