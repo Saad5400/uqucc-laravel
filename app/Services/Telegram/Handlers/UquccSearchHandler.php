@@ -146,6 +146,11 @@ class UquccSearchHandler extends BaseHandler
                 'chat_id' => $message->getChat()->getId(),
                 'message_id' => $sentMessage->getMessageId(),
             ]);
+            // Also delete the user's original message
+            $this->telegram->deleteMessage([
+                'chat_id' => $message->getChat()->getId(),
+                'message_id' => $message->getMessageId(),
+            ]);
 
             return;
         }
