@@ -51,10 +51,15 @@ abstract class BaseHandler
 
     protected function reply(Message $message, string $text, ?string $parseMode = null): Message
     {
+        // If the user's message is a reply, reply to the original message instead
+        $replyToMessageId = $message->getReplyToMessage()
+            ? $message->getReplyToMessage()->getMessageId()
+            : $message->getMessageId();
+
         $params = [
             'chat_id' => $message->getChat()->getId(),
             'text' => $text,
-            'reply_to_message_id' => $message->getMessageId(),
+            'reply_to_message_id' => $replyToMessageId,
         ];
 
         if ($parseMode) {
@@ -76,10 +81,15 @@ abstract class BaseHandler
 
     protected function replyPhoto(Message $message, string $photoUrl, ?string $caption = null): Message
     {
+        // If the user's message is a reply, reply to the original message instead
+        $replyToMessageId = $message->getReplyToMessage()
+            ? $message->getReplyToMessage()->getMessageId()
+            : $message->getMessageId();
+
         $params = [
             'chat_id' => $message->getChat()->getId(),
             'photo' => $photoUrl,
-            'reply_to_message_id' => $message->getMessageId(),
+            'reply_to_message_id' => $replyToMessageId,
         ];
 
         if ($caption) {
