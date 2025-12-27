@@ -6,6 +6,7 @@ use App\Helpers\ArabicNormalizer;
 use App\Models\Page;
 use App\Models\User;
 use App\Services\Telegram\ContentParser;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Telegram\Bot\Api;
@@ -399,6 +400,17 @@ class PageManagementHandler extends BaseHandler
                 // Update existing page
                 $page = Page::find($state['existing_page_id']);
 
+                // Verify the page still exists
+                if (! $page) {
+                    $response = $this->reply($message, "❌ الصفحة المراد تعديلها لم تعد موجودة.\n\nسيتم إنشاء صفحة جديدة بدلاً من ذلك.\n\nأرسل اسم الصفحة الجديدة أو 'إلغاء' للإلغاء:");
+                    $state['message_ids'][] = $response->getMessageId();
+                    $state['step'] = 'awaiting_name';
+                    unset($state['existing_page_id']);
+                    $this->setState($userId, $state);
+
+                    return;
+                }
+
                 $updateData = [
                     'smart_search' => $smartSearch,
                     'requires_prefix' => $requiresPrefix,
@@ -426,12 +438,19 @@ class PageManagementHandler extends BaseHandler
                 // Create new page
                 $slug = '/'.Str::slug($state['name']);
 
-                // Generate unique slug if needed
+                // Generate unique slug with better conflict resolution
                 $baseSlug = $slug;
                 $counter = 1;
-                while (Page::where('slug', $slug)->exists()) {
+                $maxAttempts = 100;
+
+                while (Page::where('slug', $slug)->exists() && $counter < $maxAttempts) {
                     $slug = $baseSlug.'-'.$counter;
                     $counter++;
+                }
+
+                // If we exhausted attempts, generate a unique slug with timestamp
+                if (Page::where('slug', $slug)->exists()) {
+                    $slug = $baseSlug.'-'.time();
                 }
 
                 // New pages: hidden from website unless update_main_content is ON
@@ -469,13 +488,100 @@ class PageManagementHandler extends BaseHandler
 
             // Delete all messages from the interaction
             $this->deleteAllInteractionMessages($message->getChat()->getId(), $state['message_ids']);
+        } catch (QueryException $e) {
+            // Handle database-specific errors
+            $errorCode = $e->getCode();
+            $errorMessage = $e->getMessage();
+
+            // Check if it's a slug uniqueness error
+            $isSlugError = (in_array($errorCode, ['23505', '23000']) || str_contains($errorMessage, 'unique constraint') || str_contains($errorMessage, 'Duplicate entry')) && str_contains($errorMessage, 'slug');
+
+            if ($isSlugError && ! $state['existing_page_id']) {
+                // Slug conflict on new page creation - reset to name input
+                $response = $this->reply($message, "❌ تعذر حفظ الصفحة بسبب تعارض في الرابط.\n\n".
+                                                   "السبب: يوجد صفحة أخرى بنفس الرابط المُنشأ من الاسم '{$state['name']}'.\n\n".
+                                                   "الرجاء إدخال اسم مختلف للصفحة:\n\n".
+                                                   "(أرسل 'إلغاء' للإلغاء)");
+                $state['message_ids'][] = $response->getMessageId();
+
+                // Reset to name input state
+                $state['step'] = 'awaiting_name';
+                unset($state['name'], $state['existing_page_id']);
+
+                $this->setState($userId, $state);
+            } else {
+                // Other database errors
+                $userErrorMessage = $this->handleDatabaseError($e, $state);
+
+                $response = $this->reply($message, $userErrorMessage);
+                $state['message_ids'][] = $response->getMessageId();
+
+                // Keep state active so user can retry with different input
+                $this->setState($userId, $state);
+            }
+
+            // Don't delete messages - let user see the error and retry
         } catch (\Exception $e) {
-            $response = $this->reply($message, "حدث خطأ أثناء حفظ الصفحة: {$e->getMessage()}");
+            // Handle general errors
+            $response = $this->reply($message, "❌ حدث خطأ غير متوقع.\n\nالرجاء المحاولة مرة أخرى أو إرسال 'إلغاء' للإلغاء.\n\n(للمطورين: {$e->getMessage()})");
             $state['message_ids'][] = $response->getMessageId();
 
-            // Delete all messages even on error
-            $this->deleteAllInteractionMessages($message->getChat()->getId(), $state['message_ids']);
+            // Keep state active so user can retry
+            $this->setState($userId, $state);
+
+            // Don't delete messages - let user see the error and retry
         }
+    }
+
+    /**
+     * Handle database errors and return user-friendly messages.
+     */
+    protected function handleDatabaseError(QueryException $e, array $state): string
+    {
+        $errorCode = $e->getCode();
+        $errorMessage = $e->getMessage();
+
+        // Check for unique constraint violation (23505 for PostgreSQL, 23000 for MySQL)
+        if (in_array($errorCode, ['23505', '23000']) || str_contains($errorMessage, 'unique constraint') || str_contains($errorMessage, 'Duplicate entry')) {
+            // Determine which field has the conflict
+            if (str_contains($errorMessage, 'slug')) {
+                $pageName = $state['name'] ?? 'غير معروف';
+
+                return "❌ تعذر حفظ الصفحة بسبب تعارض في الرابط (slug).\n\n".
+                       "السبب المحتمل: يوجد صفحة أخرى بنفس الرابط المُنشأ من الاسم '{$pageName}'.\n\n".
+                       "الحلول المقترحة:\n".
+                       "• اختر اسماً مختلفاً قليلاً للصفحة\n".
+                       "• أو أرسل 'إلغاء' ثم استخدم 'أضف صفحة' مرة أخرى\n\n".
+                       "أرسل اسماً جديداً أو 'إلغاء' للإلغاء:";
+            }
+
+            if (str_contains($errorMessage, 'title')) {
+                return "❌ يوجد صفحة بنفس العنوان.\n\n".
+                       "الرجاء اختيار عنوان مختلف أو إرسال 'إلغاء' للإلغاء.";
+            }
+
+            return "❌ تعذر حفظ الصفحة بسبب تعارض في البيانات.\n\n".
+                   "يبدو أن هناك صفحة مشابهة موجودة مسبقاً.\n\n".
+                   "الرجاء المحاولة مرة أخرى باسم مختلف أو إرسال 'إلغاء' للإلغاء.";
+        }
+
+        // Check for foreign key constraint violation
+        if (str_contains($errorMessage, 'foreign key') || str_contains($errorMessage, 'FOREIGN KEY')) {
+            return "❌ تعذر حفظ الصفحة بسبب ارتباط بيانات غير صحيح.\n\n".
+                   "الرجاء المحاولة مرة أخرى أو إرسال 'إلغاء' للإلغاء.\n\n".
+                   "(للمطورين: مشكلة في Foreign Key)";
+        }
+
+        // Check for null constraint violation
+        if (str_contains($errorMessage, 'not null') || str_contains($errorMessage, 'NOT NULL')) {
+            return "❌ بيانات مفقودة مطلوبة لحفظ الصفحة.\n\n".
+                   "الرجاء المحاولة مرة أخرى بإدخال جميع البيانات المطلوبة أو إرسال 'إلغاء' للإلغاء.";
+        }
+
+        // Generic database error
+        return "❌ حدث خطأ في قاعدة البيانات.\n\n".
+               "الرجاء المحاولة مرة أخرى أو إرسال 'إلغاء' للإلغاء.\n\n".
+               "(للمطورين: {$errorCode})";
     }
 
     /**
