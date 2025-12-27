@@ -39,9 +39,9 @@ class LatestPages extends TableWidget
                     ->badge()
                     ->color('gray'),
 
-                TextColumn::make('authors_count')
-                    ->label('عدد المؤلفين')
-                    ->counts('authors')
+                TextColumn::make('users_count')
+                    ->label('عدد المساهمين')
+                    ->counts('users')
                     ->badge()
                     ->color('success'),
 
