@@ -96,24 +96,7 @@ class InviteLinkHandler extends BaseHandler
                 ]);
 
                 // Delete both the user message and confirmation message after 5 seconds
-                sleep(5);
-                try {
-                    $this->telegram->deleteMessage([
-                        'chat_id' => $chatId,
-                        'message_id' => $message->getMessageId(),
-                    ]);
-                } catch (\Exception $e) {
-                    // Silently fail if we can't delete the user's message
-                }
-
-                try {
-                    $this->telegram->deleteMessage([
-                        'chat_id' => $chatId,
-                        'message_id' => $confirmationMessage->getMessageId(),
-                    ]);
-                } catch (\Exception $e) {
-                    // Silently fail if we can't delete the confirmation message
-                }
+                $this->deleteMessagesAfterDelay($message, $confirmationMessage);
 
             } catch (TelegramSDKException $e) {
                 $errorMsg = strtolower($e->getMessage());

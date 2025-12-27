@@ -140,17 +140,8 @@ class UquccSearchHandler extends BaseHandler
                 'reply_to_message_id' => $message->getMessageId(),
             ]);
 
-            // Delete the page not found message after 5 seconds
-            sleep(5);
-            $this->telegram->deleteMessage([
-                'chat_id' => $message->getChat()->getId(),
-                'message_id' => $sentMessage->getMessageId(),
-            ]);
-            // Also delete the user's original message
-            $this->telegram->deleteMessage([
-                'chat_id' => $message->getChat()->getId(),
-                'message_id' => $message->getMessageId(),
-            ]);
+            // Delete both the user message and bot response after 5 seconds
+            $this->deleteMessagesAfterDelay($message, $sentMessage);
 
             return;
         }
