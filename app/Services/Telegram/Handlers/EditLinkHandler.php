@@ -31,7 +31,7 @@ class EditLinkHandler extends BaseHandler
         // Check if user is authorized
         $user = $this->getAuthorizedUser($userId);
         if (! $user) {
-            $this->reply($message, 'عذراً، ليس لديك صلاحية للوصول إلى روابط التعديل. يرجى تسجيل الدخول أولاً باستخدام: تسجيل دخول');
+            $this->replyAndDelete($message, 'عذراً، ليس لديك صلاحية للوصول إلى روابط التعديل. يرجى تسجيل الدخول أولاً باستخدام: تسجيل دخول');
 
             return;
         }
@@ -40,7 +40,7 @@ class EditLinkHandler extends BaseHandler
         $page = $this->searchPage($query);
 
         if (! $page) {
-            $this->reply($message, 'الصفحة غير موجودة');
+            $this->replyAndDelete($message, 'الصفحة غير موجودة');
 
             return;
         }
@@ -72,6 +72,6 @@ class EditLinkHandler extends BaseHandler
 
         $responseText = "رابط تعديل الصفحة: {$page->title}\n\n{$editUrl}";
 
-        $this->reply($message, $responseText);
+        $this->replyAndDelete($message, $responseText);
     }
 }

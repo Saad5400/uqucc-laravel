@@ -2,28 +2,29 @@
 
 namespace App\Filament\Widgets;
 
-use App\Models\Page;
+use App\Models\BotCommandStat;
 use Filament\Widgets\ChartWidget;
 
-class PagesChart extends ChartWidget
+class BotCommandsChart extends ChartWidget
 {
-    protected ?string $heading = 'إنشاء الصفحات خلال آخر 12 شهر';
+    protected ?string $heading = 'استخدام أوامر البوت خلال آخر 30 يوم';
 
-    protected static ?int $sort = 2;
+    protected static ?int $sort = 6;
+
+    protected int|string|array $columnSpan = 'md';
 
     protected function getData(): array
     {
         $data = [];
         $labels = [];
 
-        // Get last 12 months
-        for ($i = 11; $i >= 0; $i--) {
-            $date = now()->subMonths($i);
-            $labels[] = $date->locale('ar')->format('M Y');
+        // Get last 30 days
+        for ($i = 29; $i >= 0; $i--) {
+            $date = now()->subDays($i);
+            $labels[] = $date->locale('ar')->format('M d');
 
-            $count = Page::whereYear('created_at', $date->year)
-                ->whereMonth('created_at', $date->month)
-                ->count();
+            $count = BotCommandStat::whereDate('last_used_at', $date->toDateString())
+                ->sum('count');
 
             $data[] = $count;
         }
@@ -31,10 +32,10 @@ class PagesChart extends ChartWidget
         return [
             'datasets' => [
                 [
-                    'label' => 'عدد الصفحات المنشأة',
+                    'label' => 'عدد الأوامر المستخدمة',
                     'data' => $data,
-                    'backgroundColor' => 'rgba(251, 191, 36, 0.1)',
-                    'borderColor' => 'rgb(251, 191, 36)',
+                    'backgroundColor' => 'rgba(59, 130, 246, 0.1)',
+                    'borderColor' => 'rgb(59, 130, 246)',
                     'fill' => true,
                     'tension' => 0.3,
                 ],

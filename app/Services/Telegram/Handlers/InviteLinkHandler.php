@@ -22,16 +22,15 @@ class InviteLinkHandler extends BaseHandler
 
     protected function createInviteLink(Message $message): void
     {
+        $this->trackCommand($message, 'رابط');
+
         $userId = $message->getFrom()->getId();
         $chatId = $message->getChat()->getId();
         $chatType = $message->getChat()->getType();
 
         // Check if this is a group chat
         if (!in_array($chatType, ['group', 'supergroup'])) {
-            $this->reply(
-                $message,
-                "هذا الأمر يعمل فقط في المجموعات"
-            );
+            $this->replyAndDelete($message, "هذا الأمر يعمل فقط في المجموعات");
             return;
         }
 
@@ -57,10 +56,7 @@ class InviteLinkHandler extends BaseHandler
             }
 
             if (!$canInvite) {
-                $this->reply(
-                    $message,
-                    "ليس لديك صلاحية لاستخدام هذا الأمر. يجب أن تكون مديراً مع صلاحية دعوة المستخدمين"
-                );
+                $this->replyAndDelete($message, "ليس لديك صلاحية لاستخدام هذا الأمر. يجب أن تكون مديراً مع صلاحية دعوة المستخدمين");
                 return;
             }
 
@@ -87,44 +83,33 @@ class InviteLinkHandler extends BaseHandler
 
                 // Confirm in group that link was sent
                 $displayUsername = $user->getUsername() ? '@' . $user->getUsername() : $username;
-                $this->reply(
-                    $message,
-                    "✅ تم إرسال رابط دعوة خاص إلى {$displayUsername} في الرسائل الخاصة"
-                );
+                $confirmationMessage = $this->telegram->sendMessage([
+                    'chat_id' => $chatId,
+                    'text' => "✅ تم إرسال رابط دعوة خاص إلى {$displayUsername} في الرسائل الخاصة",
+                    'reply_to_message_id' => $message->getMessageId(),
+                ]);
+
+                // Delete both the user message and confirmation message after 5 seconds
+                $this->deleteMessagesAfterDelay($message, $confirmationMessage);
 
             } catch (TelegramSDKException $e) {
                 $errorMsg = strtolower($e->getMessage());
                 if (strpos($errorMsg, 'forbidden') !== false || strpos($errorMsg, 'blocked') !== false) {
-                    $this->reply(
-                        $message,
-                        "لا يمكنني إرسال رسالة خاصة لك. تأكد من أنك بدأت محادثة مع البوت أولاً بإرسال /start"
-                    );
+                    $this->replyAndDelete($message, "لا يمكنني إرسال رسالة خاصة لك. تأكد من أنك بدأت محادثة مع البوت أولاً بإرسال /start");
                 } else {
-                    $this->reply(
-                        $message,
-                        "حدث خطأ في إرسال الرابط: " . $e->getMessage()
-                    );
+                    $this->replyAndDelete($message, "حدث خطأ في إرسال الرابط: " . $e->getMessage());
                 }
             }
 
         } catch (TelegramSDKException $e) {
             $errorMsg = strtolower($e->getMessage());
             if (strpos($errorMsg, 'not enough rights') !== false || strpos($errorMsg, 'administrator') !== false) {
-                $this->reply(
-                    $message,
-                    "البوت يحتاج صلاحيات إدارية لإنشاء روابط الدعوة"
-                );
+                $this->replyAndDelete($message, "البوت يحتاج صلاحيات إدارية لإنشاء روابط الدعوة");
             } else {
-                $this->reply(
-                    $message,
-                    "حدث خطأ في التحقق من الصلاحيات: " . $e->getMessage()
-                );
+                $this->replyAndDelete($message, "حدث خطأ في التحقق من الصلاحيات: " . $e->getMessage());
             }
         } catch (\Exception $e) {
-            $this->reply(
-                $message,
-                "حدث خطأ غير متوقع: " . $e->getMessage()
-            );
+            $this->replyAndDelete($message, "حدث خطأ غير متوقع: " . $e->getMessage());
         }
     }
 }

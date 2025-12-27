@@ -136,11 +136,11 @@ class Page extends Model implements Sortable
     }
 
     /**
-     * Get the authors for this page
+     * Get the users (authors) for this page
      */
-    public function authors(): BelongsToMany
+    public function users(): BelongsToMany
     {
-        return $this->belongsToMany(Author::class)->withPivot('order')->withTimestamps()->orderBy('order');
+        return $this->belongsToMany(User::class)->withPivot('order')->withTimestamps()->orderBy('order');
     }
 
     protected function htmlContent(): Attribute

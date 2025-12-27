@@ -13,16 +13,16 @@ const pageData = computed(() => page.props.page as any);
             <i v-if="pageData?.icon" :class="pageData.icon" class="!size-8" />
             <slot />
         </div>
-        <div v-if="pageData?.authors && pageData.authors.length > 0" class="text-sm text-muted-foreground">
+        <div v-if="pageData?.users && pageData.users.length > 0" class="text-sm text-muted-foreground">
             كتب بقلم:
-            <template v-for="(author, index) in pageData.authors" :key="author.id">
-                <ProseA v-if="author.url" :href="author.url" target="_blank">
-                    {{ author.name }}
+            <template v-for="(user, index) in pageData.users" :key="user.id">
+                <ProseA v-if="user.url" :href="user.url" target="_blank">
+                    {{ user.name }}
                 </ProseA>
                 <span v-else>
-                    {{ author.name }}
+                    {{ user.name }}
                 </span>
-                <template v-if="index < pageData.authors.length - 1"> و</template>
+                <template v-if="index < pageData.users.length - 1"> و</template>
             </template>
         </div>
     </h1>

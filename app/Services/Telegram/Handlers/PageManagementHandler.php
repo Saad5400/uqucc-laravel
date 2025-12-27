@@ -45,7 +45,14 @@ class PageManagementHandler extends BaseHandler
         if ($text === 'إلغاء' || $text === 'الغاء') {
             if ($state) {
                 $this->clearState($userId);
-                $this->reply($message, 'تم إلغاء العملية.');
+                $response = $this->reply($message, 'تم إلغاء العملية.');
+
+                // Track this message and the cancel command
+                $state['message_ids'][] = $message->getMessageId();
+                $state['message_ids'][] = $response->getMessageId();
+
+                // Delete all messages from the interaction
+                $this->deleteAllInteractionMessages($message->getChat()->getId(), $state['message_ids'] ?? []);
             }
             // Don't respond if no active state - let other handlers handle it
 
@@ -130,7 +137,7 @@ class PageManagementHandler extends BaseHandler
         // Check authorization
         $user = $this->getAuthorizedUser($userId);
         if (! $user) {
-            $this->reply($message, "عذراً، ليس لديك صلاحية لإدارة المحتوى.\n\nيجب تسجيل الدخول أولاً بإرسال: تسجيل دخول");
+            $this->replyAndDelete($message, "عذراً، ليس لديك صلاحية لإدارة المحتوى.\n\nيجب تسجيل الدخول أولاً بإرسال: تسجيل دخول");
 
             return;
         }
@@ -138,11 +145,13 @@ class PageManagementHandler extends BaseHandler
         // Initial state - just waiting for name
         $state = [
             'step' => 'awaiting_name',
+            'message_ids' => [$message->getMessageId()], // Track the initial command message
         ];
 
-        $this->setState($userId, $state);
+        $response = $this->reply($message, "أرسل اسم الصفحة:\n\n(أرسل 'إلغاء' للإلغاء)");
+        $state['message_ids'][] = $response->getMessageId();
 
-        $this->reply($message, "أرسل اسم الصفحة:\n\n(أرسل 'إلغاء' للإلغاء)");
+        $this->setState($userId, $state);
     }
 
     protected function startDeletePage(Message $message): void
@@ -152,16 +161,20 @@ class PageManagementHandler extends BaseHandler
         // Check authorization
         $user = $this->getAuthorizedUser($userId);
         if (! $user) {
-            $this->reply($message, "عذراً، ليس لديك صلاحية لإدارة المحتوى.\n\nيجب تسجيل الدخول أولاً بإرسال: تسجيل دخول");
+            $this->replyAndDelete($message, "عذراً، ليس لديك صلاحية لإدارة المحتوى.\n\nيجب تسجيل الدخول أولاً بإرسال: تسجيل دخول");
 
             return;
         }
 
-        $this->setState($userId, [
+        $state = [
             'step' => 'awaiting_delete_name',
-        ]);
+            'message_ids' => [$message->getMessageId()], // Track the initial command message
+        ];
 
-        $this->reply($message, "أرسل اسم الصفحة المراد حذفها:\n\n(أرسل 'إلغاء' للإلغاء)");
+        $response = $this->reply($message, "أرسل اسم الصفحة المراد حذفها:\n\n(أرسل 'إلغاء' للإلغاء)");
+        $state['message_ids'][] = $response->getMessageId();
+
+        $this->setState($userId, $state);
     }
 
     protected function showIndex(Message $message): void
@@ -171,7 +184,7 @@ class PageManagementHandler extends BaseHandler
         // Check authorization
         $user = $this->getAuthorizedUser($userId);
         if (! $user) {
-            $this->reply($message, "عذراً، ليس لديك صلاحية لإدارة المحتوى.\n\nيجب تسجيل الدخول أولاً بإرسال: تسجيل دخول");
+            $this->replyAndDelete($message, "عذراً، ليس لديك صلاحية لإدارة المحتوى.\n\nيجب تسجيل الدخول أولاً بإرسال: تسجيل دخول");
 
             return;
         }
@@ -199,7 +212,7 @@ class PageManagementHandler extends BaseHandler
         // Check authorization
         $user = $this->getAuthorizedUser($userId);
         if (! $user) {
-            $this->reply($message, "عذراً، ليس لديك صلاحية لإدارة المحتوى.\n\nيجب تسجيل الدخول أولاً بإرسال: تسجيل دخول");
+            $this->replyAndDelete($message, "عذراً، ليس لديك صلاحية لإدارة المحتوى.\n\nيجب تسجيل الدخول أولاً بإرسال: تسجيل دخول");
 
             return;
         }
@@ -248,7 +261,7 @@ class PageManagementHandler extends BaseHandler
                 break;
 
             case 'awaiting_delete_name':
-                $this->handleDeletePage($message, $text);
+                $this->handleDeletePage($message, $text, $state);
                 break;
         }
     }
@@ -257,8 +270,13 @@ class PageManagementHandler extends BaseHandler
     {
         $userId = $message->getFrom()->getId();
 
+        // Track user message
+        $state['message_ids'][] = $message->getMessageId();
+
         if (empty($name)) {
-            $this->reply($message, "اسم الصفحة لا يمكن أن يكون فارغاً.\n\nأرسل اسم الصفحة:");
+            $response = $this->reply($message, "اسم الصفحة لا يمكن أن يكون فارغاً.\n\nأرسل اسم الصفحة:");
+            $state['message_ids'][] = $response->getMessageId();
+            $this->setState($userId, $state);
 
             return;
         }
@@ -295,21 +313,25 @@ class PageManagementHandler extends BaseHandler
         $state['name'] = $name;
         $state['existing_page_id'] = $existingPage?->id;
 
-        $this->setState($userId, $state);
-
         $mode = $existingPage ? '(تعديل)' : '(جديدة)';
         $keyboard = $this->buildOptionsKeyboard($state);
 
-        $this->telegram->sendMessage([
+        $response = $this->telegram->sendMessage([
             'chat_id' => $message->getChat()->getId(),
             'text' => "اسم الصفحة: {$name} {$mode}\n\nأرسل محتوى الصفحة:\n\n(أرسل 'إلغاء' للإلغاء)",
             'reply_markup' => $keyboard,
         ]);
+        $state['message_ids'][] = $response->getMessageId();
+
+        $this->setState($userId, $state);
     }
 
     protected function handlePageContent(Message $message, string $content, ?string $caption, $photo, $document, $entities, $captionEntities, array $state): void
     {
         $userId = $message->getFrom()->getId();
+
+        // Track user message
+        $state['message_ids'][] = $message->getMessageId();
 
         // Use caption if photo/document sent, otherwise use text content
         $textContent = $content;
@@ -347,7 +369,9 @@ class PageManagementHandler extends BaseHandler
         }
 
         if (empty($textContent) && empty($attachments)) {
-            $this->reply($message, "محتوى الصفحة لا يمكن أن يكون فارغاً.\n\nأرسل محتوى الصفحة (نص أو صورة مع تعليق):");
+            $response = $this->reply($message, "محتوى الصفحة لا يمكن أن يكون فارغاً.\n\nأرسل محتوى الصفحة (نص أو صورة مع تعليق):");
+            $state['message_ids'][] = $response->getMessageId();
+            $this->setState($userId, $state);
 
             return;
         }
@@ -440,9 +464,17 @@ class PageManagementHandler extends BaseHandler
             $attachmentsText = ! empty($attachments) ? "\nالمرفقات: ".count($attachments) : '';
             $contentUpdated = $updateMainContent ? "\n(تم تحديث محتوى الصفحة)" : '';
 
-            $this->reply($message, "✅ تم {$action} الصفحة بنجاح!\n\nالعنوان: {$page->title}{$smartText}{$prefixText}{$buttonsText}{$attachmentsText}{$contentUpdated}");
+            $response = $this->reply($message, "✅ تم {$action} الصفحة بنجاح!\n\nالعنوان: {$page->title}{$smartText}{$prefixText}{$buttonsText}{$attachmentsText}{$contentUpdated}");
+            $state['message_ids'][] = $response->getMessageId();
+
+            // Delete all messages from the interaction
+            $this->deleteAllInteractionMessages($message->getChat()->getId(), $state['message_ids']);
         } catch (\Exception $e) {
-            $this->reply($message, "حدث خطأ أثناء حفظ الصفحة: {$e->getMessage()}");
+            $response = $this->reply($message, "حدث خطأ أثناء حفظ الصفحة: {$e->getMessage()}");
+            $state['message_ids'][] = $response->getMessageId();
+
+            // Delete all messages even on error
+            $this->deleteAllInteractionMessages($message->getChat()->getId(), $state['message_ids']);
         }
     }
 
@@ -575,9 +607,12 @@ class PageManagementHandler extends BaseHandler
         return $result;
     }
 
-    protected function handleDeletePage(Message $message, string $name): void
+    protected function handleDeletePage(Message $message, string $name, array $state): void
     {
         $userId = $message->getFrom()->getId();
+
+        // Track user message
+        $state['message_ids'][] = $message->getMessageId();
 
         // Find page using normalized comparison (handles همزة and ال variations)
         $normalizedName = ArabicNormalizer::normalize($name);
@@ -593,7 +628,9 @@ class PageManagementHandler extends BaseHandler
         });
 
         if (! $page) {
-            $this->reply($message, "لم يتم العثور على صفحة بهذا الاسم.\n\nأرسل اسم الصفحة:");
+            $response = $this->reply($message, "لم يتم العثور على صفحة بهذا الاسم.\n\nأرسل اسم الصفحة:");
+            $state['message_ids'][] = $response->getMessageId();
+            $this->setState($userId, $state);
 
             return;
         }
@@ -602,7 +639,12 @@ class PageManagementHandler extends BaseHandler
         $page->delete(); // Soft delete
 
         $this->clearState($userId);
-        $this->reply($message, "✅ تم حذف الصفحة: {$title}");
+
+        $response = $this->reply($message, "✅ تم حذف الصفحة: {$title}");
+        $state['message_ids'][] = $response->getMessageId();
+
+        // Delete all messages from the interaction
+        $this->deleteAllInteractionMessages($message->getChat()->getId(), $state['message_ids']);
     }
 
     protected function getAuthorizedUser(int $telegramId): ?User
@@ -717,5 +759,24 @@ class PageManagementHandler extends BaseHandler
     protected function clearState(int $userId): void
     {
         Cache::forget(self::STATE_KEY_PREFIX.$userId);
+    }
+
+    /**
+     * Delete all messages from an interaction after a delay.
+     */
+    protected function deleteAllInteractionMessages(int $chatId, array $messageIds, int $delaySeconds = 5): void
+    {
+        sleep($delaySeconds);
+
+        foreach ($messageIds as $messageId) {
+            try {
+                $this->telegram->deleteMessage([
+                    'chat_id' => $chatId,
+                    'message_id' => $messageId,
+                ]);
+            } catch (\Exception $e) {
+                // Silently fail - message might already be deleted or bot lacks permissions
+            }
+        }
     }
 }

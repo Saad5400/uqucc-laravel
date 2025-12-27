@@ -11,16 +11,19 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('author_page', function (Blueprint $table) {
+        Schema::create('page_view_stats', function (Blueprint $table) {
             $table->id();
             $table->foreignId('page_id')->constrained()->onDelete('cascade');
-            $table->foreignId('author_id')->constrained()->onDelete('cascade');
-            $table->integer('order')->default(0);
+            $table->foreignId('user_id')->nullable()->constrained()->onDelete('set null');
+            $table->string('ip_address', 45)->nullable();
+            $table->string('user_agent')->nullable();
+            $table->integer('view_count')->default(1);
+            $table->timestamp('last_viewed_at');
             $table->timestamps();
 
-            $table->unique(['page_id', 'author_id']);
+            $table->index(['page_id', 'user_id']);
             $table->index('page_id');
-            $table->index('author_id');
+            $table->index('last_viewed_at');
         });
     }
 
@@ -29,6 +32,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('author_page');
+        Schema::dropIfExists('page_view_stats');
     }
 };

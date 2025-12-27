@@ -129,10 +129,19 @@ class UquccSearchHandler extends BaseHandler
 
     protected function searchAndRespond(Message $message, string $query): void
     {
+        $this->trackCommand($message, 'دليل');
+
         $page = $this->searchPage($query);
 
         if (! $page) {
-            $this->reply($message, 'الصفحة غير موجودة');
+            $sentMessage = $this->telegram->sendMessage([
+                'chat_id' => $message->getChat()->getId(),
+                'text' => 'الصفحة غير موجودة',
+                'reply_to_message_id' => $message->getMessageId(),
+            ]);
+
+            // Delete both the user message and bot response after 5 seconds
+            $this->deleteMessagesAfterDelay($message, $sentMessage);
 
             return;
         }
@@ -166,6 +175,7 @@ class UquccSearchHandler extends BaseHandler
                 'chat_id' => $message->getChat()->getId(),
                 'text' => $textContent,
                 'parse_mode' => 'HTML',
+                'reply_to_message_id' => $message->getMessageId(),
             ];
 
             if ($replyMarkup) {
@@ -523,6 +533,7 @@ class UquccSearchHandler extends BaseHandler
             'photo' => InputFile::create($screenshotPath, 'screenshot.webp'),
             'caption' => $caption,
             'parse_mode' => 'HTML',
+            'reply_to_message_id' => $message->getMessageId(),
         ];
 
         if ($replyMarkup) {
@@ -787,6 +798,7 @@ class UquccSearchHandler extends BaseHandler
 
             $payload['chat_id'] = $chatId;
             $payload['media'] = json_encode($media);
+            $payload['reply_to_message_id'] = $message->getMessageId();
 
             if ($replyMarkup) {
                 $payload['reply_markup'] = $replyMarkup;
@@ -814,6 +826,7 @@ class UquccSearchHandler extends BaseHandler
                 'chat_id' => $chatId,
                 'caption' => $caption,
                 'parse_mode' => 'HTML',
+                'reply_to_message_id' => $message->getMessageId(),
             ];
 
             if ($replyMarkup) {
