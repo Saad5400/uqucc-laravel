@@ -49,7 +49,7 @@ abstract class BaseHandler
         return preg_match($pattern, $content) === 1;
     }
 
-    protected function reply(Message $message, string $text, ?string $parseMode = null): void
+    protected function reply(Message $message, string $text, ?string $parseMode = null): Message
     {
         $params = [
             'chat_id' => $message->getChat()->getId(),
@@ -61,20 +61,20 @@ abstract class BaseHandler
             $params['parse_mode'] = $parseMode;
         }
 
-        $this->telegram->sendMessage($params);
+        return $this->telegram->sendMessage($params);
     }
 
-    protected function replyMarkdown(Message $message, string $text): void
+    protected function replyMarkdown(Message $message, string $text): Message
     {
-        $this->reply($message, $text, 'MarkdownV2');
+        return $this->reply($message, $text, 'MarkdownV2');
     }
 
-    protected function replyHtml(Message $message, string $text): void
+    protected function replyHtml(Message $message, string $text): Message
     {
-        $this->reply($message, $text, 'HTML');
+        return $this->reply($message, $text, 'HTML');
     }
 
-    protected function replyPhoto(Message $message, string $photoUrl, ?string $caption = null): void
+    protected function replyPhoto(Message $message, string $photoUrl, ?string $caption = null): Message
     {
         $params = [
             'chat_id' => $message->getChat()->getId(),
@@ -87,7 +87,46 @@ abstract class BaseHandler
             $params['parse_mode'] = 'HTML';
         }
 
-        $this->telegram->sendPhoto($params);
+        return $this->telegram->sendPhoto($params);
+    }
+
+    /**
+     * Delete both the user message and bot response after a delay.
+     */
+    protected function deleteMessagesAfterDelay(Message $userMessage, Message $botResponse, int $delaySeconds = 5): void
+    {
+        sleep($delaySeconds);
+
+        $chatId = $userMessage->getChat()->getId();
+
+        // Delete user message
+        try {
+            $this->telegram->deleteMessage([
+                'chat_id' => $chatId,
+                'message_id' => $userMessage->getMessageId(),
+            ]);
+        } catch (\Exception $e) {
+            // Silently fail - message might already be deleted or bot lacks permissions
+        }
+
+        // Delete bot response
+        try {
+            $this->telegram->deleteMessage([
+                'chat_id' => $chatId,
+                'message_id' => $botResponse->getMessageId(),
+            ]);
+        } catch (\Exception $e) {
+            // Silently fail - message might already be deleted or bot lacks permissions
+        }
+    }
+
+    /**
+     * Reply to a message and auto-delete both messages after a delay.
+     */
+    protected function replyAndDelete(Message $message, string $text, ?string $parseMode = null, int $delaySeconds = 5): void
+    {
+        $response = $this->reply($message, $text, $parseMode);
+        $this->deleteMessagesAfterDelay($message, $response, $delaySeconds);
     }
 
     /**

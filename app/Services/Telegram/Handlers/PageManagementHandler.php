@@ -45,7 +45,7 @@ class PageManagementHandler extends BaseHandler
         if ($text === 'إلغاء' || $text === 'الغاء') {
             if ($state) {
                 $this->clearState($userId);
-                $this->reply($message, 'تم إلغاء العملية.');
+                $this->replyAndDelete($message, 'تم إلغاء العملية.');
             }
             // Don't respond if no active state - let other handlers handle it
 
@@ -130,7 +130,7 @@ class PageManagementHandler extends BaseHandler
         // Check authorization
         $user = $this->getAuthorizedUser($userId);
         if (! $user) {
-            $this->reply($message, "عذراً، ليس لديك صلاحية لإدارة المحتوى.\n\nيجب تسجيل الدخول أولاً بإرسال: تسجيل دخول");
+            $this->replyAndDelete($message, "عذراً، ليس لديك صلاحية لإدارة المحتوى.\n\nيجب تسجيل الدخول أولاً بإرسال: تسجيل دخول");
 
             return;
         }
@@ -152,7 +152,7 @@ class PageManagementHandler extends BaseHandler
         // Check authorization
         $user = $this->getAuthorizedUser($userId);
         if (! $user) {
-            $this->reply($message, "عذراً، ليس لديك صلاحية لإدارة المحتوى.\n\nيجب تسجيل الدخول أولاً بإرسال: تسجيل دخول");
+            $this->replyAndDelete($message, "عذراً، ليس لديك صلاحية لإدارة المحتوى.\n\nيجب تسجيل الدخول أولاً بإرسال: تسجيل دخول");
 
             return;
         }
@@ -171,7 +171,7 @@ class PageManagementHandler extends BaseHandler
         // Check authorization
         $user = $this->getAuthorizedUser($userId);
         if (! $user) {
-            $this->reply($message, "عذراً، ليس لديك صلاحية لإدارة المحتوى.\n\nيجب تسجيل الدخول أولاً بإرسال: تسجيل دخول");
+            $this->replyAndDelete($message, "عذراً، ليس لديك صلاحية لإدارة المحتوى.\n\nيجب تسجيل الدخول أولاً بإرسال: تسجيل دخول");
 
             return;
         }
@@ -199,7 +199,7 @@ class PageManagementHandler extends BaseHandler
         // Check authorization
         $user = $this->getAuthorizedUser($userId);
         if (! $user) {
-            $this->reply($message, "عذراً، ليس لديك صلاحية لإدارة المحتوى.\n\nيجب تسجيل الدخول أولاً بإرسال: تسجيل دخول");
+            $this->replyAndDelete($message, "عذراً، ليس لديك صلاحية لإدارة المحتوى.\n\nيجب تسجيل الدخول أولاً بإرسال: تسجيل دخول");
 
             return;
         }
@@ -440,9 +440,9 @@ class PageManagementHandler extends BaseHandler
             $attachmentsText = ! empty($attachments) ? "\nالمرفقات: ".count($attachments) : '';
             $contentUpdated = $updateMainContent ? "\n(تم تحديث محتوى الصفحة)" : '';
 
-            $this->reply($message, "✅ تم {$action} الصفحة بنجاح!\n\nالعنوان: {$page->title}{$smartText}{$prefixText}{$buttonsText}{$attachmentsText}{$contentUpdated}");
+            $this->replyAndDelete($message, "✅ تم {$action} الصفحة بنجاح!\n\nالعنوان: {$page->title}{$smartText}{$prefixText}{$buttonsText}{$attachmentsText}{$contentUpdated}");
         } catch (\Exception $e) {
-            $this->reply($message, "حدث خطأ أثناء حفظ الصفحة: {$e->getMessage()}");
+            $this->replyAndDelete($message, "حدث خطأ أثناء حفظ الصفحة: {$e->getMessage()}");
         }
     }
 
@@ -602,7 +602,7 @@ class PageManagementHandler extends BaseHandler
         $page->delete(); // Soft delete
 
         $this->clearState($userId);
-        $this->reply($message, "✅ تم حذف الصفحة: {$title}");
+        $this->replyAndDelete($message, "✅ تم حذف الصفحة: {$title}");
     }
 
     protected function getAuthorizedUser(int $telegramId): ?User
