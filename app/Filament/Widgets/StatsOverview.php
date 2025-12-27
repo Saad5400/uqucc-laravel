@@ -3,13 +3,14 @@
 namespace App\Filament\Widgets;
 
 use App\Models\Page;
-use App\Models\User;
 use Filament\Widgets\StatsOverviewWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
 use Illuminate\Support\Facades\DB;
 
 class StatsOverview extends StatsOverviewWidget
 {
+    protected static ?int $sort = 1;
+
     protected function getStats(): array
     {
         $totalPages = Page::count();

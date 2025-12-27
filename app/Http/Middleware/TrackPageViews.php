@@ -19,10 +19,7 @@ class TrackPageViews
 
         // Only track successful GET requests
         if (
-            $request->isMethod('GET') &&
-            $response->isSuccessful() &&
-            ! $request->ajax() &&
-            ! $request->wantsJson()
+            $request->isMethod('GET')
         ) {
             $this->trackPageView($request);
         }
@@ -38,7 +35,7 @@ class TrackPageViews
         try {
             // Get the current page by matching the request path
             $path = $request->path();
-            $slug = $path === '/' ? '' : $path;
+            $slug = $path === '/' ? '/' : '/'.$path;
 
             $page = Page::where('slug', $slug)->first();
 

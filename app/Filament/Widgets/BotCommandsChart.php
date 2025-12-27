@@ -4,13 +4,14 @@ namespace App\Filament\Widgets;
 
 use App\Models\BotCommandStat;
 use Filament\Widgets\ChartWidget;
-use Illuminate\Support\Facades\DB;
 
 class BotCommandsChart extends ChartWidget
 {
     protected ?string $heading = 'استخدام أوامر البوت خلال آخر 30 يوم';
 
     protected static ?int $sort = 6;
+
+    protected int|string|array $columnSpan = 'md';
 
     protected function getData(): array
     {

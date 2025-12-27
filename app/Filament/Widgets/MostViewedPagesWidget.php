@@ -4,13 +4,11 @@ namespace App\Filament\Widgets;
 
 use App\Filament\Resources\Pages\PageResource;
 use App\Models\Page;
-use App\Models\PageViewStat;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
-use Filament\Widgets\TableWidget;
-use Illuminate\Support\Facades\DB;
+use Filament\Widgets\TableWidget as BaseWidget;
 
-class MostViewedPagesWidget extends TableWidget
+class MostViewedPagesWidget extends BaseWidget
 {
     protected static ?string $heading = 'الصفحات الأكثر مشاهدة';
 
@@ -30,6 +28,7 @@ class MostViewedPagesWidget extends TableWidget
                     ->orderByDesc('total_views')
                     ->limit(10)
             )
+            ->defaultKeySort(false)
             ->columns([
                 TextColumn::make('title')
                     ->label('العنوان')

@@ -9,14 +9,14 @@ use Illuminate\Support\Facades\DB;
 
 class BotCommandsStatsWidget extends StatsOverviewWidget
 {
-    protected static ?int $sort = 4;
+    protected static ?int $sort = 3;
 
     protected function getStats(): array
     {
         $totalCommands = BotCommandStat::sum('count');
         $uniqueUsers = BotCommandStat::distinct('user_id')->whereNotNull('user_id')->count('user_id');
         $uniqueCommands = BotCommandStat::distinct('command_name')->count('command_name');
-        
+
         // Get most used command
         $mostUsedCommand = BotCommandStat::select('command_name', DB::raw('SUM(count) as total'))
             ->groupBy('command_name')
@@ -40,7 +40,7 @@ class BotCommandsStatsWidget extends StatsOverviewWidget
                 ->color('info'),
 
             Stat::make('الأمر الأكثر استخداماً', $mostUsedCommand?->command_name ?? '—')
-                ->description($mostUsedCommand ? number_format($mostUsedCommand->total) . ' مرة' : 'لا توجد بيانات')
+                ->description($mostUsedCommand ? number_format($mostUsedCommand->total).' مرة' : 'لا توجد بيانات')
                 ->descriptionIcon('heroicon-m-fire')
                 ->color('warning'),
         ];

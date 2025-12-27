@@ -12,7 +12,7 @@ class LatestPages extends TableWidget
 {
     protected static ?string $heading = 'آخر الصفحات المحدثة';
 
-    protected static ?int $sort = 3;
+    protected static ?int $sort = 7;
 
     protected int|string|array $columnSpan = 'full';
 

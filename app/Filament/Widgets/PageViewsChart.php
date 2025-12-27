@@ -4,13 +4,14 @@ namespace App\Filament\Widgets;
 
 use App\Models\PageViewStat;
 use Filament\Widgets\ChartWidget;
-use Illuminate\Support\Facades\DB;
 
 class PageViewsChart extends ChartWidget
 {
     protected ?string $heading = 'مشاهدات الصفحات خلال آخر 30 يوم';
 
-    protected static ?int $sort = 7;
+    protected static ?int $sort = 5;
+
+    protected int|string|array $columnSpan = 'md';
 
     protected function getData(): array
     {
