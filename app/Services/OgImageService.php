@@ -39,6 +39,13 @@ class OgImageService
         }
 
         try {
+            Log::info('Generating screenshot', [
+                'url' => $url,
+                'type' => $type,
+                'dimensions' => $dimensions,
+                'cache_key' => $cacheKey,
+            ]);
+
             $browsershot = Browsershot::url($url)
                 ->windowSize($dimensions['width'], $dimensions['height'])
                 ->deviceScaleFactor(1)
@@ -54,12 +61,15 @@ class OgImageService
             // Set Chrome/Node paths from config if available (for Nixpacks deployment)
             if ($chromePath = config('services.browsershot.chrome_path')) {
                 $browsershot->setChromePath($chromePath);
+                Log::debug('Using custom Chrome path', ['path' => $chromePath]);
             }
             if ($nodeBinary = config('services.browsershot.node_binary')) {
                 $browsershot->setNodeBinary($nodeBinary);
+                Log::debug('Using custom Node binary', ['path' => $nodeBinary]);
             }
             if ($nodeModulesPath = config('services.browsershot.node_modules_path')) {
                 $browsershot->setNodeModulePath($nodeModulesPath);
+                Log::debug('Using custom Node modules path', ['path' => $nodeModulesPath]);
             }
 
             $browsershot->addChromiumArguments([
@@ -90,16 +100,32 @@ class OgImageService
 
             $browsershot->save($screenshotPath);
 
+            Log::info('Screenshot generated successfully', [
+                'path' => $screenshotPath,
+                'size' => file_exists($screenshotPath) ? filesize($screenshotPath) : 0,
+            ]);
+
             // Cache the screenshot path for the configured TTL
             Cache::put($cacheKey, $screenshotPath, config('app-cache.screenshots.ttl'));
 
             return $screenshotPath;
         } catch (\Exception $e) {
+            Log::error('Screenshot generation failed', [
+                'url' => $url,
+                'type' => $type,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
             // Clean up on error
             if (file_exists($screenshotPath)) {
                 @unlink($screenshotPath);
             }
-            throw $e;
+            throw new \RuntimeException(
+                "Failed to generate screenshot for URL '{$url}': {$e->getMessage()}",
+                0,
+                $e
+            );
         }
     }
 

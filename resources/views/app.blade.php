@@ -29,8 +29,11 @@
         <meta property="og:type" content="website">
         <meta property="og:url" content="{{ $currentUrl }}">
         <meta property="og:site_name" content="{{ $siteName }}">
+        <meta property="og:title" content="{{ $siteName }}">
+        <meta property="og:description" content="{{ $defaultDescription }}">
         <meta property="og:locale" content="ar_SA">
         <meta property="og:image" content="{{ $ogImageUrl }}">
+        <meta property="og:image:secure_url" content="{{ $ogImageUrl }}">
         <meta property="og:image:width" content="1200">
         <meta property="og:image:height" content="630">
         <meta property="og:image:type" content="image/webp">
@@ -39,6 +42,8 @@
         {{-- Twitter Card --}}
         <meta name="twitter:card" content="summary_large_image">
         <meta name="twitter:url" content="{{ $currentUrl }}">
+        <meta name="twitter:title" content="{{ $siteName }}">
+        <meta name="twitter:description" content="{{ $defaultDescription }}">
         <meta name="twitter:image" content="{{ $ogImageUrl }}">
         <meta name="twitter:image:alt" content="{{ $siteName }}">
 
@@ -49,6 +54,8 @@
         <link rel="canonical" href="{{ $currentUrl }}">
 
         @vite(['resources/css/app.css', 'resources/css/typography.css', 'resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])
+
+        {{-- Inertia Head - must come before static meta tags to allow overrides --}}
         @inertiaHead
     </head>
     <body class="antialiased">
