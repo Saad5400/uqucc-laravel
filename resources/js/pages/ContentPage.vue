@@ -66,7 +66,7 @@ usePage().props.title = props.page.title;
 
 // Compute page description for meta tags
 const pageDescription = computed(() => {
-    const defaultDesc = 'موقع دليل جامعة القصيم للحوسبة والإتصالات';
+    const defaultDesc = 'دليل طالب كلية الحاسبات';
 
     // If page has custom quick response message, use it
     if (props.page.quick_response?.message) {
