@@ -39,7 +39,7 @@ class TelegramBotService
             new LoginHandler($this->telegram),
             $this->pageManagementHandler,
             new EditLinkHandler($this->telegram),
-            new UquccSearchHandler($this->telegram, app(QuickResponseService::class), app(TipTapContentExtractor::class)),
+            new UquccSearchHandler($this->telegram, app(QuickResponseService::class), app(TipTapContentExtractor::class), app(OgImageService::class)),
             new UquccListHandler($this->telegram),
             new PythonExecutionHandler($this->telegram),
             new JavaExecutionHandler($this->telegram),

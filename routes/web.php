@@ -1,10 +1,16 @@
 <?php
 
+use App\Http\Controllers\OgImageController;
 use App\Http\Controllers\PageController;
 use Illuminate\Support\Facades\Route;
 
 // Homepage
 Route::get('/', [PageController::class, 'home'])->name('home');
+
+// OG Image generation endpoint (must come before catch-all route)
+Route::get('/_og-image/{route?}', [OgImageController::class, 'generate'])
+    ->where('route', '.*')
+    ->name('og-image');
 
 // Tool routes (must come before catch-all route)
 Route::inertia('/adoat/almkafa', 'tools/NextRewardPage')->name('tools.next-reward');
