@@ -22,7 +22,7 @@
             $currentPath = request()->path() === '/' ? '/' : '/' . request()->path();
             $ogImageUrl = route('og-image', ['route' => ltrim($currentPath, '/')]);
             $siteName = config('app.name', 'Laravel');
-            $defaultDescription = 'موقع دليل جامعة القصيم للحوسبة والإتصالات';
+            $defaultDescription = 'موقع دليل الحوسبة والإتصالات';
         @endphp
 
         {{-- Open Graph / Facebook --}}
