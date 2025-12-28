@@ -3,6 +3,7 @@
 namespace App\Services\Telegram\Handlers;
 
 use App\Models\Page;
+use App\Services\OgImageService;
 use App\Services\QuickResponseService;
 use App\Services\Telegram\ContentParser;
 use App\Services\Telegram\Traits\SearchesPages;
@@ -11,7 +12,6 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
-use Spatie\Browsershot\Browsershot;
 use Telegram\Bot\FileUpload\InputFile;
 use Telegram\Bot\Objects\Message;
 
@@ -28,7 +28,8 @@ class UquccSearchHandler extends BaseHandler
     public function __construct(
         \Telegram\Bot\Api $telegram,
         protected QuickResponseService $quickResponses,
-        protected TipTapContentExtractor $contentExtractor
+        protected TipTapContentExtractor $contentExtractor,
+        protected OgImageService $ogImageService
     ) {
         parent::__construct($telegram);
         $this->contentParser = app(ContentParser::class);
@@ -418,115 +419,11 @@ class UquccSearchHandler extends BaseHandler
         ]);
     }
 
-    protected function getScreenshotCacheKey(Page $page): string
-    {
-        // Use page slug and updated_at timestamp to create versioned cache key
-        $version = $page->updated_at ? $page->updated_at->timestamp : '0';
-        $slug = str_replace('/', '_', trim($page->slug, '/')) ?: 'home';
-
-        return config('app-cache.keys.screenshot').":{$slug}:{$version}";
-    }
-
-    protected function getScreenshotPath(Page $page): string
-    {
-        $slug = str_replace('/', '_', trim($page->slug, '/')) ?: 'home';
-        $version = $page->updated_at ? $page->updated_at->timestamp : '0';
-        $filename = "{$slug}_{$version}.webp";
-
-        return storage_path("app/public/screenshots/{$filename}");
-    }
-
-    protected function takeScreenshot(Page $page): string
-    {
-        $cacheKey = $this->getScreenshotCacheKey($page);
-        $screenshotPath = $this->getScreenshotPath($page);
-
-        // Check if cached screenshot exists and is valid
-        if (file_exists($screenshotPath) && Cache::has($cacheKey)) {
-            return $screenshotPath;
-        }
-
-        // Default dimensions matching screenshot.ts (720x377 for 1.91:1 aspect ratio)
-        $width = 720;
-        $height = 720;
-
-        $pageUrl = url($page->slug);
-
-        // Ensure screenshots directory exists
-        $screenshotsDir = dirname($screenshotPath);
-        if (! is_dir($screenshotsDir)) {
-            mkdir($screenshotsDir, 0755, true);
-        }
-
-        try {
-            $browsershot = Browsershot::url($pageUrl)
-                ->windowSize($width, $height)
-                ->deviceScaleFactor(1)
-                ->waitUntilNetworkIdle()
-                ->delay(500) // Wait 500ms after network idle to ensure DOM is fully rendered
-                ->timeout(60)
-                ->dismissDialogs()
-                ->setScreenshotType('webp')
-                ->setOption('addStyleTag', json_encode([
-                    'content' => '.screenshot-hidden { display: none !important; } html { scrollbar-gutter: auto !important; }',
-                ]));
-
-            // Set Chrome/Node paths from config if available (for Nixpacks deployment)
-            if ($chromePath = config('services.browsershot.chrome_path')) {
-                $browsershot->setChromePath($chromePath);
-            }
-            if ($nodeBinary = config('services.browsershot.node_binary')) {
-                $browsershot->setNodeBinary($nodeBinary);
-            }
-            if ($nodeModulesPath = config('services.browsershot.node_modules_path')) {
-                $browsershot->setNodeModulePath($nodeModulesPath);
-            }
-
-            $browsershot->addChromiumArguments([
-                'no-sandbox',
-                'disable-setuid-sandbox',
-                'disable-dev-shm-usage',
-                'disable-gpu',
-                'disable-web-security',
-                'disable-extensions',
-                'disable-plugins',
-                'disable-default-apps',
-                'disable-background-timer-throttling',
-                'disable-backgrounding-occluded-windows',
-                'disable-renderer-backgrounding',
-                'disable-features=TranslateUI',
-                'disable-component-update',
-                'disable-domain-reliability',
-                'disable-sync',
-                'disable-client-side-phishing-detection',
-                'disable-permissions-api',
-                'disable-notifications',
-                'disable-desktop-notifications',
-                'disable-background-networking',
-                'memory-pressure-off',
-                'max_old_space_size=128',
-                'aggressive-cache-discard',
-            ]);
-
-            $browsershot->save($screenshotPath);
-
-            // Cache the screenshot path for the configured TTL
-            Cache::put($cacheKey, $screenshotPath, config('app-cache.screenshots.ttl'));
-
-            return $screenshotPath;
-        } catch (\Exception $e) {
-            // Clean up on error
-            if (file_exists($screenshotPath)) {
-                @unlink($screenshotPath);
-            }
-            throw $e;
-        }
-    }
 
     protected function sendScreenshotWithText(Message $message, Page $page, string $caption, ?string $replyMarkup = null): void
     {
-        // Get cached or generate new screenshot
-        $screenshotPath = $this->takeScreenshot($page);
+        // Get cached or generate new screenshot using OgImageService with bot dimensions
+        $screenshotPath = $this->ogImageService->generatePageScreenshot($page, OgImageService::TYPE_BOT);
 
         $params = [
             'chat_id' => $message->getChat()->getId(),
