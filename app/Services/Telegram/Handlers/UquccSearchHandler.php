@@ -206,17 +206,29 @@ class UquccSearchHandler extends BaseHandler
         $extracted = null;
         if ($page->quick_response_auto_extract_message
             || $page->quick_response_auto_extract_buttons
+            || $page->quick_response_auto_extract_links_as_text
             || $page->quick_response_auto_extract_attachments) {
             $extracted = $this->contentExtractor->getExtractedContent($page);
         }
 
+        // Resolve the message
+        $message = $page->quick_response_auto_extract_message
+            ? ($extracted['message'] ?? null)
+            : $page->quick_response_message;
+
+        // If links as text is enabled, append them to the message
+        if ($page->quick_response_auto_extract_links_as_text && isset($extracted['links_as_text'])) {
+            $message = ($message ?? '').$extracted['links_as_text'];
+        }
+
+        // Resolve buttons (empty if links_as_text is enabled, due to mutual exclusivity)
+        $buttons = $page->quick_response_auto_extract_buttons
+            ? ($extracted['buttons'] ?? [])
+            : ($page->quick_response_buttons ?? []);
+
         return [
-            'message' => $page->quick_response_auto_extract_message
-                ? ($extracted['message'] ?? null)
-                : $page->quick_response_message,
-            'buttons' => $page->quick_response_auto_extract_buttons
-                ? ($extracted['buttons'] ?? [])
-                : ($page->quick_response_buttons ?? []),
+            'message' => $message,
+            'buttons' => $buttons,
             'attachments' => $page->quick_response_auto_extract_attachments
                 ? ($extracted['attachments'] ?? [])
                 : ($page->quick_response_attachments ?? []),

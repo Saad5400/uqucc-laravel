@@ -10,7 +10,7 @@ class TipTapContentExtractor
     /**
      * Get extracted content for a page with caching.
      *
-     * @return array{message: string|null, buttons: array, attachments: array}
+     * @return array{message: string|null, buttons: array, links_as_text: string|null, attachments: array}
      */
     public function getExtractedContent(Page $page): array
     {
@@ -36,7 +36,7 @@ class TipTapContentExtractor
     /**
      * Extract message, buttons, and attachments from TipTap JSON content.
      *
-     * @return array{message: string|null, buttons: array, attachments: array}
+     * @return array{message: string|null, buttons: array, links_as_text: string|null, attachments: array}
      */
     protected function extractFromContent(Page $page): array
     {
@@ -47,6 +47,7 @@ class TipTapContentExtractor
             return [
                 'message' => null,
                 'buttons' => [],
+                'links_as_text' => null,
                 'attachments' => [],
             ];
         }
@@ -64,9 +65,13 @@ class TipTapContentExtractor
         // Convert links to button format
         $buttons = $this->buildButtons($links);
 
+        // Build links as plain text
+        $linksAsText = $this->buildLinksAsText($links);
+
         return [
             'message' => $message,
             'buttons' => $buttons,
+            'links_as_text' => $linksAsText,
             'attachments' => $attachments,
         ];
     }
@@ -339,5 +344,43 @@ class TipTapContentExtractor
         }
 
         return $buttons;
+    }
+
+    /**
+     * Build links as plain text from extracted links.
+     */
+    protected function buildLinksAsText(array $links): ?string
+    {
+        // Filter and deduplicate links
+        $formattedLinks = [];
+        $seenUrls = [];
+
+        foreach ($links as $link) {
+            $url = $link['url'] ?? '';
+            $text = $link['text'] ?? '';
+
+            // Skip empty or duplicate URLs
+            if (empty($url) || empty($text) || isset($seenUrls[$url])) {
+                continue;
+            }
+
+            // Skip internal anchor links
+            if (str_starts_with($url, '#')) {
+                continue;
+            }
+
+            $seenUrls[$url] = true;
+
+            // Format as "- Text: URL"
+            $escapedText = htmlspecialchars($text, ENT_NOQUOTES, 'UTF-8');
+            $escapedUrl = htmlspecialchars($url, ENT_NOQUOTES, 'UTF-8');
+            $formattedLinks[] = "• {$escapedText}: {$escapedUrl}";
+        }
+
+        if (empty($formattedLinks)) {
+            return null;
+        }
+
+        return "\n\n".implode("\n", $formattedLinks);
     }
 }

@@ -126,6 +126,12 @@ class PagesTable
                     ->trueLabel('مفعّل')
                     ->falseLabel('معطّل'),
 
+                TernaryFilter::make('quick_response_auto_extract_links_as_text')
+                    ->label('استخراج الروابط كنص')
+                    ->placeholder('الكل')
+                    ->trueLabel('مفعّل')
+                    ->falseLabel('معطّل'),
+
                 TernaryFilter::make('quick_response_auto_extract_attachments')
                     ->label('استخراج مرفقات الرد تلقائياً')
                     ->placeholder('الكل')

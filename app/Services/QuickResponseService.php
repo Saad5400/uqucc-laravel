@@ -28,6 +28,7 @@ class QuickResponseService
                     'requires_prefix',
                     'quick_response_auto_extract_message',
                     'quick_response_auto_extract_buttons',
+                    'quick_response_auto_extract_links_as_text',
                     'quick_response_auto_extract_attachments',
                     'quick_response_send_link',
                     'quick_response_send_screenshot',

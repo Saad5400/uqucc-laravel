@@ -149,7 +149,25 @@ class PageForm
                         Toggle::make('quick_response_auto_extract_buttons')
                             ->label('استخراج الأزرار تلقائياً')
                             ->reactive()
-                            ->helperText('استخراج الأزرار تلقائياً من المحتوى الرئيسي')
+                            ->helperText('استخراج الأزرار تلقائياً من المحتوى الرئيسي (لا يمكن تفعيله مع "استخراج الروابط كنص")')
+                            ->afterStateUpdated(function ($state, Set $set) {
+                                if ($state) {
+                                    $set('quick_response_auto_extract_links_as_text', false);
+                                }
+                            })
+                            ->disabled(fn (Get $get) => $get('quick_response_auto_extract_links_as_text'))
+                            ->default(false),
+
+                        Toggle::make('quick_response_auto_extract_links_as_text')
+                            ->label('استخراج الروابط كنص')
+                            ->reactive()
+                            ->helperText('استخراج الروابط من المحتوى وإرسالها كنص في الرسالة (لا يمكن تفعيله مع "استخراج الأزرار تلقائياً")')
+                            ->afterStateUpdated(function ($state, Set $set) {
+                                if ($state) {
+                                    $set('quick_response_auto_extract_buttons', false);
+                                }
+                            })
+                            ->disabled(fn (Get $get) => $get('quick_response_auto_extract_buttons'))
                             ->default(false),
 
                         Repeater::make('quick_response_buttons')
