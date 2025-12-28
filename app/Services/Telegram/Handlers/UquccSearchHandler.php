@@ -195,35 +195,31 @@ class UquccSearchHandler extends BaseHandler
      * Resolve the quick response content based on settings.
      *
      * Logic:
-     * - If auto_extract is ON: use extracted content, unless customize toggles override
-     * - If auto_extract is OFF: use custom values from DB
+     * - If auto_extract_X is ON: use extracted content for field X
+     * - If auto_extract_X is OFF: use custom values from DB for field X
      *
      * @return array{message: string|null, buttons: array, attachments: array}
      */
     protected function resolveQuickResponseContent(Page $page): array
     {
-        if ($page->quick_response_auto_extract) {
-            // Get auto-extracted content
+        // Get auto-extracted content if any field needs it
+        $extracted = null;
+        if ($page->quick_response_auto_extract_message
+            || $page->quick_response_auto_extract_buttons
+            || $page->quick_response_auto_extract_attachments) {
             $extracted = $this->contentExtractor->getExtractedContent($page);
-
-            return [
-                'message' => $page->quick_response_customize_message
-                    ? $page->quick_response_message
-                    : $extracted['message'],
-                'buttons' => $page->quick_response_customize_buttons
-                    ? ($page->quick_response_buttons ?? [])
-                    : $extracted['buttons'],
-                'attachments' => $page->quick_response_customize_attachments
-                    ? ($page->quick_response_attachments ?? [])
-                    : $extracted['attachments'],
-            ];
         }
 
-        // Manual mode: use custom values from DB
         return [
-            'message' => $page->quick_response_message,
-            'buttons' => $page->quick_response_buttons ?? [],
-            'attachments' => $page->quick_response_attachments ?? [],
+            'message' => $page->quick_response_auto_extract_message
+                ? ($extracted['message'] ?? null)
+                : $page->quick_response_message,
+            'buttons' => $page->quick_response_auto_extract_buttons
+                ? ($extracted['buttons'] ?? [])
+                : ($page->quick_response_buttons ?? []),
+            'attachments' => $page->quick_response_auto_extract_attachments
+                ? ($extracted['attachments'] ?? [])
+                : ($page->quick_response_attachments ?? []),
         ];
     }
 
@@ -249,8 +245,8 @@ class UquccSearchHandler extends BaseHandler
         $pageUrl = url($page->slug);
 
         // Use different limits based on whether content is auto-extracted or user-customized
-        // User-customized = auto_extract OFF, or auto_extract ON with customize_message ON
-        $isCustomContent = ! $page->quick_response_auto_extract || $page->quick_response_customize_message;
+        // User-customized = auto_extract_message is OFF
+        $isCustomContent = ! $page->quick_response_auto_extract_message;
 
         if ($isCaption) {
             $limit = $isCustomContent ? self::CUSTOM_CAPTION_LIMIT : self::AUTO_CAPTION_LIMIT;

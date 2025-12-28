@@ -67,10 +67,6 @@ class PagesTable
                     ->sortable()
                     ->toggleable(isToggledHiddenByDefault: true),
 
-                IconColumn::make('quick_response_enabled')
-                    ->label('رد سريع')
-                    ->boolean()
-                    ->sortable(),
 
                 TextColumn::make('created_at')
                     ->label('تاريخ الإنشاء')
@@ -118,8 +114,20 @@ class PagesTable
                     ->falseLabel('لا'),
 
                 // Quick Response filters
-                TernaryFilter::make('quick_response_auto_extract')
-                    ->label('استخراج تلقائي للرد السريع')
+                TernaryFilter::make('quick_response_auto_extract_message')
+                    ->label('استخراج رسالة الرد تلقائياً')
+                    ->placeholder('الكل')
+                    ->trueLabel('مفعّل')
+                    ->falseLabel('معطّل'),
+
+                TernaryFilter::make('quick_response_auto_extract_buttons')
+                    ->label('استخراج أزرار الرد تلقائياً')
+                    ->placeholder('الكل')
+                    ->trueLabel('مفعّل')
+                    ->falseLabel('معطّل'),
+
+                TernaryFilter::make('quick_response_auto_extract_attachments')
+                    ->label('استخراج مرفقات الرد تلقائياً')
                     ->placeholder('الكل')
                     ->trueLabel('مفعّل')
                     ->falseLabel('معطّل'),
@@ -132,24 +140,6 @@ class PagesTable
 
                 TernaryFilter::make('quick_response_send_screenshot')
                     ->label('إرسال لقطة شاشة في الرد السريع')
-                    ->placeholder('الكل')
-                    ->trueLabel('نعم')
-                    ->falseLabel('لا'),
-
-                TernaryFilter::make('quick_response_customize_message')
-                    ->label('تخصيص رسالة الرد السريع')
-                    ->placeholder('الكل')
-                    ->trueLabel('نعم')
-                    ->falseLabel('لا'),
-
-                TernaryFilter::make('quick_response_customize_buttons')
-                    ->label('تخصيص أزرار الرد السريع')
-                    ->placeholder('الكل')
-                    ->trueLabel('نعم')
-                    ->falseLabel('لا'),
-
-                TernaryFilter::make('quick_response_customize_attachments')
-                    ->label('تخصيص مرفقات الرد السريع')
                     ->placeholder('الكل')
                     ->trueLabel('نعم')
                     ->falseLabel('لا'),
