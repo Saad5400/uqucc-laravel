@@ -16,7 +16,7 @@ class StatsOverview extends StatsOverviewWidget
         $totalPages = Page::count();
         $rootPages = Page::whereNull('parent_id')->count();
         $childPages = Page::whereNotNull('parent_id')->count();
-        $totalContributors = DB::table('page_user')->distinct('user_id')->count('user_id');
+        $totalContributors = DB::table('page_user')->count(DB::raw('DISTINCT user_id'));
 
         // Get pages count from last 7 days for trend
         $pagesLastWeek = Page::where('created_at', '>=', now()->subWeek())->count();

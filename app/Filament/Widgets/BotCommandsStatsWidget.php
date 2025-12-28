@@ -14,8 +14,8 @@ class BotCommandsStatsWidget extends StatsOverviewWidget
     protected function getStats(): array
     {
         $totalCommands = BotCommandStat::sum('count');
-        $uniqueUsers = BotCommandStat::distinct('user_id')->whereNotNull('user_id')->count('user_id');
-        $uniqueCommands = BotCommandStat::distinct('command_name')->count('command_name');
+        $uniqueUsers = BotCommandStat::whereNotNull('user_id')->count(DB::raw('DISTINCT user_id'));
+        $uniqueCommands = BotCommandStat::count(DB::raw('DISTINCT command_name'));
 
         // Get most used command
         $mostUsedCommand = BotCommandStat::select('command_name', DB::raw('SUM(count) as total'))
