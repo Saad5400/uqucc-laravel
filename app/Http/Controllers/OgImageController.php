@@ -16,7 +16,7 @@ class OgImageController extends Controller
     /**
      * Generate and return an OG image for a given route.
      */
-    public function generate(string $route = '/'): Response
+    public function generate(string $route = '/')
     {
         try {
             // Normalize the route
