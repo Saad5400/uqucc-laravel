@@ -104,12 +104,18 @@ class PageForm
 
                 Section::make('ردود تيليجرام السريعة')
                     ->columnSpanFull()
-                    ->description('الرد السريع مفعّل دائماً. يمكنك تخصيص المحتوى أو تفعيل الاستخراج التلقائي من المحتوى الرئيسي')
+                    ->description('الرد السريع مفعّل دائماً. يمكنك تخصيص المحتوى أو تفعيل الاستخراج التلقائي من المحتوى الرئيسي لكل حقل')
                     ->schema([
-                        Toggle::make('quick_response_auto_extract')
-                            ->label('الاستخراج التلقائي من المحتوى')
+                        Toggle::make('auto_extract_all')
+                            ->label('استخراج الكل تلقائياً')
                             ->reactive()
-                            ->helperText('عند التفعيل، سيتم استخراج نص الرد والأزرار والمرفقات تلقائياً من المحتوى الرئيسي')
+                            ->helperText('تفعيل/تعطيل الاستخراج التلقائي لجميع الحقول (الرسالة، الأزرار، والمرفقات)')
+                            ->afterStateUpdated(function ($state, Set $set) {
+                                $set('quick_response_auto_extract_message', $state);
+                                $set('quick_response_auto_extract_buttons', $state);
+                                $set('quick_response_auto_extract_attachments', $state);
+                            })
+                            ->dehydrated(false)
                             ->default(false),
 
                         Toggle::make('quick_response_send_link')
@@ -123,11 +129,10 @@ class PageForm
                             ->visible(fn (Get $get) => ! $get('hidden'))
                             ->default(false),
 
-                        Toggle::make('quick_response_customize_message')
-                            ->label('تخصيص نص الرد')
+                        Toggle::make('quick_response_auto_extract_message')
+                            ->label('استخراج نص الرد تلقائياً')
                             ->reactive()
-                            ->helperText('تجاوز النص المستخرج تلقائياً واستخدام نص مخصص')
-                            ->hidden(fn (Get $get) => ! $get('quick_response_auto_extract'))
+                            ->helperText('استخراج نص الرد تلقائياً من المحتوى الرئيسي')
                             ->default(false),
 
                         RichEditor::make('quick_response_message')
@@ -139,15 +144,12 @@ class PageForm
                                 ['undo', 'redo'],
                             ])
                             ->columnSpanFull()
-                            ->visible(fn (Get $get) => ! $get('quick_response_auto_extract')
-                                || ($get('quick_response_auto_extract') && $get('quick_response_customize_message'))
-                            ),
+                            ->visible(fn (Get $get) => ! $get('quick_response_auto_extract_message')),
 
-                        Toggle::make('quick_response_customize_buttons')
-                            ->label('تخصيص الأزرار')
+                        Toggle::make('quick_response_auto_extract_buttons')
+                            ->label('استخراج الأزرار تلقائياً')
                             ->reactive()
-                            ->helperText('تجاوز الأزرار المستخرجة تلقائياً واستخدام أزرار مخصصة')
-                            ->hidden(fn (Get $get) => ! $get('quick_response_auto_extract'))
+                            ->helperText('استخراج الأزرار تلقائياً من المحتوى الرئيسي')
                             ->default(false),
 
                         Repeater::make('quick_response_buttons')
@@ -175,9 +177,7 @@ class PageForm
                                     ->required()
                                     ->helperText('عدد الأزرار في السطر الواحد'),
                             ])
-                            ->visible(fn (Get $get) => ! $get('quick_response_auto_extract')
-                                || ($get('quick_response_auto_extract') && $get('quick_response_customize_buttons'))
-                            )
+                            ->visible(fn (Get $get) => ! $get('quick_response_auto_extract_buttons'))
                             ->addActionLabel('إضافة زر')
                             ->columns(3)
                             ->reorderable()
@@ -187,11 +187,10 @@ class PageForm
                                     : null
                             ),
 
-                        Toggle::make('quick_response_customize_attachments')
-                            ->label('تخصيص المرفقات')
+                        Toggle::make('quick_response_auto_extract_attachments')
+                            ->label('استخراج المرفقات تلقائياً')
                             ->reactive()
-                            ->helperText('تجاوز المرفقات المستخرجة تلقائياً واستخدام مرفقات مخصصة')
-                            ->hidden(fn (Get $get) => ! $get('quick_response_auto_extract'))
+                            ->helperText('استخراج المرفقات تلقائياً من المحتوى الرئيسي')
                             ->default(false),
 
                         FileUpload::make('quick_response_attachments')
@@ -208,9 +207,7 @@ class PageForm
                                     : 'تُرفع مع الرد في حال احتجنا لإضافة صور أو ملفات داعمة'
                             )
                             ->columnSpanFull()
-                            ->visible(fn (Get $get) => ! $get('quick_response_auto_extract')
-                                || ($get('quick_response_auto_extract') && $get('quick_response_customize_attachments'))
-                            ),
+                            ->visible(fn (Get $get) => ! $get('quick_response_auto_extract_attachments')),
                     ]),
             ]);
     }
