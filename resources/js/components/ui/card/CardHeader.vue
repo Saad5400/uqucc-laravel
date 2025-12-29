@@ -1,14 +1,21 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from "vue"
 import { cn } from "@/lib/utils"
+import { cardHeaderVariants, type CardHeaderVariants } from '.'
 
-const props = defineProps<{
-  class?: HTMLAttributes["class"]
-}>()
+const props = withDefaults(
+  defineProps<{
+    class?: HTMLAttributes["class"]
+    size?: CardHeaderVariants['size']
+  }>(),
+  {
+    size: 'md'
+  }
+)
 </script>
 
 <template>
-  <div :class="cn('flex flex-col gap-y-1.5 p-6', props.class)">
+  <div :class="cn(cardHeaderVariants({ size: props.size }), props.class)">
     <slot />
   </div>
 </template>

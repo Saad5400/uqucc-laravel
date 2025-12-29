@@ -24,7 +24,7 @@ const props = defineProps<Props>()
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 mb-6">
     <!-- Breadcrumbs -->
     <Breadcrumb v-if="breadcrumbs && breadcrumbs.length > 1" class="mb-2">
       <BreadcrumbList>

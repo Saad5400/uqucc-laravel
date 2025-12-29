@@ -1,43 +1,43 @@
 <template>
   <div>
     <div v-auto-animate>
-      <div v-if="totalCredits" class="mb-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div v-if="totalCredits" class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <!-- Real GPA -->
-        <Card>
-          <CardHeader>
-            <CardTitle>المعدل الدقيق</CardTitle>
+        <Card size="sm">
+          <CardHeader size="sm">
+            <CardTitle class="text-lg">المعدل الدقيق</CardTitle>
           </CardHeader>
-          <CardContent class="text-end text-2xl font-bold">
+          <CardContent size="sm" class="text-end text-2xl font-bold">
             {{ gpa }}
           </CardContent>
         </Card>
 
         <!-- Approximate GPA -->
-        <Card>
-          <CardHeader>
-            <CardTitle>المعدل التقريبي</CardTitle>
+        <Card size="sm">
+          <CardHeader size="sm">
+            <CardTitle class="text-lg">المعدل التقريبي</CardTitle>
           </CardHeader>
-          <CardContent class="text-end text-2xl font-bold">
+          <CardContent size="sm" class="text-end text-2xl font-bold">
             {{ approximateGpa }}
           </CardContent>
         </Card>
 
         <!-- Total Credits -->
-        <Card>
-          <CardHeader>
-            <CardTitle>إجمالي الساعات</CardTitle>
+        <Card size="sm">
+          <CardHeader size="sm">
+            <CardTitle class="text-lg">إجمالي الساعات</CardTitle>
           </CardHeader>
-          <CardContent class="text-end text-2xl font-bold">
+          <CardContent size="sm" class="text-end text-2xl font-bold">
             {{ totalCredits }}
           </CardContent>
         </Card>
 
         <!-- Total Points -->
-        <Card>
-          <CardHeader>
-            <CardTitle>إجمالي النقاط</CardTitle>
+        <Card size="sm">
+          <CardHeader size="sm">
+            <CardTitle class="text-lg">إجمالي النقاط</CardTitle>
           </CardHeader>
-          <CardContent class="text-end text-2xl font-bold">
+          <CardContent size="sm" class="text-end text-2xl font-bold">
             {{ totalPoints }}
           </CardContent>
         </Card>
@@ -46,7 +46,7 @@
       <p v-else class="!mb-2 text-muted-foreground">املأ البيانات لحساب المعدل</p>
     </div>
 
-    <div class="!my-4 flex items-center justify-between gap-2">
+    <div class="!my-4 flex items-center justify-between gap-2 overflow-x-auto">
       <Button @click="addCourse" class="flex-1">
         إضافة مقرر
         <Plus />
