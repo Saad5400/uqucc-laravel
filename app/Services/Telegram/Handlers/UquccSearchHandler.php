@@ -415,7 +415,6 @@ class UquccSearchHandler extends BaseHandler
         ]);
     }
 
-
     protected function sendScreenshotWithText(Message $message, Page $page, string $caption, ?string $replyMarkup = null): void
     {
         // Get cached or generate new screenshot using OgImageService with bot dimensions
@@ -491,22 +490,34 @@ class UquccSearchHandler extends BaseHandler
     }
 
     /**
-     * Fetch an external file and cache it locally.
+     * Fetch an external file and cache it permanently.
+     *
+     * Files are stored permanently with a unique name derived from the URL hash.
+     * This prevents re-downloading the same file and avoids disk accumulation
+     * from orphaned cache entries (which previously used TTL-based caching).
      *
      * @return array{path: string, filename: string}|null
      */
     protected function fetchAndCacheExternalFile(string $url): ?array
     {
-        // Create a cache key based on the URL
-        $urlHash = md5($url);
-        $cacheKey = "external_attachment:{$urlHash}";
+        // Create a unique hash based on the URL for permanent storage
+        $urlHash = hash('sha256', $url);
 
-        // Check if we have a cached version
-        $cachedPath = Cache::get($cacheKey);
-        if ($cachedPath && file_exists($cachedPath)) {
+        // Get cache directory
+        $cacheDir = storage_path('app/cache/external-attachments');
+        if (! is_dir($cacheDir)) {
+            mkdir($cacheDir, 0755, true);
+        }
+
+        // Check if file already exists on disk (permanent cache)
+        // Look for any file starting with this hash
+        $existingFiles = glob($cacheDir.'/'.$urlHash.'_*');
+        if (! empty($existingFiles) && file_exists($existingFiles[0])) {
+            $existingPath = $existingFiles[0];
+
             return [
-                'path' => $cachedPath,
-                'filename' => basename($cachedPath),
+                'path' => $existingPath,
+                'filename' => $this->extractOriginalFilename($existingPath),
             ];
         }
 
@@ -526,18 +537,9 @@ class UquccSearchHandler extends BaseHandler
             // Determine filename from URL or Content-Disposition header
             $filename = $this->extractFilenameFromResponse($url, $response);
 
-            // Save to cache directory
-            $cacheDir = storage_path('app/cache/external-attachments');
-            if (! is_dir($cacheDir)) {
-                mkdir($cacheDir, 0755, true);
-            }
-
+            // Store permanently with hash prefix for deduplication
             $localPath = $cacheDir.'/'.$urlHash.'_'.$filename;
             file_put_contents($localPath, $response->body());
-
-            // Cache the path for the configured TTL (same as screenshots)
-            $ttl = config('app-cache.screenshots.ttl', 86400);
-            Cache::put($cacheKey, $localPath, $ttl);
 
             return [
                 'path' => $localPath,
@@ -551,6 +553,22 @@ class UquccSearchHandler extends BaseHandler
 
             return null;
         }
+    }
+
+    /**
+     * Extract the original filename from a cached file path.
+     * Cached files are stored as: {hash}_{original_filename}
+     */
+    protected function extractOriginalFilename(string $path): string
+    {
+        $basename = basename($path);
+        // Remove the hash prefix (64 chars for sha256 + underscore)
+        $underscorePos = strpos($basename, '_');
+        if ($underscorePos !== false && $underscorePos === 64) {
+            return substr($basename, 65);
+        }
+
+        return $basename;
     }
 
     /**
