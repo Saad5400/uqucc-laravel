@@ -17,6 +17,7 @@ use App\Services\Telegram\Handlers\UquccListHandler;
 use App\Services\Telegram\Handlers\UquccSearchHandler;
 use Telegram\Bot\Api;
 use Telegram\Bot\Objects\Update;
+use Illuminate\Support\Facades\Cache;
 
 class TelegramBotService
 {
@@ -55,7 +56,9 @@ class TelegramBotService
         echo 'Bot is ready!', PHP_EOL;
         echo 'Logged in as '.$this->telegram->getMe()->getFirstName(), PHP_EOL;
 
-        $offset = 0;
+        // Persist the last processed update ID to avoid reprocessing messages
+        $lastProcessedUpdateId = Cache::get('telegram:last_update_id', 0);
+        $offset = $lastProcessedUpdateId + 1;
 
         while (true) {
             try {
@@ -65,8 +68,19 @@ class TelegramBotService
                 ]);
 
                 foreach ($updates as $update) {
+                    $updateId = $update->getUpdateId();
+
+                    // Skip updates we've already processed (protects against bot restarts)
+                    if ($updateId <= $lastProcessedUpdateId) {
+                        $offset = $updateId + 1;
+                        continue;
+                    }
+
                     $this->handleUpdate($update);
-                    $offset = $update->getUpdateId() + 1;
+
+                    $lastProcessedUpdateId = $updateId;
+                    Cache::put('telegram:last_update_id', $lastProcessedUpdateId);
+                    $offset = $lastProcessedUpdateId + 1;
                 }
             } catch (\Exception $e) {
                 echo 'Error: '.$e->getMessage().PHP_EOL;
