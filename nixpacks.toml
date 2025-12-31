@@ -139,19 +139,6 @@ stdout_logfile=/var/log/worker-phpfpm.log
 stderr_logfile=/var/log/worker-phpfpm.log
 '''
 
-"worker-horizon.conf" = '''
-[program:worker-horizon]
-command=bash -c 'exec php /app/artisan horizon'
-user=www-data
-autostart=true
-autorestart=true
-stopasgroup=true
-killasgroup=true
-stdout_logfile=/var/log/worker-horizon.log
-stderr_logfile=/var/log/worker-horizon.log
-environment=PUPPETEER_SKIP_CHROMIUM_DOWNLOAD="true",NODE_PATH="%(ENV_NODE_PATH)s",CHROME_PATH="%(ENV_CHROME_PATH)s"
-'''
-
 "worker-scheduler.conf" = '''
 [program:worker-scheduler]
 process_name=%(program_name)s
