@@ -67,11 +67,14 @@ export NODE_PATH=$(npm root -g)
 # --- ensure Laravel writable paths (volume may be empty on first boot)
 mkdir -p /app/storage/framework/{cache,sessions,views} \
          /app/storage/logs \
+         /app/storage/app/public/screenshots \
          /app/bootstrap/cache
 # optional: if you run as www-data in FPM, give it ownership
 chown -R www-data:www-data /app/storage /app/bootstrap/cache || true
 # permissive enough for containers
 chmod -R ug+rwX /app/storage /app/bootstrap/cache
+# Screenshots directory needs to be writable by node (running as www-data)
+chmod 777 /app/storage/app/public/screenshots
 
 # --- Chromium needs writable directories for www-data user
 mkdir -p /tmp/.config /tmp/.cache /tmp/.local/share
