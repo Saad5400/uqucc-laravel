@@ -2,6 +2,7 @@
 
 namespace App\Services\Telegram\Handlers;
 
+use App\Jobs\DeleteTelegramMessages;
 use App\Models\BotCommandStat;
 use App\Models\User;
 use Telegram\Bot\Api;
@@ -102,32 +103,19 @@ abstract class BaseHandler
 
     /**
      * Delete both the user message and bot response after a delay.
+     * Uses queue to avoid blocking the bot.
      */
     protected function deleteMessagesAfterDelay(Message $userMessage, Message $botResponse, int $delaySeconds = 5): void
     {
-        sleep($delaySeconds);
-
         $chatId = $userMessage->getChat()->getId();
+        $messageIds = [
+            $userMessage->getMessageId(),
+            $botResponse->getMessageId(),
+        ];
 
-        // Delete user message
-        try {
-            $this->telegram->deleteMessage([
-                'chat_id' => $chatId,
-                'message_id' => $userMessage->getMessageId(),
-            ]);
-        } catch (\Exception $e) {
-            // Silently fail - message might already be deleted or bot lacks permissions
-        }
-
-        // Delete bot response
-        try {
-            $this->telegram->deleteMessage([
-                'chat_id' => $chatId,
-                'message_id' => $botResponse->getMessageId(),
-            ]);
-        } catch (\Exception $e) {
-            // Silently fail - message might already be deleted or bot lacks permissions
-        }
+        // Dispatch to queue with delay - non-blocking
+        DeleteTelegramMessages::dispatch($chatId, $messageIds)
+            ->delay(now()->addSeconds($delaySeconds));
     }
 
     /**

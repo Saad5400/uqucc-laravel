@@ -3,6 +3,7 @@
 namespace App\Services\Telegram\Handlers;
 
 use App\Helpers\ArabicNormalizer;
+use App\Jobs\DeleteTelegramMessages;
 use App\Models\Page;
 use App\Models\User;
 use App\Services\Telegram\ContentParser;
@@ -874,20 +875,12 @@ class PageManagementHandler extends BaseHandler
 
     /**
      * Delete all messages from an interaction after a delay.
+     * Uses queue to avoid blocking the bot.
      */
     protected function deleteAllInteractionMessages(int $chatId, array $messageIds, int $delaySeconds = 5): void
     {
-        sleep($delaySeconds);
-
-        foreach ($messageIds as $messageId) {
-            try {
-                $this->telegram->deleteMessage([
-                    'chat_id' => $chatId,
-                    'message_id' => $messageId,
-                ]);
-            } catch (\Exception $e) {
-                // Silently fail - message might already be deleted or bot lacks permissions
-            }
-        }
+        // Dispatch to queue with delay - non-blocking
+        DeleteTelegramMessages::dispatch($chatId, $messageIds)
+            ->delay(now()->addSeconds($delaySeconds));
     }
 }

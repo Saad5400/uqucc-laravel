@@ -34,12 +34,14 @@ class TelegramBotService
 
     public function __construct()
     {
-        $this->telegram = new Api(config('services.telegram.token'));
+        // Initialize with sync requests (we need responses for message IDs, etc.)
+        // Async mode returns NULL responses which breaks handlers that need message_id
+        $this->telegram = new Api(config('services.telegram.token'), false);
 
         // Initialize page management handler (needs special handling for callbacks)
         $this->pageManagementHandler = new PageManagementHandler($this->telegram, app(ContentParser::class));
 
-        // Initialize handlers
+        // Initialize handlers - they all share the async-enabled API instance
         $this->handlers = [
             new HelpHandler($this->telegram),
             new LoginHandler($this->telegram),
@@ -61,7 +63,7 @@ class TelegramBotService
      *
      * - Offset is persisted in cache (survives restarts)
      * - Deduplication via cache prevents processing same update twice
-     * - Synchronous processing for speed
+     * - Delayed deletions use queue (non-blocking)
      */
     public function run(): void
     {
@@ -95,9 +97,10 @@ class TelegramBotService
                     // Mark as processed before handling
                     Cache::put($cacheKey, true, now()->addHours(24));
 
-                    // Process synchronously
+                    // Process the update - outgoing calls are async
                     $this->handleUpdate($update);
                 }
+
             } catch (\Exception $e) {
                 Log::error('Telegram bot polling error', [
                     'message' => $e->getMessage(),
@@ -112,7 +115,7 @@ class TelegramBotService
     /**
      * Handle a single Telegram update.
      */
-    protected function handleUpdate(Update $update): void
+    public function handleUpdate(Update $update): void
     {
         try {
             // Handle callback queries (inline button presses)
@@ -132,7 +135,11 @@ class TelegramBotService
 
             $message = $update->getMessage();
 
-            if (! $message || $message->getFrom()->getIsBot()) {
+            if (! $message instanceof \Telegram\Bot\Objects\Message) {
+                return;
+            }
+
+            if ($message->getFrom()?->getIsBot()) {
                 return;
             }
 
@@ -157,7 +164,6 @@ class TelegramBotService
 
     /**
      * Reset the persisted offset.
-     * Useful if you need to reprocess old updates or start fresh.
      */
     public static function resetOffset(): void
     {

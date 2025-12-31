@@ -11,7 +11,7 @@ class RunTelegramBot extends Command
                             {--reset : Reset the offset to 0 before starting}
                             {--status : Show current offset and exit}';
 
-    protected $description = 'Run the Telegram bot';
+    protected $description = 'Run the Telegram bot with async API calls';
 
     public function handle(): int
     {
@@ -28,6 +28,7 @@ class RunTelegramBot extends Command
         }
 
         $this->info('Starting Telegram bot...');
+        $this->info('Using SDK async mode for non-blocking API calls.');
 
         $bot = new TelegramBotService;
         $bot->run();
