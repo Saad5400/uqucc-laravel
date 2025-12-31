@@ -43,13 +43,15 @@ class OgImageService
                 ->windowSize($dimensions['width'], $dimensions['height'])
                 ->deviceScaleFactor(1)
                 ->waitUntilNetworkIdle()
-                ->delay(500) // Wait 500ms after network idle to ensure DOM is fully rendered
+                ->delay(1500) // Wait 1.5s after network idle to ensure fonts are loaded
                 ->timeout(60)
                 ->dismissDialogs()
                 ->setScreenshotType('webp')
                 ->setOption('addStyleTag', json_encode([
                     'content' => '.screenshot-hidden { display: none !important; } html { scrollbar-gutter: auto !important; }',
-                ]));
+                ]))
+                // Wait for fonts to be loaded before screenshot
+                ->waitForFunction('document.fonts.ready.then(() => true)');
 
             // Set Chrome/Node paths from config if available (for Nixpacks deployment)
             if ($chromePath = config('services.browsershot.chrome_path')) {
@@ -86,6 +88,13 @@ class OgImageService
                 'memory-pressure-off',
                 'max_old_space_size=128',
                 'aggressive-cache-discard',
+                // Fix crash reporter error
+                'disable-crash-reporter',
+                'disable-breakpad',
+                // Font rendering
+                'font-render-hinting=none',
+                'disable-font-subpixel-positioning',
+                'enable-font-antialiasing',
             ]);
 
             $browsershot->save($screenshotPath);

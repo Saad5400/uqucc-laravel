@@ -37,6 +37,9 @@ cmds = [
     # Frontend builds (command will run client + SSR)
     "npm run build:ssr",
 
+    # Update font cache for Chromium/Browsershot (Arabic fonts, etc.)
+    "fc-cache -fv || true",
+
     # supervisor/nginx assets
     "mkdir -p /etc/supervisor/conf.d/",
     "cp /assets/worker-*.conf /etc/supervisor/conf.d/",
@@ -53,10 +56,12 @@ cmd = "/assets/start.sh"
 set -e
 
 # --- Browsershot / Puppeteer environment variables
+# Use readlink -f to resolve symlinks to actual Nix store paths
+# This ensures www-data can access them (not just root's profile)
 export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-export PUPPETEER_EXECUTABLE_PATH=$(which chromium)
-export CHROME_PATH=$(which chromium)
-export NODE_BINARY=$(which node)
+export PUPPETEER_EXECUTABLE_PATH=$(readlink -f "$(which chromium)")
+export CHROME_PATH=$(readlink -f "$(which chromium)")
+export NODE_BINARY=$(readlink -f "$(which node)")
 export NODE_PATH=$(npm root -g)
 
 # --- ensure Laravel writable paths (volume may be empty on first boot)
@@ -67,6 +72,10 @@ mkdir -p /app/storage/framework/{cache,sessions,views} \
 chown -R www-data:www-data /app/storage /app/bootstrap/cache || true
 # permissive enough for containers
 chmod -R ug+rwX /app/storage /app/bootstrap/cache
+
+# --- Chromium needs writable directories for www-data user
+mkdir -p /tmp/.config /tmp/.cache /tmp/.local/share
+chmod -R 777 /tmp/.config /tmp/.cache /tmp/.local/share
 
 # Make sure nginx can write logs & pid (your nginx logs go elsewhere, but safe)
 mkdir -p /var/log/nginx
@@ -207,6 +216,12 @@ php_admin_value[opcache.memory_consumption] = 128
 env[PUPPETEER_SKIP_CHROMIUM_DOWNLOAD] = true
 env[NODE_PATH] = $NODE_PATH
 env[CHROME_PATH] = $CHROME_PATH
+env[NODE_BINARY] = $NODE_BINARY
+; Chromium needs these directories to be writable
+env[HOME] = /tmp
+env[XDG_CONFIG_HOME] = /tmp/.config
+env[XDG_CACHE_HOME] = /tmp/.cache
+env[XDG_DATA_HOME] = /tmp/.local/share
 '''
 
 "nginx.template.conf" = '''
