@@ -65,8 +65,9 @@ class TelegramBotService
                 ]);
 
                 foreach ($updates as $update) {
-                    $this->handleUpdate($update);
+                    // Update offset BEFORE handling to prevent reprocessing on error
                     $offset = $update->getUpdateId() + 1;
+                    $this->handleUpdate($update);
                 }
             } catch (\Exception $e) {
                 echo 'Error: '.$e->getMessage().PHP_EOL;
