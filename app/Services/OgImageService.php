@@ -105,11 +105,22 @@ class OgImageService
 
     /**
      * Generate a screenshot for a Page model (for bot commands).
+     * Cleans up old versions of the screenshot before generating a new one.
      */
     public function generatePageScreenshot(Page $page, string $type = self::TYPE_BOT): string
     {
         $url = url($page->slug);
         $cacheKey = $this->getPageCacheKey($page, $type);
+        $screenshotPath = $this->getScreenshotPath($cacheKey, $type);
+
+        // If we already have a valid cached version, return it
+        if (file_exists($screenshotPath) && Cache::has($cacheKey)) {
+            return $screenshotPath;
+        }
+
+        // Clean up old versions of this page's screenshots before generating new one
+        // This prevents accumulation of versioned screenshot files
+        $this->clearOldScreenshots($page->slug);
 
         return $this->generateScreenshot($url, $type, $cacheKey);
     }

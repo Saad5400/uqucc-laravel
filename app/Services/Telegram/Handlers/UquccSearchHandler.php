@@ -493,23 +493,32 @@ class UquccSearchHandler extends BaseHandler
     }
 
     /**
-     * Fetch an external file and cache it locally.
+     * Fetch an external file and cache it permanently.
+     * Uses URL hash for permanent file-based caching - files are never re-downloaded.
      *
      * @return array{path: string, filename: string}|null
      */
     protected function fetchAndCacheExternalFile(string $url): ?array
     {
-        // Create a cache key based on the URL
+        // Create a unique hash based on the URL for permanent storage
         $urlHash = md5($url);
-        $cacheKey = "external_attachment:{$urlHash}";
 
-        // Check if we have a cached version
-        $cachedPath = Cache::get($cacheKey);
-        if ($cachedPath && file_exists($cachedPath)) {
-            return [
-                'path' => $cachedPath,
-                'filename' => basename($cachedPath),
-            ];
+        // Storage directory for permanent external attachments
+        $storageDir = storage_path('app/public/external-attachments');
+        if (! is_dir($storageDir)) {
+            mkdir($storageDir, 0755, true);
+        }
+
+        // Check if we already have this file (permanent cache - no TTL)
+        $existingFiles = glob($storageDir.'/'.$urlHash.'_*');
+        if (! empty($existingFiles)) {
+            $existingPath = $existingFiles[0];
+            if (file_exists($existingPath)) {
+                return [
+                    'path' => $existingPath,
+                    'filename' => basename($existingPath),
+                ];
+            }
         }
 
         try {
@@ -528,18 +537,9 @@ class UquccSearchHandler extends BaseHandler
             // Determine filename from URL or Content-Disposition header
             $filename = $this->extractFilenameFromResponse($url, $response);
 
-            // Save to cache directory
-            $cacheDir = storage_path('app/cache/external-attachments');
-            if (! is_dir($cacheDir)) {
-                mkdir($cacheDir, 0755, true);
-            }
-
-            $localPath = $cacheDir.'/'.$urlHash.'_'.$filename;
+            // Save permanently with URL hash prefix (ensures uniqueness)
+            $localPath = $storageDir.'/'.$urlHash.'_'.$filename;
             file_put_contents($localPath, $response->body());
-
-            // Cache the path for the configured TTL
-            $ttl = config('app-cache.telegram.external_attachments_ttl', 86400);
-            Cache::put($cacheKey, $localPath, $ttl);
 
             return [
                 'path' => $localPath,
