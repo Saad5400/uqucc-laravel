@@ -8,6 +8,7 @@
     "require": {
         "php": "^8.2",
         "filament/filament": "^4.0",
+        "grkamil/laravel-telegram-logging": "^1.13",
         "inertiajs/inertia-laravel": "^2.0",
         "irazasyed/telegram-bot-sdk": "^3.14",
         "khaled.alshamaa/ar-php": "^7.0",

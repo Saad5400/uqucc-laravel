@@ -15,11 +15,17 @@ use App\Services\Telegram\Handlers\PrivateForwardHandler;
 use App\Services\Telegram\Handlers\PythonExecutionHandler;
 use App\Services\Telegram\Handlers\UquccListHandler;
 use App\Services\Telegram\Handlers\UquccSearchHandler;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Telegram\Bot\Api;
 use Telegram\Bot\Objects\Update;
 
 class TelegramBotService
 {
+    protected const OFFSET_CACHE_KEY = 'telegram_bot_offset';
+
+    protected const PROCESSED_UPDATE_PREFIX = 'telegram_processed_update:';
+
     protected Api $telegram;
 
     protected array $handlers = [];
@@ -50,12 +56,21 @@ class TelegramBotService
         ];
     }
 
+    /**
+     * Run the bot using long polling.
+     *
+     * - Offset is persisted in cache (survives restarts)
+     * - Deduplication via cache prevents processing same update twice
+     * - Synchronous processing for speed
+     */
     public function run(): void
     {
         echo 'Bot is ready!', PHP_EOL;
         echo 'Logged in as '.$this->telegram->getMe()->getFirstName(), PHP_EOL;
 
-        $offset = 0;
+        // Load persisted offset from cache (survives restarts)
+        $offset = (int) Cache::get(self::OFFSET_CACHE_KEY, 0);
+        echo "Starting from offset: {$offset}", PHP_EOL;
 
         while (true) {
             try {
@@ -65,19 +80,38 @@ class TelegramBotService
                 ]);
 
                 foreach ($updates as $update) {
+                    $updateId = $update->getUpdateId();
+
                     // Update offset BEFORE handling to prevent reprocessing on error
-                    $offset = $update->getUpdateId() + 1;
+                    $offset = $updateId + 1;
+                    Cache::put(self::OFFSET_CACHE_KEY, $offset);
+
+                    // Skip if already processed (deduplication)
+                    $cacheKey = self::PROCESSED_UPDATE_PREFIX.$updateId;
+                    if (Cache::has($cacheKey)) {
+                        continue;
+                    }
+
+                    // Mark as processed before handling
+                    Cache::put($cacheKey, true, now()->addHours(24));
+
+                    // Process synchronously
                     $this->handleUpdate($update);
                 }
             } catch (\Exception $e) {
-                echo 'Error: '.$e->getMessage().PHP_EOL;
-                echo 'File: '.$e->getFile().':'.$e->getLine().PHP_EOL;
-                echo 'Trace: '.$e->getTraceAsString().PHP_EOL;
+                Log::error('Telegram bot polling error', [
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile().':'.$e->getLine(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
                 sleep(5);
             }
         }
     }
 
+    /**
+     * Handle a single Telegram update.
+     */
     protected function handleUpdate(Update $update): void
     {
         try {
@@ -87,8 +121,10 @@ class TelegramBotService
                 try {
                     $this->pageManagementHandler->handleCallback($callbackQuery);
                 } catch (\Exception $e) {
-                    echo 'Callback error: '.$e->getMessage().PHP_EOL;
-                    echo 'File: '.$e->getFile().':'.$e->getLine().PHP_EOL;
+                    Log::error('Telegram callback error', [
+                        'message' => $e->getMessage(),
+                        'file' => $e->getFile().':'.$e->getLine(),
+                    ]);
                 }
 
                 return;
@@ -104,13 +140,35 @@ class TelegramBotService
                 try {
                     $handler->handle($message);
                 } catch (\Exception $e) {
-                    echo 'Handler error: '.get_class($handler).' - '.$e->getMessage().PHP_EOL;
-                    echo 'File: '.$e->getFile().':'.$e->getLine().PHP_EOL;
+                    Log::error('Telegram handler error', [
+                        'handler' => get_class($handler),
+                        'message' => $e->getMessage(),
+                        'file' => $e->getFile().':'.$e->getLine(),
+                    ]);
                 }
             }
         } catch (\Exception $e) {
-            echo 'Update handling error: '.$e->getMessage().PHP_EOL;
-            echo 'File: '.$e->getFile().':'.$e->getLine().PHP_EOL;
+            Log::error('Telegram update handling error', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile().':'.$e->getLine(),
+            ]);
         }
+    }
+
+    /**
+     * Reset the persisted offset.
+     * Useful if you need to reprocess old updates or start fresh.
+     */
+    public static function resetOffset(): void
+    {
+        Cache::forget(self::OFFSET_CACHE_KEY);
+    }
+
+    /**
+     * Get the current persisted offset.
+     */
+    public static function getOffset(): int
+    {
+        return (int) Cache::get(self::OFFSET_CACHE_KEY, 0);
     }
 }
