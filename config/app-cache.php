@@ -50,6 +50,9 @@ return [
         // Cache duration for catalog pages list (in seconds)
         // Default: 1800 (30 minutes)
         'catalog_ttl' => env('CACHE_CATALOG_TTL', 1800),
+
+        // Cache duration for full HTTP response cache (in seconds)
+        'response_ttl' => env('CACHE_RESPONSE_TTL', 3600),
     ],
 
     'telegram' => [
@@ -86,6 +89,7 @@ return [
         'page' => 'page', // Base key, will be appended with page id and version
         'page_breadcrumbs' => 'page_breadcrumbs', // Base key for breadcrumbs
         'catalog_pages' => 'catalog_pages', // Base key for catalog
+        'response_cache' => 'response_cache', // Full HTTP response cache
 
         // Telegram-related cache keys
         'telegram_page_mgmt_state' => 'telegram_page_mgmt_state_',

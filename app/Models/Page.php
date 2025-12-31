@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Http\Middleware\CacheResponse;
 use App\Services\OgImageService;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
@@ -46,7 +47,7 @@ class Page extends Model implements Sortable
     }
 
     /**
-     * Clear all page-related caches (pages, breadcrumbs, catalogs).
+     * Clear all page-related caches (pages, breadcrumbs, catalogs, response cache).
      */
     protected static function clearPageCaches(): void
     {
@@ -54,6 +55,7 @@ class Page extends Model implements Sortable
             config('app-cache.keys.page', 'page') . ':*',
             config('app-cache.keys.page_breadcrumbs', 'page_breadcrumbs') . ':*',
             config('app-cache.keys.catalog_pages', 'catalog_pages') . ':*',
+            config('app-cache.keys.response_cache', 'response_cache') . ':*',
         ];
 
         // Get the cache prefix
@@ -74,6 +76,9 @@ class Page extends Model implements Sortable
                 }
             }
         }
+
+        // Also clear response cache using the middleware helper (works for non-Redis too)
+        CacheResponse::clearAll();
     }
 
     /**

@@ -116,10 +116,25 @@ class OgImageService
 
     /**
      * Generate a screenshot for a route (for OG images).
+     * Uses the current request's scheme and host to ensure correct URL in production.
      */
     public function generateRouteScreenshot(string $route, string $type = self::TYPE_OG): string
     {
-        $url = url($route);
+        // Use request's scheme and host for production compatibility
+        // This ensures we use the actual public URL, not APP_URL which might be localhost
+        if (app()->runningInConsole()) {
+            $url = url($route);
+        } else {
+            $request = request();
+            $baseUrl = $request->getSchemeAndHttpHost();
+            $url = rtrim($baseUrl, '/') . '/' . ltrim($route, '/');
+            
+            // Handle root route case
+            if ($route === '' || $route === '/') {
+                $url = rtrim($baseUrl, '/');
+            }
+        }
+        
         $cacheKey = $this->buildCacheKey($url, $type);
 
         return $this->generateScreenshot($url, $type, $cacheKey);

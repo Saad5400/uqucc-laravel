@@ -39,7 +39,10 @@ class OgImageController extends Controller
         } catch (\Exception $e) {
             Log::error('Failed to generate OG image', [
                 'route' => $route,
+                'normalized_route' => $normalizedRoute ?? null,
+                'request_host' => request()->getSchemeAndHttpHost(),
                 'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
             // Return a 500 error
