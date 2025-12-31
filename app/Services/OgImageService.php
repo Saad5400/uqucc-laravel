@@ -15,7 +15,7 @@ class OgImageService
 
     protected array $dimensions = [
         self::TYPE_BOT => ['width' => 720, 'height' => 720],
-        self::TYPE_OG => ['width' => 1200, 'height' => 630],
+        self::TYPE_OG => ['width' => 720, 'height' => 378],
     ];
 
     /**
@@ -132,6 +132,18 @@ class OgImageService
         $this->clearOldScreenshots($page->slug);
 
         return $this->generateScreenshot($url, $type, $cacheKey);
+    }
+
+    /**
+     * Check if a cached screenshot exists for a Page without generating it.
+     * Useful for determining if a loading message should be shown.
+     */
+    public function hasPageScreenshot(Page $page, string $type = self::TYPE_BOT): bool
+    {
+        $cacheKey = $this->getPageCacheKey($page, $type);
+        $screenshotPath = $this->getScreenshotPath($cacheKey, $type);
+
+        return file_exists($screenshotPath) && Cache::has($cacheKey);
     }
 
     /**

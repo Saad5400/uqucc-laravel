@@ -31,8 +31,8 @@
         <meta property="og:site_name" content="{{ $siteName }}">
         <meta property="og:locale" content="ar_SA">
         <meta property="og:image" content="{{ $ogImageUrl }}">
-        <meta property="og:image:width" content="1200">
-        <meta property="og:image:height" content="630">
+        <meta property="og:image:width" content="720">
+        <meta property="og:image:height" content="378">
         <meta property="og:image:type" content="image/webp">
         <meta property="og:image:alt" content="{{ $siteName }}">
 

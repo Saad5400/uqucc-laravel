@@ -420,23 +420,80 @@ class UquccSearchHandler extends BaseHandler
 
     protected function sendScreenshotWithText(Message $message, Page $page, string $caption, ?string $replyMarkup = null): void
     {
-        // Get cached or generate new screenshot using OgImageService with bot dimensions
-        $screenshotPath = $this->ogImageService->generatePageScreenshot($page, OgImageService::TYPE_BOT);
+        $chatId = $message->getChat()->getId();
+        $loadingMessage = null;
 
-        $params = [
-            'chat_id' => $message->getChat()->getId(),
-            'photo' => InputFile::create($screenshotPath, 'screenshot.webp'),
-            'caption' => $caption,
-            'parse_mode' => 'HTML',
-            'reply_to_message_id' => $message->getMessageId(),
-        ];
-
-        if ($replyMarkup) {
-            $params['reply_markup'] = $replyMarkup;
+        // Check if screenshot needs to be generated (not cached)
+        if (!$this->ogImageService->hasPageScreenshot($page, OgImageService::TYPE_BOT)) {
+            // Send loading message
+            $loadingMessage = $this->telegram->sendMessage([
+                'chat_id' => $chatId,
+                'text' => '⏳ جاري تجهيز الصورة...',
+                'reply_to_message_id' => $message->getMessageId(),
+            ]);
         }
 
-        $this->telegram->sendPhoto($params);
+        try {
+            // Get cached or generate new screenshot using OgImageService with bot dimensions
+            $screenshotPath = $this->ogImageService->generatePageScreenshot($page, OgImageService::TYPE_BOT);
+
+            $params = [
+                'chat_id' => $chatId,
+                'photo' => InputFile::create($screenshotPath, 'screenshot.webp'),
+                'caption' => $caption,
+                'parse_mode' => 'HTML',
+                'reply_to_message_id' => $message->getMessageId(),
+            ];
+
+            if ($replyMarkup) {
+                $params['reply_markup'] = $replyMarkup;
+            }
+
+            $this->telegram->sendPhoto($params);
+        } finally {
+            // Delete loading message if it was sent
+            if ($loadingMessage) {
+                try {
+                    $this->telegram->deleteMessage([
+                        'chat_id' => $chatId,
+                        'message_id' => $loadingMessage->getMessageId(),
+                    ]);
+                } catch (\Exception $e) {
+                    // Ignore deletion errors
+                }
+            }
+        }
         // Note: We don't delete the screenshot file as it's cached for reuse
+    }
+
+    /**
+     * Check if an external file is already cached.
+     */
+    protected function isExternalFileCached(string $url): bool
+    {
+        $urlHash = md5($url);
+        $storageDir = storage_path('app/public/external-attachments');
+        
+        if (!is_dir($storageDir)) {
+            return false;
+        }
+
+        $existingFiles = glob($storageDir.'/'.$urlHash.'_*');
+        
+        return !empty($existingFiles) && file_exists($existingFiles[0]);
+    }
+
+    /**
+     * Check if any attachments need to be downloaded (not cached).
+     */
+    protected function hasUncachedExternalAttachments(\Illuminate\Support\Collection $attachments): bool
+    {
+        foreach ($attachments as $path) {
+            if ($this->isExternalUrl($path) && !$this->isExternalFileCached($path)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -625,131 +682,155 @@ class UquccSearchHandler extends BaseHandler
             return;
         }
 
-        // Resolve all attachments to local paths, filtering out any that fail
-        $resolvedAttachments = $attachments
-            ->map(fn ($path) => $this->resolveAttachmentPath($path))
-            ->filter()
-            ->values();
+        $chatId = $message->getChat()->getId();
+        $loadingMessage = null;
 
-        if ($resolvedAttachments->isEmpty()) {
-            // All attachments failed to resolve, fall back to text-only or screenshot
-            Log::warning('All attachments failed to resolve', ['page_id' => $page->id]);
-
-            return;
+        // Check if any external files need to be downloaded
+        if ($this->hasUncachedExternalAttachments($attachments)) {
+            $loadingMessage = $this->telegram->sendMessage([
+                'chat_id' => $chatId,
+                'text' => '⏳ جاري تحميل الملفات...',
+                'reply_to_message_id' => $message->getMessageId(),
+            ]);
         }
 
-        $chatId = $message->getChat()->getId();
+        try {
+            // Resolve all attachments to local paths, filtering out any that fail
+            $resolvedAttachments = $attachments
+                ->map(fn ($path) => $this->resolveAttachmentPath($path))
+                ->filter()
+                ->values();
 
-        if ($resolvedAttachments->count() > 1) {
-            // Check if all attachments are images
-            $allImages = $resolvedAttachments->every(function ($attachment) {
-                $mime = mime_content_type($attachment['path']) ?? '';
+            if ($resolvedAttachments->isEmpty()) {
+                // All attachments failed to resolve, fall back to text-only or screenshot
+                Log::warning('All attachments failed to resolve', ['page_id' => $page->id]);
 
-                return str_starts_with($mime, 'image/');
-            });
+                return;
+            }
 
-            // Send all attachments as a media group (single message)
-            $media = [];
-            $payload = [];
+            if ($resolvedAttachments->count() > 1) {
+                // Check if all attachments are images
+                $allImages = $resolvedAttachments->every(function ($attachment) {
+                    $mime = mime_content_type($attachment['path']) ?? '';
 
-            foreach ($resolvedAttachments as $index => $attachment) {
+                    return str_starts_with($mime, 'image/');
+                });
+
+                // Send all attachments as a media group (single message)
+                $media = [];
+                $payload = [];
+
+                foreach ($resolvedAttachments as $index => $attachment) {
+                    $fullPath = $attachment['path'];
+                    $filename = $attachment['filename'];
+                    $mime = mime_content_type($fullPath) ?? '';
+
+                    // Determine media type and create InputFile
+                    $inputFile = InputFile::create($fullPath, $filename);
+
+                    // For media groups, we need to use attach://filename format
+                    // Sanitize filename for attach name (remove special characters)
+                    $safeFilename = preg_replace('/[^a-zA-Z0-9._-]/', '_', $filename);
+                    $attachName = "attach_{$index}_{$safeFilename}";
+
+                    // If all are images, use photo type; otherwise use document for all
+                    if ($allImages && str_starts_with($mime, 'image/')) {
+                        $mediaItem = [
+                            'type' => 'photo',
+                            'media' => "attach://{$attachName}",
+                        ];
+                    } else {
+                        // Send as document (including images if there's a mix)
+                        $mediaItem = [
+                            'type' => 'document',
+                            'media' => "attach://{$attachName}",
+                        ];
+                    }
+
+                    // Add caption only to the first item
+                    if ($index === 0) {
+                        $mediaItem['caption'] = $caption;
+                        $mediaItem['parse_mode'] = 'HTML';
+                    }
+
+                    $media[] = $mediaItem;
+
+                    // Add the actual file to payload with attach name
+                    $payload[$attachName] = $inputFile;
+                }
+
+                $payload['chat_id'] = $chatId;
+                $payload['media'] = json_encode($media);
+                $payload['reply_to_message_id'] = $message->getMessageId();
+
+                if ($replyMarkup) {
+                    $payload['reply_markup'] = $replyMarkup;
+                }
+
+                try {
+                    $this->telegram->sendMediaGroup($payload);
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to send media group with buttons, retrying without buttons', [
+                        'page_id' => $page->id,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    unset($payload['reply_markup']);
+                    $this->telegram->sendMediaGroup($payload);
+                }
+            } else {
+                // Single attachment - send as photo or document
+                $attachment = $resolvedAttachments->first();
                 $fullPath = $attachment['path'];
                 $filename = $attachment['filename'];
                 $mime = mime_content_type($fullPath) ?? '';
 
-                // Determine media type and create InputFile
-                $inputFile = InputFile::create($fullPath, $filename);
+                $payload = [
+                    'chat_id' => $chatId,
+                    'caption' => $caption,
+                    'parse_mode' => 'HTML',
+                    'reply_to_message_id' => $message->getMessageId(),
+                ];
 
-                // For media groups, we need to use attach://filename format
-                // Sanitize filename for attach name (remove special characters)
-                $safeFilename = preg_replace('/[^a-zA-Z0-9._-]/', '_', $filename);
-                $attachName = "attach_{$index}_{$safeFilename}";
-
-                // If all are images, use photo type; otherwise use document for all
-                if ($allImages && str_starts_with($mime, 'image/')) {
-                    $mediaItem = [
-                        'type' => 'photo',
-                        'media' => "attach://{$attachName}",
-                    ];
-                } else {
-                    // Send as document (including images if there's a mix)
-                    $mediaItem = [
-                        'type' => 'document',
-                        'media' => "attach://{$attachName}",
-                    ];
+                if ($replyMarkup) {
+                    $payload['reply_markup'] = $replyMarkup;
                 }
 
-                // Add caption only to the first item
-                if ($index === 0) {
-                    $mediaItem['caption'] = $caption;
-                    $mediaItem['parse_mode'] = 'HTML';
+                try {
+                    if (str_starts_with($mime, 'image/')) {
+                        $payload['photo'] = InputFile::create($fullPath, $filename);
+                        $this->telegram->sendPhoto($payload);
+                    } else {
+                        $payload['document'] = InputFile::create($fullPath, $filename);
+                        $this->telegram->sendDocument($payload);
+                    }
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to send attachment with buttons, retrying without buttons', [
+                        'page_id' => $page->id,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    unset($payload['reply_markup']);
+
+                    if (str_starts_with($mime, 'image/')) {
+                        $payload['photo'] = $payload['photo'] ?? InputFile::create($fullPath, $filename);
+                        $this->telegram->sendPhoto($payload);
+                    } else {
+                        $payload['document'] = $payload['document'] ?? InputFile::create($fullPath, $filename);
+                        $this->telegram->sendDocument($payload);
+                    }
                 }
-
-                $media[] = $mediaItem;
-
-                // Add the actual file to payload with attach name
-                $payload[$attachName] = $inputFile;
             }
-
-            $payload['chat_id'] = $chatId;
-            $payload['media'] = json_encode($media);
-            $payload['reply_to_message_id'] = $message->getMessageId();
-
-            if ($replyMarkup) {
-                $payload['reply_markup'] = $replyMarkup;
-            }
-
-            try {
-                $this->telegram->sendMediaGroup($payload);
-            } catch (\Throwable $e) {
-                Log::warning('Failed to send media group with buttons, retrying without buttons', [
-                    'page_id' => $page->id,
-                    'error' => $e->getMessage(),
-                ]);
-
-                unset($payload['reply_markup']);
-                $this->telegram->sendMediaGroup($payload);
-            }
-        } else {
-            // Single attachment - send as photo or document
-            $attachment = $resolvedAttachments->first();
-            $fullPath = $attachment['path'];
-            $filename = $attachment['filename'];
-            $mime = mime_content_type($fullPath) ?? '';
-
-            $payload = [
-                'chat_id' => $chatId,
-                'caption' => $caption,
-                'parse_mode' => 'HTML',
-                'reply_to_message_id' => $message->getMessageId(),
-            ];
-
-            if ($replyMarkup) {
-                $payload['reply_markup'] = $replyMarkup;
-            }
-
-            try {
-                if (str_starts_with($mime, 'image/')) {
-                    $payload['photo'] = InputFile::create($fullPath, $filename);
-                    $this->telegram->sendPhoto($payload);
-                } else {
-                    $payload['document'] = InputFile::create($fullPath, $filename);
-                    $this->telegram->sendDocument($payload);
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Failed to send attachment with buttons, retrying without buttons', [
-                    'page_id' => $page->id,
-                    'error' => $e->getMessage(),
-                ]);
-
-                unset($payload['reply_markup']);
-
-                if (str_starts_with($mime, 'image/')) {
-                    $payload['photo'] = $payload['photo'] ?? InputFile::create($fullPath, $filename);
-                    $this->telegram->sendPhoto($payload);
-                } else {
-                    $payload['document'] = $payload['document'] ?? InputFile::create($fullPath, $filename);
-                    $this->telegram->sendDocument($payload);
+        } finally {
+            // Delete loading message if it was sent
+            if ($loadingMessage) {
+                try {
+                    $this->telegram->deleteMessage([
+                        'chat_id' => $chatId,
+                        'message_id' => $loadingMessage->getMessageId(),
+                    ]);
+                } catch (\Exception $e) {
+                    // Ignore deletion errors
                 }
             }
         }

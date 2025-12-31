@@ -37,20 +37,27 @@ class ArabicNormalizer
     }
 
     /**
-     * Normalize Arabic text and remove the definite article ال (al-).
-     * This allows matching with or without the article.
+     * Normalize Arabic text and remove the definite article ال (al-) from each word.
+     * This allows matching with or without the article in any position.
+     * 
+     * Example: "دليل الهياكل المتقطعة" -> "دليل هياكل متقطعه"
      */
     public static function normalizeWithoutDefiniteArticle(string $text): string
     {
         $normalized = self::normalize($text);
 
-        // Remove the definite article ال from the beginning
-        // After normalization, it will be "ال" (alef + lam)
-        if (mb_substr($normalized, 0, 2, 'UTF-8') === 'ال') {
-            $normalized = mb_substr($normalized, 2, null, 'UTF-8');
-        }
+        // Split into words, remove ال from the beginning of each word, then rejoin
+        $words = preg_split('/\s+/u', $normalized);
+        
+        $cleanedWords = array_map(function ($word) {
+            // Remove the definite article ال from the beginning of each word
+            if (mb_substr($word, 0, 2, 'UTF-8') === 'ال') {
+                return mb_substr($word, 2, null, 'UTF-8');
+            }
+            return $word;
+        }, $words);
 
-        return $normalized;
+        return implode(' ', array_filter($cleanedWords));
     }
 
     /**
