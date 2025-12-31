@@ -9,9 +9,6 @@ use Telegram\Bot\Objects\Message;
 
 class LoginHandler extends BaseHandler
 {
-    private const STATE_KEY_PREFIX = 'telegram_login_state_';
-
-    private const STATE_TTL = 300; // 5 minutes
 
     public function handle(Message $message): void
     {
@@ -156,16 +153,20 @@ class LoginHandler extends BaseHandler
 
     protected function getState(int $userId): ?array
     {
-        return Cache::get(self::STATE_KEY_PREFIX.$userId);
+        $prefix = config('app-cache.keys.telegram_login_state', 'telegram_login_state_');
+        return Cache::get($prefix.$userId);
     }
 
     protected function setState(int $userId, array $state): void
     {
-        Cache::put(self::STATE_KEY_PREFIX.$userId, $state, self::STATE_TTL);
+        $prefix = config('app-cache.keys.telegram_login_state', 'telegram_login_state_');
+        $ttl = config('app-cache.telegram.login_state_ttl', 300);
+        Cache::put($prefix.$userId, $state, $ttl);
     }
 
     protected function clearState(int $userId): void
     {
-        Cache::forget(self::STATE_KEY_PREFIX.$userId);
+        $prefix = config('app-cache.keys.telegram_login_state', 'telegram_login_state_');
+        Cache::forget($prefix.$userId);
     }
 }

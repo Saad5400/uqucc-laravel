@@ -86,12 +86,14 @@ class UquccSearchHandler extends BaseHandler
     protected function hasActiveState(int $userId): bool
     {
         // Check for page management state
-        if (Cache::has('telegram_page_mgmt_state_'.$userId)) {
+        $pageMgmtPrefix = config('app-cache.keys.telegram_page_mgmt_state', 'telegram_page_mgmt_state_');
+        if (Cache::has($pageMgmtPrefix.$userId)) {
             return true;
         }
 
         // Check for login state
-        if (Cache::has('telegram_login_state_'.$userId)) {
+        $loginPrefix = config('app-cache.keys.telegram_login_state', 'telegram_login_state_');
+        if (Cache::has($loginPrefix.$userId)) {
             return true;
         }
 
@@ -535,8 +537,8 @@ class UquccSearchHandler extends BaseHandler
             $localPath = $cacheDir.'/'.$urlHash.'_'.$filename;
             file_put_contents($localPath, $response->body());
 
-            // Cache the path for the configured TTL (same as screenshots)
-            $ttl = config('app-cache.screenshots.ttl', 86400);
+            // Cache the path for the configured TTL
+            $ttl = config('app-cache.telegram.external_attachments_ttl', 86400);
             Cache::put($cacheKey, $localPath, $ttl);
 
             return [

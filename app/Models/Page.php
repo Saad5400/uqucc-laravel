@@ -39,6 +39,41 @@ class Page extends Model implements Sortable
         Cache::forget(config('app-cache.keys.navigation_tree'));
         Cache::forget(config('app-cache.keys.search_data'));
         Cache::forget(config('app-cache.keys.quick_responses'));
+
+        // Clear all page-related caches using pattern-based flush
+        // This uses Redis SCAN to find and delete matching keys efficiently
+        self::clearPageCaches();
+    }
+
+    /**
+     * Clear all page-related caches (pages, breadcrumbs, catalogs).
+     */
+    protected static function clearPageCaches(): void
+    {
+        $patterns = [
+            config('app-cache.keys.page', 'page') . ':*',
+            config('app-cache.keys.page_breadcrumbs', 'page_breadcrumbs') . ':*',
+            config('app-cache.keys.catalog_pages', 'catalog_pages') . ':*',
+        ];
+
+        // Get the cache prefix
+        $prefix = config('cache.prefix', '');
+
+        // For Redis, use pattern-based deletion
+        if (config('cache.default') === 'redis') {
+            $redis = Cache::getRedis();
+            foreach ($patterns as $pattern) {
+                $fullPattern = $prefix ? $prefix . ':' . $pattern : $pattern;
+                $keys = $redis->keys($fullPattern);
+                if (!empty($keys)) {
+                    // Remove prefix from keys before forgetting
+                    foreach ($keys as $key) {
+                        $cacheKey = $prefix ? str_replace($prefix . ':', '', $key) : $key;
+                        Cache::forget($cacheKey);
+                    }
+                }
+            }
+        }
     }
 
     /**

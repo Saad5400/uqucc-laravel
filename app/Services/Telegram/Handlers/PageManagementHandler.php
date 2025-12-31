@@ -16,9 +16,6 @@ use Telegram\Bot\Objects\Message;
 
 class PageManagementHandler extends BaseHandler
 {
-    private const STATE_KEY_PREFIX = 'telegram_page_mgmt_state_';
-
-    private const STATE_TTL = 600; // 10 minutes
 
     protected ContentParser $contentParser;
 
@@ -858,17 +855,21 @@ class PageManagementHandler extends BaseHandler
 
     protected function getState(int $userId): ?array
     {
-        return Cache::get(self::STATE_KEY_PREFIX.$userId);
+        $prefix = config('app-cache.keys.telegram_page_mgmt_state', 'telegram_page_mgmt_state_');
+        return Cache::get($prefix.$userId);
     }
 
     protected function setState(int $userId, array $state): void
     {
-        Cache::put(self::STATE_KEY_PREFIX.$userId, $state, self::STATE_TTL);
+        $prefix = config('app-cache.keys.telegram_page_mgmt_state', 'telegram_page_mgmt_state_');
+        $ttl = config('app-cache.telegram.state_ttl', 600);
+        Cache::put($prefix.$userId, $state, $ttl);
     }
 
     protected function clearState(int $userId): void
     {
-        Cache::forget(self::STATE_KEY_PREFIX.$userId);
+        $prefix = config('app-cache.keys.telegram_page_mgmt_state', 'telegram_page_mgmt_state_');
+        Cache::forget($prefix.$userId);
     }
 
     /**
