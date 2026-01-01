@@ -175,6 +175,19 @@ stdout_logfile=/var/log/worker-queue.log
 stderr_logfile=/var/log/worker-queue.log
 '''
 
+"worker-telegram-queue.conf" = '''
+[program:worker-telegram-queue]
+process_name=%(program_name)s_%(process_num)02d
+command=bash -c 'exec php /app/artisan queue:work --queue=telegram --sleep=1 --tries=1 --max-time=3600'
+numprocs=4
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+stdout_logfile=/var/log/worker-telegram-queue.log
+stderr_logfile=/var/log/worker-telegram-queue.log
+'''
+
 "worker-inertia-ssr.conf" = '''
 [program:inertia-ssr]
 command=bash -c 'exec php /app/artisan inertia:start-ssr'
