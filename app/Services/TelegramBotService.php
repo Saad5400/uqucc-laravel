@@ -2,23 +2,10 @@
 
 namespace App\Services;
 
-use App\Services\Telegram\ContentParser;
-use App\Services\Telegram\Handlers\DeepSeekChatHandler;
-use App\Services\Telegram\Handlers\EditLinkHandler;
-use App\Services\Telegram\Handlers\HelpHandler;
-use App\Services\Telegram\Handlers\InfoHandler;
-use App\Services\Telegram\Handlers\InviteLinkHandler;
-use App\Services\Telegram\Handlers\JavaExecutionHandler;
-use App\Services\Telegram\Handlers\LoginHandler;
-use App\Services\Telegram\Handlers\PageManagementHandler;
-use App\Services\Telegram\Handlers\PrivateForwardHandler;
-use App\Services\Telegram\Handlers\PythonExecutionHandler;
-use App\Services\Telegram\Handlers\UquccListHandler;
-use App\Services\Telegram\Handlers\UquccSearchHandler;
+use App\Jobs\ProcessTelegramUpdate;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Telegram\Bot\Api;
-use Telegram\Bot\Objects\Update;
 
 class TelegramBotService
 {
@@ -28,34 +15,9 @@ class TelegramBotService
 
     protected Api $telegram;
 
-    protected array $handlers = [];
-
-    protected PageManagementHandler $pageManagementHandler;
-
     public function __construct()
     {
-        // Initialize with sync requests (we need responses for message IDs, etc.)
-        // Async mode returns NULL responses which breaks handlers that need message_id
         $this->telegram = new Api(config('services.telegram.token'), false);
-
-        // Initialize page management handler (needs special handling for callbacks)
-        $this->pageManagementHandler = new PageManagementHandler($this->telegram, app(ContentParser::class));
-
-        // Initialize handlers - they all share the async-enabled API instance
-        $this->handlers = [
-            new HelpHandler($this->telegram),
-            new LoginHandler($this->telegram),
-            $this->pageManagementHandler,
-            new EditLinkHandler($this->telegram),
-            new UquccSearchHandler($this->telegram, app(QuickResponseService::class), app(TipTapContentExtractor::class), app(OgImageService::class)),
-            new UquccListHandler($this->telegram),
-            new PythonExecutionHandler($this->telegram),
-            new JavaExecutionHandler($this->telegram),
-            new DeepSeekChatHandler($this->telegram),
-            new InfoHandler($this->telegram),
-            new PrivateForwardHandler($this->telegram),
-            new InviteLinkHandler($this->telegram),
-        ];
     }
 
     /**
@@ -63,12 +25,13 @@ class TelegramBotService
      *
      * - Offset is persisted in cache (survives restarts)
      * - Deduplication via cache prevents processing same update twice
-     * - Delayed deletions use queue (non-blocking)
+     * - Updates are dispatched to queue for concurrent processing
      */
     public function run(): void
     {
         echo 'Bot is ready!', PHP_EOL;
         echo 'Logged in as '.$this->telegram->getMe()->getFirstName(), PHP_EOL;
+        echo 'Updates will be processed concurrently via queue.', PHP_EOL;
 
         // Load persisted offset from cache (survives restarts)
         $offset = (int) Cache::get(self::OFFSET_CACHE_KEY, 0);
@@ -94,11 +57,12 @@ class TelegramBotService
                         continue;
                     }
 
-                    // Mark as processed before handling
+                    // Mark as processed before dispatching
                     Cache::put($cacheKey, true, now()->addHours(24));
 
-                    // Process the update - outgoing calls are async
-                    $this->handleUpdate($update);
+                    // Dispatch to queue for concurrent processing
+                    // Convert Update object to array for serialization
+                    ProcessTelegramUpdate::dispatch($update->toArray());
                 }
 
             } catch (\Exception $e) {
@@ -109,56 +73,6 @@ class TelegramBotService
                 ]);
                 sleep(5);
             }
-        }
-    }
-
-    /**
-     * Handle a single Telegram update.
-     */
-    public function handleUpdate(Update $update): void
-    {
-        try {
-            // Handle callback queries (inline button presses)
-            $callbackQuery = $update->getCallbackQuery();
-            if ($callbackQuery) {
-                try {
-                    $this->pageManagementHandler->handleCallback($callbackQuery);
-                } catch (\Exception $e) {
-                    Log::error('Telegram callback error', [
-                        'message' => $e->getMessage(),
-                        'file' => $e->getFile().':'.$e->getLine(),
-                    ]);
-                }
-
-                return;
-            }
-
-            $message = $update->getMessage();
-
-            if (! $message instanceof \Telegram\Bot\Objects\Message) {
-                return;
-            }
-
-            if ($message->getFrom()?->getIsBot()) {
-                return;
-            }
-
-            foreach ($this->handlers as $handler) {
-                try {
-                    $handler->handle($message);
-                } catch (\Exception $e) {
-                    Log::error('Telegram handler error', [
-                        'handler' => get_class($handler),
-                        'message' => $e->getMessage(),
-                        'file' => $e->getFile().':'.$e->getLine(),
-                    ]);
-                }
-            }
-        } catch (\Exception $e) {
-            Log::error('Telegram update handling error', [
-                'message' => $e->getMessage(),
-                'file' => $e->getFile().':'.$e->getLine(),
-            ]);
         }
     }
 

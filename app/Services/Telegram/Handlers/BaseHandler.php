@@ -5,6 +5,7 @@ namespace App\Services\Telegram\Handlers;
 use App\Jobs\DeleteTelegramMessages;
 use App\Models\BotCommandStat;
 use App\Models\User;
+use Illuminate\Support\Facades\Cache;
 use Telegram\Bot\Api;
 use Telegram\Bot\Objects\Message;
 
@@ -12,7 +13,15 @@ abstract class BaseHandler
 {
     protected Api $telegram;
 
-    protected array $userStates = [];
+    /**
+     * Cache key prefix for user states. Uses class name for handler isolation.
+     */
+    protected const USER_STATE_CACHE_PREFIX = 'telegram_handler_state:';
+
+    /**
+     * How long to keep user states in cache (in seconds).
+     */
+    protected const USER_STATE_TTL = 3600; // 1 hour
 
     public function __construct(Api $telegram)
     {
@@ -135,19 +144,42 @@ abstract class BaseHandler
         return htmlspecialchars($text, ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
+    /**
+     * Get user state from cache (persists across job executions).
+     */
     protected function getUserState(int $userId): ?array
     {
-        return $this->userStates[$userId] ?? null;
+        $cacheKey = $this->getUserStateCacheKey($userId);
+
+        return Cache::get($cacheKey);
     }
 
+    /**
+     * Set user state in cache (persists across job executions).
+     */
     protected function setUserState(int $userId, array $state): void
     {
-        $this->userStates[$userId] = $state;
+        $cacheKey = $this->getUserStateCacheKey($userId);
+        Cache::put($cacheKey, $state, static::USER_STATE_TTL);
     }
 
+    /**
+     * Clear user state from cache.
+     */
     protected function clearUserState(int $userId): void
     {
-        unset($this->userStates[$userId]);
+        $cacheKey = $this->getUserStateCacheKey($userId);
+        Cache::forget($cacheKey);
+    }
+
+    /**
+     * Generate cache key for user state, scoped to this handler class.
+     */
+    protected function getUserStateCacheKey(int $userId): string
+    {
+        $handlerClass = static::class;
+
+        return self::USER_STATE_CACHE_PREFIX.$handlerClass.':'.$userId;
     }
 
     protected function escapeMarkdownV2(string $text): string
