@@ -163,6 +163,18 @@ stdout_logfile=/var/log/worker-scheduler.log
 stderr_logfile=/var/log/worker-scheduler.log
 '''
 
+"worker-queue.conf" = '''
+[program:worker-queue]
+process_name=%(program_name)s
+command=bash -c 'exec php /app/artisan queue:work --sleep=3 --tries=3 --max-time=3600'
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+stdout_logfile=/var/log/worker-queue.log
+stderr_logfile=/var/log/worker-queue.log
+'''
+
 "worker-inertia-ssr.conf" = '''
 [program:inertia-ssr]
 command=bash -c 'exec php /app/artisan inertia:start-ssr'
