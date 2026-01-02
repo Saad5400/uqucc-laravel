@@ -66,12 +66,22 @@ class TelegramBotService
                 }
 
             } catch (\Exception $e) {
-                Log::error('Telegram bot polling error', [
-                    'message' => $e->getMessage(),
-                    'file' => $e->getFile().':'.$e->getLine(),
-                    'trace' => $e->getTraceAsString(),
-                ]);
-                sleep(5);
+                // Transient network errors (connection reset, timeout) are expected in long-polling
+                $isTransientError = str_contains($e->getMessage(), 'cURL error 28')
+                    || str_contains($e->getMessage(), 'Connection reset')
+                    || str_contains($e->getMessage(), 'Operation timed out');
+
+                if ($isTransientError) {
+                    // Don't log transient errors as they're expected - just retry silently
+                    sleep(2);
+                } else {
+                    Log::error('Telegram bot polling error', [
+                        'message' => $e->getMessage(),
+                        'file' => $e->getFile().':'.$e->getLine(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                    sleep(5);
+                }
             }
         }
     }
