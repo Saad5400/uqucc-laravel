@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\OgImageService;
+use App\Support\ScreenshotConfig;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 
@@ -33,8 +34,8 @@ class OgImageController extends Controller
 
             // Return the image
             return response()->file($screenshotPath, [
-                'Content-Type' => 'image/webp',
-                'Cache-Control' => 'public, max-age=604800', // Cache for 7 days
+                'Content-Type' => ScreenshotConfig::mimeType(),
+                'Cache-Control' => ScreenshotConfig::cacheControl(),
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to generate OG image', [
