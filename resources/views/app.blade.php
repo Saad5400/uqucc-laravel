@@ -51,37 +51,6 @@
         <meta name="language" content="Arabic">
         <link rel="canonical" href="{{ $currentUrl }}">
 
-        {{-- Structured Data (JSON-LD) for SEO --}}
-        <script type="application/ld+json">
-        {
-            "@@context": "https://schema.org",
-            "@@type": "EducationalOrganization",
-            "name": "{{ $siteName }}",
-            "description": "{{ $defaultDescription }}",
-            "url": "{{ url('/') }}",
-            "logo": "{{ asset('favicon.svg') }}",
-            "inLanguage": "ar",
-            "address": {
-                "@@type": "PostalAddress",
-                "addressCountry": "SA",
-                "addressLocality": "Makkah"
-            }
-        }
-        </script>
-        <script type="application/ld+json">
-        {
-            "@@context": "https://schema.org",
-            "@@type": "WebSite",
-            "name": "{{ $siteName }}",
-            "url": "{{ url('/') }}",
-            "potentialAction": {
-                "@@type": "SearchAction",
-                "target": "{{ url('/') }}?q={search_term_string}",
-                "query-input": "required name=search_term_string"
-            }
-        }
-        </script>
-
         @vite(['resources/css/app.css', 'resources/css/typography.css', 'resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])
         @inertiaHead
 
