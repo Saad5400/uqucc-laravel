@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\Page;
 use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Log;
 use Spatie\Browsershot\Browsershot;
 
 class OgImageService
@@ -43,7 +42,6 @@ class OgImageService
                 ->windowSize($dimensions['width'], $dimensions['height'])
                 ->deviceScaleFactor(1)
                 ->waitUntilNetworkIdle()
-                ->delay(1500) // Wait 1.5s after network idle to ensure fonts are loaded
                 ->timeout(60)
                 ->dismissDialogs()
                 ->setScreenshotType('webp')
@@ -159,14 +157,14 @@ class OgImageService
         } else {
             $request = request();
             $baseUrl = $request->getSchemeAndHttpHost();
-            $url = rtrim($baseUrl, '/') . '/' . ltrim($route, '/');
-            
+            $url = rtrim($baseUrl, '/').'/'.ltrim($route, '/');
+
             // Handle root route case
             if ($route === '' || $route === '/') {
                 $url = rtrim($baseUrl, '/');
             }
         }
-        
+
         $cacheKey = $this->buildCacheKey($url, $type);
 
         return $this->generateScreenshot($url, $type, $cacheKey);
