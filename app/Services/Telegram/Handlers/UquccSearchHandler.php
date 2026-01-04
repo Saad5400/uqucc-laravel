@@ -52,12 +52,17 @@ class UquccSearchHandler extends BaseHandler
             return;
         }
 
-        // Check if it matches "دليل <query>" or is one of the exception words
+        // Check if it matches "دليل <query>" or "بحث <query>" or is one of the exception words
         $isCommand = false;
+        $isAggressiveSearch = false;
         $query = null;
 
         if (preg_match('/^دليل\s+(.+)$/u', $content, $matches)) {
             $isCommand = true;
+            $query = $matches[1];
+        } elseif (preg_match('/^بحث\s+(.+)$/u', $content, $matches)) {
+            $isCommand = true;
+            $isAggressiveSearch = true;
             $query = $matches[1];
         } elseif (in_array($content, $this->exceptionWords)) {
             $isCommand = true;
@@ -65,7 +70,11 @@ class UquccSearchHandler extends BaseHandler
         }
 
         if ($isCommand) {
-            $this->searchAndRespond($message, $query);
+            if ($isAggressiveSearch) {
+                $this->aggressiveSearchAndRespond($message, $query);
+            } else {
+                $this->searchAndRespond($message, $query);
+            }
 
             return;
         }
@@ -78,6 +87,20 @@ class UquccSearchHandler extends BaseHandler
 
         // Check for smart search pages - ANY message that contains a smart page title
         $this->checkSmartSearch($message, $content);
+    }
+
+    /**
+     * Get the message ID to reply to.
+     * If the user's message was a reply, reply to that original message instead.
+     */
+    protected function getReplyToMessageId(Message $message): int
+    {
+        $replyToMessage = $message->getReplyToMessage();
+        if ($replyToMessage) {
+            return $replyToMessage->getMessageId();
+        }
+
+        return $message->getMessageId();
     }
 
     /**
@@ -140,7 +163,29 @@ class UquccSearchHandler extends BaseHandler
             $sentMessage = $this->telegram->sendMessage([
                 'chat_id' => $message->getChat()->getId(),
                 'text' => 'الصفحة غير موجودة',
-                'reply_to_message_id' => $message->getMessageId(),
+                'reply_to_message_id' => $this->getReplyToMessageId($message),
+            ]);
+
+            // Delete both the user message and bot response after 5 seconds
+            $this->deleteMessagesAfterDelay($message, $sentMessage);
+
+            return;
+        }
+
+        $this->sendPageResult($message, $page);
+    }
+
+    protected function aggressiveSearchAndRespond(Message $message, string $query): void
+    {
+        $this->trackCommand($message, 'بحث');
+
+        $page = $this->aggressiveSearch($query);
+
+        if (! $page) {
+            $sentMessage = $this->telegram->sendMessage([
+                'chat_id' => $message->getChat()->getId(),
+                'text' => 'لم أتمكن من العثور على أي صفحة مطابقة',
+                'reply_to_message_id' => $this->getReplyToMessageId($message),
             ]);
 
             // Delete both the user message and bot response after 5 seconds
@@ -178,7 +223,7 @@ class UquccSearchHandler extends BaseHandler
                 'chat_id' => $message->getChat()->getId(),
                 'text' => $textContent,
                 'parse_mode' => 'HTML',
-                'reply_to_message_id' => $message->getMessageId(),
+                'reply_to_message_id' => $this->getReplyToMessageId($message),
             ];
 
             if ($replyMarkup) {
@@ -256,10 +301,7 @@ class UquccSearchHandler extends BaseHandler
             $limit = $isCustomContent ? self::CUSTOM_MESSAGE_LIMIT : self::AUTO_MESSAGE_LIMIT;
         }
 
-        // Ensure title is a string and escape HTML entities
-        $title = is_string($page->title) ? $page->title : (string) $page->title;
-        $escapedTitle = $this->escapeHtml($title);
-        $lines = ["<b>{$escapedTitle}</b>"];
+        $lines = [];
 
         // Add message content if available
         if ($resolvedContent['message']) {
@@ -428,7 +470,7 @@ class UquccSearchHandler extends BaseHandler
             $loadingMessage = $this->telegram->sendMessage([
                 'chat_id' => $chatId,
                 'text' => '⏳ جاري تجهيز الصورة...',
-                'reply_to_message_id' => $message->getMessageId(),
+                'reply_to_message_id' => $this->getReplyToMessageId($message),
             ]);
         }
 
@@ -441,7 +483,7 @@ class UquccSearchHandler extends BaseHandler
                 'photo' => InputFile::create($screenshotPath, 'screenshot.webp'),
                 'caption' => $caption,
                 'parse_mode' => 'HTML',
-                'reply_to_message_id' => $message->getMessageId(),
+                'reply_to_message_id' => $this->getReplyToMessageId($message),
             ];
 
             if ($replyMarkup) {
@@ -690,7 +732,7 @@ class UquccSearchHandler extends BaseHandler
             $loadingMessage = $this->telegram->sendMessage([
                 'chat_id' => $chatId,
                 'text' => '⏳ جاري تحميل الملفات...',
-                'reply_to_message_id' => $message->getMessageId(),
+                'reply_to_message_id' => $this->getReplyToMessageId($message),
             ]);
         }
 
@@ -761,7 +803,7 @@ class UquccSearchHandler extends BaseHandler
 
                 $payload['chat_id'] = $chatId;
                 $payload['media'] = json_encode($media);
-                $payload['reply_to_message_id'] = $message->getMessageId();
+                $payload['reply_to_message_id'] = $this->getReplyToMessageId($message);
 
                 if ($replyMarkup) {
                     $payload['reply_markup'] = $replyMarkup;
@@ -789,7 +831,7 @@ class UquccSearchHandler extends BaseHandler
                     'chat_id' => $chatId,
                     'caption' => $caption,
                     'parse_mode' => 'HTML',
-                    'reply_to_message_id' => $message->getMessageId(),
+                    'reply_to_message_id' => $this->getReplyToMessageId($message),
                 ];
 
                 if ($replyMarkup) {

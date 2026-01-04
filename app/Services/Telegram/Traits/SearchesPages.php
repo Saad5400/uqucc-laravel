@@ -76,4 +76,92 @@ trait SearchesPages
             return str_contains($normalizedContent, $normalizedTitle);
         });
     }
+
+    /**
+     * Aggressive search that tries to find a page no matter what.
+     * First tries partial contains match, then falls back to similarity matching.
+     */
+    protected function aggressiveSearch(string $query): ?Page
+    {
+        $quickResponses = app(QuickResponseService::class);
+
+        // First try: find any page title that contains the query
+        $containsMatch = $this->findPageByContains($query);
+        if ($containsMatch) {
+            return $containsMatch;
+        }
+
+        // Second try: find the closest match using similarity
+        return $this->findClosestMatch($query);
+    }
+
+    /**
+     * Find a page where the title contains the query.
+     * Uses Arabic normalization.
+     */
+    protected function findPageByContains(string $query): ?Page
+    {
+        $normalizedQuery = ArabicNormalizer::normalize($query);
+        $normalizedQueryWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($query);
+
+        $quickResponses = app(QuickResponseService::class);
+
+        return $quickResponses->getCachedResponses()->first(function (Page $page) use ($normalizedQuery, $normalizedQueryWithoutAl) {
+            $normalizedTitle = ArabicNormalizer::normalize($page->title);
+            $normalizedTitleWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($page->title);
+
+            // Check if title contains the query
+            if (str_contains($normalizedTitle, $normalizedQuery)) {
+                return true;
+            }
+
+            // Check without ال
+            if (str_contains($normalizedTitleWithoutAl, $normalizedQueryWithoutAl)) {
+                return true;
+            }
+
+            // Check if query contains the title (reverse check)
+            if (str_contains($normalizedQuery, $normalizedTitle)) {
+                return true;
+            }
+
+            return false;
+        });
+    }
+
+    /**
+     * Find the closest matching page using similarity scoring.
+     * Returns the page with the highest similarity score above a threshold.
+     */
+    protected function findClosestMatch(string $query): ?Page
+    {
+        $normalizedQuery = ArabicNormalizer::normalize($query);
+        $normalizedQueryWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($query);
+
+        $quickResponses = app(QuickResponseService::class);
+        $pages = $quickResponses->getCachedResponses();
+
+        $bestMatch = null;
+        $bestScore = 0;
+        $threshold = 0.4; // Minimum similarity score (40%)
+
+        foreach ($pages as $page) {
+            $normalizedTitle = ArabicNormalizer::normalize($page->title);
+            $normalizedTitleWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($page->title);
+
+            // Calculate similarity with both normalized versions
+            similar_text($normalizedQuery, $normalizedTitle, $score1);
+            similar_text($normalizedQueryWithoutAl, $normalizedTitleWithoutAl, $score2);
+
+            // Use the best score between the two comparisons
+            $score = max($score1, $score2) / 100;
+
+            if ($score > $bestScore && $score >= $threshold) {
+                $bestScore = $score;
+                $bestMatch = $page;
+            }
+        }
+
+        return $bestMatch;
+    }
 }
