@@ -14,9 +14,10 @@ class BotCommandsStatsWidget extends StatsOverviewWidget
     protected function getStats(): array
     {
         $totalCommands = BotCommandStat::sum('count');
-        $uniqueUsers = BotCommandStat::whereNotNull('user_id')
+        // Count unique Telegram users from private chats (chat_id = user's telegram ID in private chats)
+        $uniqueUsers = BotCommandStat::where('chat_type', 'private')
             ->distinct()
-            ->count('user_id');
+            ->count('chat_id');
         $uniqueCommands = BotCommandStat::distinct()
             ->count('command_name');
 
