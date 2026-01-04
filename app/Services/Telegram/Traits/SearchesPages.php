@@ -124,23 +124,37 @@ trait SearchesPages
             $titleNoSpacesWithoutAl = str_replace(' ', '', $normalizedTitleWithoutAl);
 
             $score = 0;
+            $matchedTerms = []; // Track which terms have been matched
 
             // Score based on how many query terms are found in the title
-            foreach ($queryTerms as $term) {
+            foreach ($queryTerms as $index => $term) {
+                if (in_array($index, $matchedTerms)) {
+                    continue; // Skip if this term position was already matched
+                }
+
                 if (str_contains($normalizedTitle, $term)) {
                     $score++;
+                    $matchedTerms[] = $index;
                 } elseif (str_contains($titleNoSpaces, $term)) {
                     // Match even if spaces are different (e.g., "vscode" matches "vs code")
                     $score++;
+                    $matchedTerms[] = $index;
                 }
             }
 
             // Also check without ال to handle variations
-            foreach ($queryTermsWithoutAl as $term) {
+            // Only check terms that haven't been matched yet
+            foreach ($queryTermsWithoutAl as $index => $term) {
+                if (in_array($index, $matchedTerms)) {
+                    continue; // Skip if this term position was already matched
+                }
+
                 if (str_contains($normalizedTitleWithoutAl, $term)) {
                     $score++;
+                    $matchedTerms[] = $index;
                 } elseif (str_contains($titleNoSpacesWithoutAl, $term)) {
                     $score++;
+                    $matchedTerms[] = $index;
                 }
             }
 
