@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Page;
+use DOMDocument;
+use DOMNode;
 use Illuminate\Support\Facades\Cache;
 
 class TipTapContentExtractor
@@ -176,6 +178,10 @@ class TipTapContentExtractor
                     $textParts[] = "\n---\n";
                     break;
 
+                case 'alert':
+                    $this->handleAlertNode($node, $textParts, $links, $attachments, $marks, $inList);
+                    break;
+
                 default:
                     // For any other node type, try to traverse its content
                     if (! empty($node['content'])) {
@@ -339,5 +345,125 @@ class TipTapContentExtractor
         }
 
         return $buttons;
+    }
+
+    /**
+     * Handle Alert block nodes which store their rich content as HTML in attrs.
+     */
+    protected function handleAlertNode(array $node, array &$textParts, array &$links, array &$attachments, array $marks, bool $inList): void
+    {
+        $htmlContent = $node['attrs']['data']['content'] ?? $node['attrs']['content'] ?? null;
+
+        if (is_string($htmlContent) && trim($htmlContent) !== '') {
+            $this->extractFromHtmlString($htmlContent, $textParts, $links, $attachments, $inList);
+        }
+
+        if (! empty($node['content'])) {
+            $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, $inList);
+        }
+    }
+
+    /**
+     * Extract text, links, and attachments from an HTML fragment.
+     */
+    protected function extractFromHtmlString(string $html, array &$textParts, array &$links, array &$attachments, bool $inList = false): void
+    {
+        $dom = new DOMDocument();
+        libxml_use_internal_errors(true);
+        $loaded = $dom->loadHTML('<?xml encoding="UTF-8">'.$html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
+        libxml_clear_errors();
+
+        if (! $loaded) {
+            return;
+        }
+
+        $body = $dom->getElementsByTagName('body')->item(0) ?? $dom->documentElement;
+
+        if (! $body) {
+            return;
+        }
+
+        $this->traverseDomNodes($body->childNodes, $textParts, $links, $attachments, $inList);
+        $textParts[] = $inList ? "\n" : "\n\n";
+    }
+
+    /**
+     * Traverse DOM nodes to collect text, links, and attachments.
+     *
+     * @param  iterable<DOMNode>  $nodes
+     */
+    protected function traverseDomNodes(iterable $nodes, array &$textParts, array &$links, array &$attachments, bool $inList = false): void
+    {
+        foreach ($nodes as $node) {
+            if ($node->nodeType === XML_TEXT_NODE) {
+                $content = trim($node->nodeValue ?? '');
+
+                if ($content !== '') {
+                    $textParts[] = htmlspecialchars($content, ENT_NOQUOTES, 'UTF-8');
+                }
+
+                continue;
+            }
+
+            if ($node->nodeType !== XML_ELEMENT_NODE) {
+                continue;
+            }
+
+            $tag = strtolower($node->nodeName);
+
+            switch ($tag) {
+                case 'a':
+                    $href = $node->getAttribute('href');
+                    $anchorText = trim($node->textContent ?? '') ?: $href;
+
+                    if ($href) {
+                        $links[] = [
+                            'text' => $anchorText,
+                            'url' => $href,
+                        ];
+
+                        $escapedHref = htmlspecialchars($href, ENT_QUOTES, 'UTF-8');
+                        $textParts[] = '<a href="'.$escapedHref.'">'.htmlspecialchars($anchorText, ENT_NOQUOTES, 'UTF-8').'</a>';
+                    }
+
+                    $this->traverseDomNodes($node->childNodes, $textParts, $links, $attachments, $inList);
+                    break;
+
+                case 'br':
+                    $textParts[] = "\n";
+                    break;
+
+                case 'ul':
+                case 'ol':
+                    $this->traverseDomNodes($node->childNodes, $textParts, $links, $attachments, true);
+                    $textParts[] = "\n";
+                    break;
+
+                case 'li':
+                    $textParts[] = '• ';
+                    $this->traverseDomNodes($node->childNodes, $textParts, $links, $attachments, true);
+                    $textParts[] = "\n";
+                    break;
+
+                case 'p':
+                case 'div':
+                case 'section':
+                    $this->traverseDomNodes($node->childNodes, $textParts, $links, $attachments, $inList);
+                    $textParts[] = $inList ? "\n" : "\n\n";
+                    break;
+
+                case 'img':
+                    $src = $node->getAttribute('src');
+
+                    if ($src) {
+                        $attachments[] = $this->normalizeAttachmentPath($src);
+                    }
+                    break;
+
+                default:
+                    $this->traverseDomNodes($node->childNodes, $textParts, $links, $attachments, $inList);
+                    break;
+            }
+        }
     }
 }
