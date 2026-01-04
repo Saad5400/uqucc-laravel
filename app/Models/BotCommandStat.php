@@ -9,6 +9,7 @@ class BotCommandStat extends Model
 {
     protected $fillable = [
         'user_id',
+        'telegram_user_id',
         'command_name',
         'chat_type',
         'chat_id',
@@ -35,10 +36,11 @@ class BotCommandStat extends Model
     /**
      * Track a command usage
      */
-    public static function track(string $commandName, ?int $userId = null, ?string $chatType = null, ?int $chatId = null): void
+    public static function track(string $commandName, ?int $userId = null, ?int $telegramUserId = null, ?string $chatType = null, ?int $chatId = null): void
     {
         $stat = static::where('command_name', $commandName)
             ->where('user_id', $userId)
+            ->where('telegram_user_id', $telegramUserId)
             ->where('chat_type', $chatType)
             ->where('chat_id', $chatId)
             ->first();
@@ -50,6 +52,7 @@ class BotCommandStat extends Model
             static::create([
                 'command_name' => $commandName,
                 'user_id' => $userId,
+                'telegram_user_id' => $telegramUserId,
                 'chat_type' => $chatType,
                 'chat_id' => $chatId,
                 'count' => 1,

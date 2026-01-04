@@ -36,12 +36,13 @@ abstract class BaseHandler
     protected function trackCommand(Message $message, string $commandName): void
     {
         try {
-            $telegramId = (string) $message->getFrom()->getId();
-            $user = User::findByTelegramId($telegramId);
+            $telegramUserId = $message->getFrom()->getId();
+            $user = User::findByTelegramId((string) $telegramUserId);
 
             BotCommandStat::track(
                 commandName: $commandName,
                 userId: $user?->id,
+                telegramUserId: $telegramUserId,
                 chatType: $message->getChat()->getType(),
                 chatId: $message->getChat()->getId()
             );

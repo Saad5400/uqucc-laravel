@@ -22,7 +22,7 @@ class MostUsedCommandsWidget extends BaseWidget
                 BotCommandStat::query()
                     ->select('command_name')
                     ->selectRaw('SUM(count) as total_uses')
-                    ->selectRaw('COUNT(DISTINCT user_id) as unique_users')
+                    ->selectRaw('COUNT(DISTINCT telegram_user_id) as unique_users')
                     ->selectRaw('MAX(last_used_at) as last_use')
                     ->selectRaw('MD5(command_name) as id')
                     ->groupBy('command_name')
