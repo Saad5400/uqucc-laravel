@@ -2,14 +2,12 @@
 
 namespace App\Filament\Resources\Pages\RelationManagers;
 
-use App\Models\User;
 use Filament\Actions\AttachAction;
+use Filament\Actions\DetachAction;
+use Filament\Actions\EditAction;
 use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
-use Filament\Tables\Actions\AttachAction as TableAttachAction;
-use Filament\Tables\Actions\DetachAction;
-use Filament\Tables\Actions\EditAction;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 
@@ -72,10 +70,10 @@ class UsersRelationManager extends RelationManager
             ])
             ->defaultSort('pivot.order')
             ->headerActions([
-                TableAttachAction::make()
+                AttachAction::make()
                     ->label('ربط مستخدم')
                     ->preloadRecordSelect()
-                    ->form(fn (TableAttachAction $action): array => [
+                    ->form(fn (AttachAction $action): array => [
                         $action->getRecordSelect()
                             ->label('المستخدم')
                             ->searchable(['name', 'username', 'email']),
