@@ -319,8 +319,8 @@ class UquccSearchHandler extends BaseHandler
         $html = preg_replace('/<(!DOCTYPE|html|head|body)[^>]*>/i', '', $html);
         $html = preg_replace('/<\/(html|head|body)>/i', '', $html);
 
-        // Convert paragraph tags to double newlines
-        $html = preg_replace('/<p[^>]*>/i', '', $html);
+        // Convert paragraph tags to double newlines (use word boundary to avoid matching <pre>)
+        $html = preg_replace('/<p\b[^>]*>/i', '', $html);
         $html = preg_replace('/<\/p>/i', "\n\n", $html);
 
         // Convert br tags to newlines
@@ -417,14 +417,13 @@ class UquccSearchHandler extends BaseHandler
         ]);
     }
 
-
     protected function sendScreenshotWithText(Message $message, Page $page, string $caption, ?string $replyMarkup = null): void
     {
         $chatId = $message->getChat()->getId();
         $loadingMessage = null;
 
         // Check if screenshot needs to be generated (not cached)
-        if (!$this->ogImageService->hasPageScreenshot($page, OgImageService::TYPE_BOT)) {
+        if (! $this->ogImageService->hasPageScreenshot($page, OgImageService::TYPE_BOT)) {
             // Send loading message
             $loadingMessage = $this->telegram->sendMessage([
                 'chat_id' => $chatId,
@@ -473,14 +472,14 @@ class UquccSearchHandler extends BaseHandler
     {
         $urlHash = md5($url);
         $storageDir = storage_path('app/public/external-attachments');
-        
-        if (!is_dir($storageDir)) {
+
+        if (! is_dir($storageDir)) {
             return false;
         }
 
         $existingFiles = glob($storageDir.'/'.$urlHash.'_*');
-        
-        return !empty($existingFiles) && file_exists($existingFiles[0]);
+
+        return ! empty($existingFiles) && file_exists($existingFiles[0]);
     }
 
     /**
@@ -489,10 +488,11 @@ class UquccSearchHandler extends BaseHandler
     protected function hasUncachedExternalAttachments(\Illuminate\Support\Collection $attachments): bool
     {
         foreach ($attachments as $path) {
-            if ($this->isExternalUrl($path) && !$this->isExternalFileCached($path)) {
+            if ($this->isExternalUrl($path) && ! $this->isExternalFileCached($path)) {
                 return true;
             }
         }
+
         return false;
     }
 
