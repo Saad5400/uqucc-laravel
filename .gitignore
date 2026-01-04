@@ -30,3 +30,4 @@ yarn-error.log
 chrome
 postgres_backup.sql
 
+/public/sitemap.xml

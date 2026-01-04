@@ -8,7 +8,6 @@
     "require": {
         "php": "^8.2",
         "filament/filament": "^4.0",
-        "predis/predis": "^2.0",
         "grkamil/laravel-telegram-logging": "^1.13",
         "inertiajs/inertia-laravel": "^2.0",
         "irazasyed/telegram-bot-sdk": "^3.14",
@@ -17,9 +16,11 @@
         "laravel/tinker": "^2.10.1",
         "laravel/wayfinder": "^0.1.11",
         "league/commonmark": "^2.8",
+        "predis/predis": "^2.0",
         "spatie/browsershot": "^5.2",
         "spatie/eloquent-sortable": "^4.5",
         "spatie/laravel-permission": "^6.24",
+        "spatie/laravel-sitemap": "^7.3",
         "symfony/yaml": "^7.4"
     },
     "require-dev": {

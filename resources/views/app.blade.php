@@ -3,6 +3,7 @@
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="theme-color" content="#1a1a1a">
 
         <title inertia>{{ config('app.name', 'Laravel') }}</title>
 
@@ -21,8 +22,8 @@
             $currentUrl = url()->current();
             $currentPath = request()->path() === '/' ? '/' : '/' . request()->path();
             $ogImageUrl = route('og-image', ['route' => ltrim($currentPath, '/')]);
-            $siteName = config('app.name', 'Laravel');
-            $defaultDescription = 'دليل طالب كلية الحاسبات';
+            $siteName = config('app.name', 'دليل طالب كلية الحاسبات');
+            $defaultDescription = 'دليلك الشامل لكل ما يخص كلية الحاسبات، من تخصصات، نصائح، وأدوات لمساعدتك في رحلتك الأكاديمية.';
         @endphp
 
         {{-- Open Graph / Facebook --}}
@@ -44,9 +45,42 @@
 
         {{-- Additional SEO Meta Tags --}}
         <meta name="description" content="{{ $defaultDescription }}">
-        <meta name="robots" content="index, follow">
+        <meta name="keywords" content="كلية الحاسبات, جامعة أم القرى, دليل الطالب, تخصصات الحاسب, البرمجة, علم البيانات">
+        <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
         <meta name="author" content="{{ $siteName }}">
+        <meta name="language" content="Arabic">
         <link rel="canonical" href="{{ $currentUrl }}">
+
+        {{-- Structured Data (JSON-LD) for SEO --}}
+        <script type="application/ld+json">
+        {
+            "@@context": "https://schema.org",
+            "@@type": "EducationalOrganization",
+            "name": "{{ $siteName }}",
+            "description": "{{ $defaultDescription }}",
+            "url": "{{ url('/') }}",
+            "logo": "{{ asset('favicon.svg') }}",
+            "inLanguage": "ar",
+            "address": {
+                "@@type": "PostalAddress",
+                "addressCountry": "SA",
+                "addressLocality": "Makkah"
+            }
+        }
+        </script>
+        <script type="application/ld+json">
+        {
+            "@@context": "https://schema.org",
+            "@@type": "WebSite",
+            "name": "{{ $siteName }}",
+            "url": "{{ url('/') }}",
+            "potentialAction": {
+                "@@type": "SearchAction",
+                "target": "{{ url('/') }}?q={search_term_string}",
+                "query-input": "required name=search_term_string"
+            }
+        }
+        </script>
 
         @vite(['resources/css/app.css', 'resources/css/typography.css', 'resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])
         @inertiaHead

@@ -12,3 +12,8 @@ Schedule::command('storage:cleanup --screenshots')
     ->weekly()
     ->withoutOverlapping()
     ->runInBackground();
+
+Schedule::command('sitemap:generate')
+    ->daily()
+    ->withoutOverlapping()
+    ->runInBackground();
