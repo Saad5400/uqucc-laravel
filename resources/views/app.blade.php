@@ -34,7 +34,7 @@
         <meta property="og:image" content="{{ $ogImageUrl }}">
         <meta property="og:image:width" content="720">
         <meta property="og:image:height" content="378">
-        <meta property="og:image:type" content="image/webp">
+        <meta property="og:image:type" content="{{ \App\Support\ScreenshotConfig::mimeType() }}">
         <meta property="og:image:alt" content="{{ $siteName }}">
 
         {{-- Twitter Card --}}

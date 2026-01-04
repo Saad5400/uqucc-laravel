@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Support\ScreenshotConfig;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
 
@@ -56,14 +57,16 @@ class CleanupStorageFiles extends Command
     {
         $this->info('Cleaning up orphaned screenshots...');
 
-        $screenshotsDir = storage_path('app/public/screenshots');
+        $screenshotsDir = ScreenshotConfig::directory();
         if (! is_dir($screenshotsDir)) {
             $this->line('  Screenshots directory does not exist.');
 
             return 0;
         }
 
-        $files = glob($screenshotsDir.'/*.webp');
+        $extension = ScreenshotConfig::extension();
+        $escapedExtension = preg_quote($extension, '/');
+        $files = glob($screenshotsDir.'/*.'.$extension);
         $deletedCount = 0;
         $freedBytes = 0;
 
@@ -71,9 +74,9 @@ class CleanupStorageFiles extends Command
             $filename = basename($file);
 
             // Check if this file has a corresponding cache entry
-            // Files are named: {type}_{identifier}.webp
+            // Files are named: {type}_{identifier}.{extension}
             // The cache key format is: screenshot:{type}:{identifier}
-            if (preg_match('/^(bot|og)_(.+)\.webp$/', $filename, $matches)) {
+            if (preg_match('/^(bot|og)_(.+)\.'.$escapedExtension.'$/', $filename, $matches)) {
                 $type = $matches[1];
                 $identifier = $matches[2];
                 $cacheKey = config('app-cache.keys.screenshot').":{$type}:{$identifier}";
@@ -231,4 +234,3 @@ class CleanupStorageFiles extends Command
         return sprintf('%.2f %s', $value, $units[$index]);
     }
 }
-

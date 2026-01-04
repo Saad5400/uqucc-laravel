@@ -8,6 +8,7 @@ use App\Services\QuickResponseService;
 use App\Services\Telegram\ContentParser;
 use App\Services\Telegram\Traits\SearchesPages;
 use App\Services\TipTapContentExtractor;
+use App\Support\ScreenshotConfig;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -477,10 +478,11 @@ class UquccSearchHandler extends BaseHandler
         try {
             // Get cached or generate new screenshot using OgImageService with bot dimensions
             $screenshotPath = $this->ogImageService->generatePageScreenshot($page, OgImageService::TYPE_BOT);
+            $screenshotExtension = ScreenshotConfig::extension();
 
             $params = [
                 'chat_id' => $chatId,
-                'photo' => InputFile::create($screenshotPath, 'screenshot.webp'),
+                'photo' => InputFile::create($screenshotPath, "screenshot.{$screenshotExtension}"),
                 'caption' => $caption,
                 'parse_mode' => 'HTML',
                 'reply_to_message_id' => $this->getReplyToMessageId($message),
@@ -704,6 +706,7 @@ class UquccSearchHandler extends BaseHandler
             'application/zip' => 'zip',
             'text/plain' => 'txt',
             'text/html' => 'html',
+            ScreenshotConfig::mimeType() => ScreenshotConfig::extension(),
         ];
 
         return $mimeMap[$mimeType] ?? null;

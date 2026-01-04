@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Page;
+use App\Support\ScreenshotConfig;
 use Illuminate\Support\Facades\Cache;
 use Spatie\Browsershot\Browsershot;
 
@@ -44,12 +45,13 @@ class OgImageService
                 ->waitUntilNetworkIdle()
                 ->timeout(60)
                 ->dismissDialogs()
-                ->setScreenshotType('webp')
                 ->setOption('addStyleTag', json_encode([
                     'content' => '.screenshot-hidden { display: none !important; } html { scrollbar-gutter: auto !important; }',
                 ]))
                 // Wait for fonts to be loaded before screenshot
                 ->waitForFunction('document.fonts.ready.then(() => true)');
+            $quality = ScreenshotConfig::quality();
+            $browsershot->setScreenshotType(ScreenshotConfig::format(), $quality);
 
             // Set Chrome/Node paths from config if available (for Nixpacks deployment)
             if ($chromePath = config('services.browsershot.chrome_path')) {
@@ -201,9 +203,9 @@ class OgImageService
         $parts = explode(':', $cacheKey);
         $identifier = end($parts);
 
-        $filename = "{$type}_{$identifier}.webp";
+        $filename = "{$type}_{$identifier}.".ScreenshotConfig::extension();
 
-        return storage_path("app/public/screenshots/{$filename}");
+        return ScreenshotConfig::directory()."/{$filename}";
     }
 
     /**
@@ -231,14 +233,14 @@ class OgImageService
     public function clearOldScreenshots(string $slug): void
     {
         $normalizedSlug = str_replace('/', '_', trim($slug, '/')) ?: 'home';
-        $screenshotsDir = storage_path('app/public/screenshots');
+        $screenshotsDir = ScreenshotConfig::directory();
 
         if (! is_dir($screenshotsDir)) {
             return;
         }
 
         // Find and delete all screenshots matching this slug pattern
-        $pattern = "{$screenshotsDir}/*_{$normalizedSlug}_*.webp";
+        $pattern = "{$screenshotsDir}/*_{$normalizedSlug}_*.".ScreenshotConfig::extension();
         $files = glob($pattern);
 
         foreach ($files as $file) {
