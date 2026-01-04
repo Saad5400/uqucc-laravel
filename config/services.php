@@ -53,4 +53,8 @@ return [
         'node_modules_path' => env('NODE_PATH'),
     ],
 
+    'google_analytics' => [
+        'id' => env('GOOGLE_ANALYTICS_ID', 'G-D6V76T469N'),
+    ],
+
 ];

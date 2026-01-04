@@ -50,6 +50,17 @@
 
         @vite(['resources/css/app.css', 'resources/css/typography.css', 'resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])
         @inertiaHead
+
+        {{-- Google Analytics --}}
+        @if(!config('app.debug') && config('services.google_analytics.id'))
+            <script async src="https://www.googletagmanager.com/gtag/js?id={{ config('services.google_analytics.id') }}"></script>
+            <script>
+                window.dataLayer = window.dataLayer || [];
+                function gtag(){dataLayer.push(arguments);}
+                gtag('js', new Date());
+                gtag('config', '{{ config('services.google_analytics.id') }}');
+            </script>
+        @endif
     </head>
     <body class="antialiased">
         @inertia

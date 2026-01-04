@@ -14,8 +14,11 @@ class PageViewsStatsWidget extends StatsOverviewWidget
     protected function getStats(): array
     {
         $totalViews = PageViewStat::sum('view_count');
-        $uniqueVisitors = PageViewStat::whereNotNull('ip_address')->count(DB::raw('DISTINCT ip_address'));
-        $pagesWithViews = PageViewStat::count(DB::raw('DISTINCT page_id'));
+        $uniqueVisitors = PageViewStat::whereNotNull('ip_address')
+            ->distinct()
+            ->count('ip_address');
+        $pagesWithViews = PageViewStat::distinct()
+            ->count('page_id');
 
         // Get average views per page
         $avgViewsPerPage = $pagesWithViews > 0 ? round($totalViews / $pagesWithViews, 1) : 0;
