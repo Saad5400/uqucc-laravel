@@ -79,13 +79,13 @@ trait SearchesPages
 
     /**
      * Aggressive search that tries to find a page no matter what.
-     * First tries partial contains match, then falls back to similarity matching.
+     * First tries partial contains match with scoring, then falls back to similarity matching.
      */
     protected function aggressiveSearch(string $query): ?Page
     {
         $quickResponses = app(QuickResponseService::class);
 
-        // First try: find any page title that contains the query
+        // First try: find the best page based on how many query terms match
         $containsMatch = $this->findPageByContains($query);
         if ($containsMatch) {
             return $containsMatch;
@@ -96,37 +96,73 @@ trait SearchesPages
     }
 
     /**
-     * Find a page where the title contains the query.
-     * Uses Arabic normalization.
+     * Find a page where the title contains the query terms.
+     * Uses Arabic normalization and scores pages based on how many terms match.
+     * Returns the page with the highest score.
      */
     protected function findPageByContains(string $query): ?Page
     {
         $normalizedQuery = ArabicNormalizer::normalize($query);
         $normalizedQueryWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($query);
 
-        $quickResponses = app(QuickResponseService::class);
+        // Split query into individual terms (words)
+        $queryTerms = preg_split('/\s+/u', trim($normalizedQuery));
+        $queryTermsWithoutAl = preg_split('/\s+/u', trim($normalizedQueryWithoutAl));
 
-        return $quickResponses->getCachedResponses()->first(function (Page $page) use ($normalizedQuery, $normalizedQueryWithoutAl) {
+        $quickResponses = app(QuickResponseService::class);
+        $pages = $quickResponses->getCachedResponses();
+
+        $bestMatch = null;
+        $bestScore = 0;
+
+        foreach ($pages as $page) {
             $normalizedTitle = ArabicNormalizer::normalize($page->title);
             $normalizedTitleWithoutAl = ArabicNormalizer::normalizeWithoutDefiniteArticle($page->title);
 
-            // Check if title contains the query
-            if (str_contains($normalizedTitle, $normalizedQuery)) {
-                return true;
+            // Also create versions without spaces for flexible matching
+            $titleNoSpaces = str_replace(' ', '', $normalizedTitle);
+            $titleNoSpacesWithoutAl = str_replace(' ', '', $normalizedTitleWithoutAl);
+
+            $score = 0;
+
+            // Score based on how many query terms are found in the title
+            foreach ($queryTerms as $term) {
+                if (str_contains($normalizedTitle, $term)) {
+                    $score++;
+                } elseif (str_contains($titleNoSpaces, $term)) {
+                    // Match even if spaces are different (e.g., "vscode" matches "vs code")
+                    $score++;
+                }
             }
 
-            // Check without ال
-            if (str_contains($normalizedTitleWithoutAl, $normalizedQueryWithoutAl)) {
-                return true;
+            // Also check without ال to handle variations
+            foreach ($queryTermsWithoutAl as $term) {
+                if (str_contains($normalizedTitleWithoutAl, $term)) {
+                    $score++;
+                } elseif (str_contains($titleNoSpacesWithoutAl, $term)) {
+                    $score++;
+                }
+            }
+
+            // Check if the full query is contained (bonus points for exact phrase match)
+            if (str_contains($normalizedTitle, $normalizedQuery)) {
+                $score += 10; // High bonus for containing the full query
             }
 
             // Check if query contains the title (reverse check)
             if (str_contains($normalizedQuery, $normalizedTitle)) {
-                return true;
+                $score += 5; // Moderate bonus
             }
 
-            return false;
-        });
+            // Update best match if this page scores higher
+            if ($score > $bestScore) {
+                $bestScore = $score;
+                $bestMatch = $page;
+            }
+        }
+
+        // Only return a match if we actually found something (score > 0)
+        return $bestScore > 0 ? $bestMatch : null;
     }
 
     /**
