@@ -139,9 +139,6 @@ const compareItems = (a: SearchItem | null, b: SearchItem | null) => a?.id === b
                     class="size-4 shrink-0 text-muted-foreground transition group-hover/link:text-primary"
                   />
                 </div>
-                <p class="line-clamp-2 text-xs leading-tight text-muted-foreground">
-                  {{ item.preview || item.breadcrumb }}
-                </p>
                 <p class="line-clamp-1 text-[11px] text-muted-foreground/80">{{ item.breadcrumb }}</p>
               </ComboboxItem>
             </template>
