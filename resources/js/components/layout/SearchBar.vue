@@ -13,7 +13,6 @@ import {
   ComboboxRoot,
   ComboboxViewport,
 } from 'reka-ui'
-import { Input } from '@/components/ui/input'
 import type { AppPageProps, SearchItem } from '@/types'
 
 const page = usePage<AppPageProps<{ searchData: SearchItem[] }>>()
@@ -100,12 +99,12 @@ const compareItems = (a: SearchItem | null, b: SearchItem | null) => a?.id === b
           <Search class="absolute right-3 size-4 text-muted-foreground" />
           <ComboboxInput
             v-model="query"
-            as-child
             autocomplete="off"
             aria-autocomplete="list"
             placeholder="ابحث بسرعة عن أي صفحة (ذكي)"
+            type="search"
+            class="h-full w-full border-0 pl-3 pr-9 text-base shadow-none outline-none focus-visible:ring-0 md:text-sm"
           >
-            <Input class="h-full border-0 pl-3 pr-9 shadow-none focus-visible:ring-0" type="search" />
           </ComboboxInput>
           <span class="hidden text-xs text-muted-foreground sm:inline-flex items-center gap-1">
             <Sparkles class="size-3.5" />
