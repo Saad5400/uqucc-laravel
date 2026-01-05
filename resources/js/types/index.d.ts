@@ -6,6 +6,7 @@ export type AppPageProps<T extends Record<string, unknown> = Record<string, unkn
     name: string;
     quote: { message: string; author: string };
     auth: Auth;
+    searchData?: SearchItem[];
 };
 
 export interface User {
@@ -16,4 +17,15 @@ export interface User {
     email_verified_at: string | null;
     created_at: string;
     updated_at: string;
+}
+
+export interface SearchItem {
+    id: string;
+    title: string;
+    slug: string;
+    icon?: string | null;
+    breadcrumb: string;
+    preview: string;
+    keywords: string;
+    smart: boolean;
 }
