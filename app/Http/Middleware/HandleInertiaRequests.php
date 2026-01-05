@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use Illuminate\Http\Request;
 use Inertia\Middleware;
+use App\Services\SearchIndexService;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -48,21 +49,7 @@ class HandleInertiaRequests extends Middleware
                 fn () => app(\App\Services\NavigationService::class)->buildTree()
             ),
             // Search data (cached, auto-invalidates on page changes)
-            'searchData' => fn () => cache()->remember(
-                config('app-cache.keys.search_data'),
-                config('app-cache.search.ttl'),
-                fn () => \App\Models\Page::visible()
-                    ->select('slug', 'title')
-                    ->orderBy('title')
-                    ->get()
-                    ->map(fn ($page) => [
-                        'id' => $page->slug,
-                        'title' => $page->title,
-                        'content' => '',
-                        'slug' => $page->slug,
-                    ])
-                    ->toArray()
-            ),
+            'searchData' => fn () => app(SearchIndexService::class)->getCachedIndex(),
         ];
     }
 }

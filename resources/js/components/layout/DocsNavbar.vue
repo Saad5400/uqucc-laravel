@@ -3,8 +3,8 @@ import { Link } from '@inertiajs/vue3';
 import { Moon, Sun } from 'lucide-vue-next';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
-import { Skeleton } from '@/components/ui/skeleton';
 import { useColorMode } from '@/composables/useColorMode';
+import SearchBar from './SearchBar.vue';
 
 const colorMode = useColorMode();
 </script>
@@ -23,8 +23,9 @@ const colorMode = useColorMode();
             </Link>
         </div>
         <div class="flex items-center gap-2">
-            <!-- SearchBar placeholder - will be implemented -->
-            <!-- <SearchBar /> -->
+            <div class="min-w-[220px] sm:min-w-[280px]">
+                <SearchBar />
+            </div>
 
             <Button
                 v-if="colorMode.value === 'dark'"
