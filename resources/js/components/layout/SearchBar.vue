@@ -13,7 +13,6 @@ import {
   ComboboxRoot,
   ComboboxViewport,
 } from 'reka-ui'
-import { Input } from '@/components/ui/input'
 import type { AppPageProps, SearchItem } from '@/types'
 
 const page = usePage<AppPageProps<{ searchData: SearchItem[] }>>()
@@ -89,9 +88,10 @@ const compareItems = (a: SearchItem | null, b: SearchItem | null) => a?.id === b
     :open-on-focus="true"
     :reset-search-term-on-blur="false"
     :reset-search-term-on-select="false"
+    dir="rtl"
   >
-    <div class="relative w-full max-w-xl">
-      <ComboboxAnchor as-child>
+    <div dir="rtl" class="relative w-full max-w-xl text-right">
+      <ComboboxAnchor dir="rtl" as-child>
         <form
           role="search"
           class="group relative flex h-11 items-center gap-2 rounded-md border border-input bg-background pr-2 shadow-sm ring-0 transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30"
@@ -100,35 +100,34 @@ const compareItems = (a: SearchItem | null, b: SearchItem | null) => a?.id === b
           <Search class="absolute right-3 size-4 text-muted-foreground" />
           <ComboboxInput
             v-model="query"
-            as-child
             autocomplete="off"
             aria-autocomplete="list"
-            placeholder="ابحث بسرعة عن أي صفحة (ذكي)"
+            placeholder="ابحث بسرعة عن أي صفحة"
+            type="search"
+            class="h-full w-full border-0 pl-3 pr-9 text-base shadow-none outline-none focus-visible:ring-0 md:text-sm text-right"
+            dir="rtl"
           >
-            <Input class="h-full border-0 pl-3 pr-9 shadow-none focus-visible:ring-0" type="search" />
           </ComboboxInput>
-          <span class="hidden text-xs text-muted-foreground sm:inline-flex items-center gap-1">
-            <Sparkles class="size-3.5" />
-            بحث ذكي
-          </span>
         </form>
       </ComboboxAnchor>
 
-      <ComboboxPortal>
+      <ComboboxPortal dir="rtl">
         <ComboboxContent
           v-if="isOpen"
           position="popper"
           align="end"
           :side-offset="8"
+          dir="rtl"
           class="z-50 w-[min(32rem,90vw)] overflow-hidden rounded-md border border-border/80 bg-popover shadow-lg ring-1 ring-black/5 data-[state=closed]:animate-out data-[state=open]:animate-in data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95"
         >
-          <ComboboxViewport class="max-h-80 overflow-y-auto p-2">
+          <ComboboxViewport dir="rtl" class="max-h-80 overflow-y-auto p-2">
             <template v-if="hasResults">
               <ComboboxItem
                 v-for="item in results"
                 :key="item.id"
                 :value="item"
                 :text-value="item.title"
+                dir="rtl"
                 class="group/link flex cursor-pointer flex-col gap-1 rounded-lg px-3 py-2 outline-none transition data-[highlighted]:bg-muted data-[state=checked]:bg-muted"
               >
                 <div class="flex min-w-0 items-start justify-between gap-2">
@@ -146,7 +145,7 @@ const compareItems = (a: SearchItem | null, b: SearchItem | null) => a?.id === b
                 <p class="line-clamp-1 text-[11px] text-muted-foreground/80">{{ item.breadcrumb }}</p>
               </ComboboxItem>
             </template>
-            <ComboboxEmpty v-else class="px-3 py-2 text-sm text-muted-foreground">
+            <ComboboxEmpty v-else dir="rtl" class="px-3 py-2 text-sm text-muted-foreground">
               لا توجد نتائج، حاول كلمات مفتاحية أقل أو مختلفة.
             </ComboboxEmpty>
           </ComboboxViewport>
