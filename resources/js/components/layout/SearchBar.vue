@@ -15,6 +15,7 @@ const query = ref('')
 const isOpen = ref(false)
 const activeIndex = ref(0)
 const containerRef = ref<HTMLElement | null>(null)
+const listId = 'search-combobox-list'
 
 const fuse = computed(
   () =>
@@ -42,6 +43,12 @@ const results = computed(() => {
 })
 
 const hasResults = computed(() => results.value.length > 0)
+const activeDescendant = computed(() => {
+  if (!hasResults.value) return undefined
+
+  const current = results.value[activeIndex.value] ?? results.value[0]
+  return current ? `search-option-${current.id}` : undefined
+})
 
 const openPanel = () => {
   isOpen.value = true
@@ -55,6 +62,13 @@ const goTo = (item: SearchItem) => {
   closePanel()
   query.value = item.title
   router.visit(item.slug)
+}
+
+const submitFirst = () => {
+  const item = results.value[0]
+  if (item) {
+    goTo(item)
+  }
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
@@ -72,10 +86,7 @@ const handleKeydown = (event: KeyboardEvent) => {
     activeIndex.value = (activeIndex.value - 1 + results.value.length) % results.value.length
   } else if (event.key === 'Enter') {
     event.preventDefault()
-    const item = results.value[activeIndex.value] ?? results.value[0]
-    if (item) {
-      goTo(item)
-    }
+    submitFirst()
   } else if (event.key === 'Escape') {
     closePanel()
   }
@@ -103,14 +114,23 @@ onBeforeUnmount(() => {
 
 <template>
   <div ref="containerRef" class="relative w-full max-w-xl">
-    <div
+    <form
+      role="search"
       class="group relative flex h-11 items-center gap-2 rounded-md border border-input bg-background pr-2 shadow-sm ring-0 transition focus-within:border-primary focus-within:ring-2 focus-within:ring-primary/30"
+      @submit.prevent="submitFirst"
     >
       <Search class="absolute right-3 size-4 text-muted-foreground" />
       <Input
         v-model="query"
         placeholder="ابحث بسرعة عن أي صفحة (ذكي)"
         class="h-full border-0 pl-3 pr-9 shadow-none focus-visible:ring-0"
+        role="combobox"
+        type="search"
+        autocomplete="off"
+        aria-autocomplete="list"
+        :aria-expanded="isOpen"
+        :aria-activedescendant="activeDescendant"
+        :aria-controls="listId"
         @focus="openPanel"
         @keydown="handleKeydown"
       />
@@ -118,7 +138,7 @@ onBeforeUnmount(() => {
         <Sparkles class="size-3.5" />
         بحث ذكي
       </span>
-    </div>
+    </form>
 
     <Card
       v-if="isOpen && hasResults"
@@ -126,28 +146,33 @@ onBeforeUnmount(() => {
       class="absolute right-0 z-20 mt-2 w-[min(32rem,90vw)] overflow-hidden border-border/80 bg-popover shadow-lg ring-1 ring-black/5"
     >
       <CardContent class="p-2">
-        <div class="flex flex-col divide-y divide-border/80">
-          <Link
-            v-for="(item, index) in results"
-            :key="item.id"
-            :href="item.slug"
-            class="group/link flex flex-col gap-1 rounded-lg px-3 py-2 transition hover:bg-muted"
-            :class="cn({ 'bg-muted': index === activeIndex })"
-            @mouseenter="activeIndex = index"
-          >
-            <div class="flex items-start justify-between gap-2">
-              <div class="flex items-center gap-2">
-                <Sparkles v-if="item.smart" class="size-4 text-amber-500" />
-                <span class="font-medium leading-tight line-clamp-1">{{ item.title }}</span>
+        <ul :id="listId" role="listbox" class="flex flex-col divide-y divide-border/80">
+          <li v-for="(item, index) in results" :key="item.id">
+            <Link
+              :id="`search-option-${item.id}`"
+              role="option"
+              :aria-selected="index === activeIndex"
+              :href="item.slug"
+              class="group/link flex flex-col gap-1 rounded-lg px-3 py-2 transition hover:bg-muted"
+              :class="cn({ 'bg-muted': index === activeIndex })"
+              @mouseenter="activeIndex = index"
+            >
+              <div class="flex items-start justify-between gap-2 min-w-0">
+                <div class="flex min-w-0 items-center gap-2">
+                  <Sparkles v-if="item.smart" class="size-4 shrink-0 text-amber-500" />
+                  <span class="font-medium leading-tight truncate">{{ item.title }}</span>
+                </div>
+                <ArrowUpRight
+                  class="size-4 shrink-0 text-muted-foreground transition group-hover/link:text-primary"
+                />
               </div>
-              <ArrowUpRight class="size-4 shrink-0 text-muted-foreground transition group-hover/link:text-primary" />
-            </div>
-            <p class="text-xs text-muted-foreground leading-tight line-clamp-2">
-              {{ item.preview || item.breadcrumb }}
-            </p>
-            <p class="text-[11px] text-muted-foreground/80 line-clamp-1">{{ item.breadcrumb }}</p>
-          </Link>
-        </div>
+              <p class="text-xs text-muted-foreground leading-tight line-clamp-2">
+                {{ item.preview || item.breadcrumb }}
+              </p>
+              <p class="text-[11px] text-muted-foreground/80 line-clamp-1">{{ item.breadcrumb }}</p>
+            </Link>
+          </li>
+        </ul>
       </CardContent>
     </Card>
 
