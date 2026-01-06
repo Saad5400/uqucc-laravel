@@ -21,6 +21,7 @@ const searchIndex = computed<SearchItem[]>(() => page.props.searchData ?? [])
 const query = ref('')
 const isOpen = ref(false)
 const selectedItem = ref<SearchItem | null>(null)
+const suppressOpenOnQueryChange = ref(false)
 
 const fuse = computed(
   () =>
@@ -50,6 +51,7 @@ const results = computed(() => {
 const hasResults = computed(() => results.value.length > 0)
 
 const goTo = (item: SearchItem) => {
+  suppressOpenOnQueryChange.value = true
   isOpen.value = false
   query.value = item.title
   router.visit(item.slug)
@@ -63,6 +65,11 @@ const submitFirst = () => {
 }
 
 watch(trimmedQuery, () => {
+  if (suppressOpenOnQueryChange.value) {
+    suppressOpenOnQueryChange.value = false
+    return
+  }
+
   if (!isOpen.value) {
     isOpen.value = true
   }
