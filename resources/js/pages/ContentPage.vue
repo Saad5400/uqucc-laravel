@@ -166,10 +166,10 @@ const pageDescription = computed(() => {
         <!-- Edit page button (visible only to editors/admins) -->
         <div v-if="page.can_edit && page.edit_url" class="flex justify-end">
             <Button as-child variant="outline" size="lg">
-                <Link :href="page.edit_url" class="flex items-center gap-2">
+                <a :href="page.edit_url" class="flex items-center gap-2">
                     <Icon icon="lucide:edit" class="!size-4" />
                     تعديل هذه الصفحة
-                </Link>
+                </a>
             </Button>
         </div>
     </div>
