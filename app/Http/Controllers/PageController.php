@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Filament\Resources\Pages\PageResource;
 use App\Models\Page;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
 use Illuminate\Support\Facades\Storage;
@@ -89,6 +91,11 @@ class PageController extends Controller
      */
     private function renderPage(Page $page): Response
     {
+        $user = Auth::user();
+        $canEdit = $user
+            ? ($user->hasAnyRole(['admin', 'editor']) || $user->can('edit-content'))
+            : false;
+
         // Get breadcrumbs (cached)
         $breadcrumbs = $this->getCachedBreadcrumbs($page);
 
@@ -122,6 +129,8 @@ class PageController extends Controller
                     'title' => $child->title,
                     'icon' => $child->icon,
                 ])->toArray(),
+                'can_edit' => $canEdit,
+                'edit_url' => $canEdit ? PageResource::getUrl('edit', ['record' => $page]) : null,
                 'catalog' => $this->getCachedCatalogPages($page),
                 'quick_response' => [
                     'enabled' => $page->quick_response_enabled,
