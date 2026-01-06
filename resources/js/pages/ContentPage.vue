@@ -38,6 +38,8 @@ interface PageData {
     title: string;
     html_content: string | Record<string, unknown> | null;
     icon?: string;
+    can_edit: boolean;
+    edit_url: string | null;
     users: User[];
     children: ChildPage[];
     catalog: ChildPage[];
@@ -159,6 +161,16 @@ const pageDescription = computed(() => {
                     {{ user.name }}
                 </a>
             </div>
+        </div>
+
+        <!-- Edit page button (visible only to editors/admins) -->
+        <div v-if="page.can_edit && page.edit_url" class="flex justify-end">
+            <Button as-child variant="outline" size="lg">
+                <Link :href="page.edit_url" class="flex items-center gap-2">
+                    <Icon icon="lucide:edit" class="!size-4" />
+                    تعديل هذه الصفحة
+                </Link>
+            </Button>
         </div>
     </div>
 </template>
