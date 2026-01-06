@@ -13,11 +13,13 @@ use App\Services\Telegram\Handlers\LoginHandler;
 use App\Services\Telegram\Handlers\PageManagementHandler;
 use App\Services\Telegram\Handlers\PrivateForwardHandler;
 use App\Services\Telegram\Handlers\PythonExecutionHandler;
+use App\Services\Telegram\Handlers\TruthTableHandler;
 use App\Services\Telegram\Handlers\UquccListHandler;
 use App\Services\Telegram\Handlers\UquccSearchHandler;
 use App\Services\OgImageService;
 use App\Services\QuickResponseService;
 use App\Services\TipTapContentExtractor;
+use App\Services\TruthTableService;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -110,6 +112,7 @@ class ProcessTelegramUpdate implements ShouldQueue
             new UquccListHandler($telegram),
             new PythonExecutionHandler($telegram),
             new JavaExecutionHandler($telegram),
+            new TruthTableHandler(app(TruthTableService::class)),
             new DeepSeekChatHandler($telegram),
             new InfoHandler($telegram),
             new PrivateForwardHandler($telegram),

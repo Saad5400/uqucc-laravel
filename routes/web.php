@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\OgImageController;
 use App\Http\Controllers\PageController;
+use App\Http\Controllers\TruthTableController;
 use App\Http\Middleware\CacheResponse;
 use Illuminate\Support\Facades\Route;
 
@@ -19,11 +20,16 @@ Route::get('/_og-image/{route?}', [OgImageController::class, 'generate'])
 Route::get('/robots.txt', App\Http\Controllers\RobotsController::class)
     ->middleware(CacheResponse::class);
 
+// API routes for tools (must come before catch-all route)
+Route::post('/api/truth-table/generate', [TruthTableController::class, 'generate'])
+    ->name('api.truth-table.generate');
+
 // Tool routes (must come before catch-all route) - with response caching
 Route::middleware(CacheResponse::class)->group(function () {
     Route::inertia('/adoat/almkafa', 'tools/NextRewardPage')->name('tools.next-reward');
     Route::inertia('/adoat/hasb-alhrman', 'tools/DeprivationCalculatorPage')->name('tools.deprivation-calculator');
     Route::inertia('/adwat/hasbh-almadl', 'tools/GpaCalculatorPage')->name('tools.gpa-calculator');
+    Route::inertia('/tools/truth-table', 'tools/TruthTableGeneratorPage')->name('tools.truth-table');
 });
 
 // Catch-all route for content pages (must be last!) - with full response caching
