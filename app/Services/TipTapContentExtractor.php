@@ -352,7 +352,10 @@ class TipTapContentExtractor
      */
     protected function handleAlertNode(array $node, array &$textParts, array &$links, array &$attachments, array $marks, bool $inList): void
     {
-        $htmlContent = $node['attrs']['data']['content'] ?? $node['attrs']['content'] ?? null;
+        $htmlContent = $node['attrs']['data']['content']
+            ?? $node['attrs']['state']['content']
+            ?? $node['attrs']['content']
+            ?? null;
 
         if (is_string($htmlContent) && trim($htmlContent) !== '') {
             $this->extractFromHtmlString($htmlContent, $textParts, $links, $attachments, $inList);
