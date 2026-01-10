@@ -423,14 +423,12 @@ class PageManagementHandler extends BaseHandler
 
                 // Only update main content if toggle is ON
                 if ($updateMainContent) {
-                    $updateData['html_content'] = $this->convertToTipTap($parsed['message']);
+                    $updateData['html_content'] = $this->convertToTipTap($parsed['message'], $attachments);
                     // Don't change hidden state - leave as is
                 }
 
-                // Only update attachments if new ones were provided
-                if (! empty($attachments)) {
-                    $updateData['quick_response_attachments'] = $attachments;
-                }
+                // Always update attachments (clear if none provided)
+                $updateData['quick_response_attachments'] = $attachments;
 
                 $page->update($updateData);
                 $action = 'تعديل';
@@ -456,10 +454,15 @@ class PageManagementHandler extends BaseHandler
                 // New pages: hidden from website unless update_main_content is ON
                 $hiddenFromWebsite = ! $updateMainContent;
 
+                // For new pages, only update html_content with attachments if update_main_content is ON
+                $htmlContent = $updateMainContent
+                    ? $this->convertToTipTap($parsed['message'], $attachments)
+                    : $this->convertToTipTap($parsed['message']);
+
                 $pageData = [
                     'title' => $state['name'],
                     'slug' => $slug,
-                    'html_content' => $this->convertToTipTap($parsed['message']),
+                    'html_content' => $htmlContent,
                     'hidden' => $hiddenFromWebsite,
                     'hidden_from_bot' => false,
                     'smart_search' => $smartSearch,
@@ -826,11 +829,56 @@ class PageManagementHandler extends BaseHandler
         return implode("\n", $result);
     }
 
-    protected function convertToTipTap(string $text): array
+    protected function convertToTipTap(string $text, array $attachments = []): array
     {
         // Convert plain text to TipTap JSON format
         $lines = explode("\n", $text);
         $content = [];
+
+        // Prepend attachments to the content if provided
+        if (! empty($attachments)) {
+            foreach ($attachments as $attachmentPath) {
+                // Get public URL for the attachment
+                $publicUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($attachmentPath);
+
+                // Determine if it's an image by checking extension
+                $extension = strtolower(pathinfo($attachmentPath, PATHINFO_EXTENSION));
+                $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'];
+
+                if (in_array($extension, $imageExtensions)) {
+                    // Add as image node
+                    $content[] = [
+                        'type' => 'image',
+                        'attrs' => [
+                            'src' => $publicUrl,
+                            'alt' => null,
+                            'title' => null,
+                        ],
+                    ];
+                } else {
+                    // Add as paragraph with link
+                    $fileName = basename($attachmentPath);
+                    $content[] = [
+                        'type' => 'paragraph',
+                        'content' => [
+                            [
+                                'type' => 'text',
+                                'text' => $fileName,
+                                'marks' => [
+                                    [
+                                        'type' => 'link',
+                                        'attrs' => [
+                                            'href' => $publicUrl,
+                                            'target' => '_blank',
+                                        ],
+                                    ],
+                                ],
+                            ],
+                        ],
+                    ];
+                }
+            }
+        }
 
         foreach ($lines as $line) {
             if (empty(trim($line))) {
