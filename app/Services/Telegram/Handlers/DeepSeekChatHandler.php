@@ -2,6 +2,7 @@
 
 namespace App\Services\Telegram\Handlers;
 
+use App\Services\TelegramMarkdownService;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Telegram\Bot\Objects\Message;
@@ -71,7 +72,7 @@ class DeepSeekChatHandler extends BaseHandler
         $messages = [
             [
                 'role' => 'system',
-                'content' => 'أنت مساعد بوت تليجرام يُدعى CatoCoder. استخدم فقط plain text ولا تكتب اي نوع من ال markdown.',
+                'content' => 'أنت مساعد بوت تليجرام يُدعى CatoCoder. يمكنك استخدام markdown للتنسيق عند الحاجة.',
             ],
             ...$this->messageHistories[$historyKey],
         ];
@@ -181,9 +182,10 @@ class DeepSeekChatHandler extends BaseHandler
                 return null;
             }
 
+            // After streaming ends, send the final message with markdown handling
             $finalContent = $this->truncateForTelegram($fullContent);
             if ($finalContent !== $lastEditContent) {
-                $this->editMessage($chatId, $messageId, $finalContent);
+                $this->sendFinalMessage($chatId, $messageId, $finalContent);
             }
 
             return $fullContent;
@@ -236,5 +238,90 @@ class DeepSeekChatHandler extends BaseHandler
     protected function getCurrentTimeMs(): int
     {
         return (int) (microtime(true) * 1000);
+    }
+
+    /**
+     * Strip all markdown formatting from text, leaving only plain text.
+     */
+    protected function stripMarkdown(string $text): string
+    {
+        // Remove code blocks (triple backticks)
+        $text = preg_replace('/```[a-zA-Z0-9+_-]*\n?[\s\S]*?```/s', '', $text);
+
+        // Remove inline code (single backticks)
+        $text = preg_replace('/`([^`]+)`/', '$1', $text);
+
+        // Remove bold (**text** or __text__)
+        $text = preg_replace('/\*\*(.+?)\*\*/', '$1', $text);
+        $text = preg_replace('/__(.+?)__/', '$1', $text);
+
+        // Remove italic (*text* or _text_)
+        $text = preg_replace('/(?<!\*)\*([^*\n]+?)\*(?!\*)/', '$1', $text);
+        $text = preg_replace('/(?<!_)_([^_\n]+?)_(?!_)/', '$1', $text);
+
+        // Remove strikethrough (~text~)
+        $text = preg_replace('/~([^~]+)~/', '$1', $text);
+
+        // Remove links [text](url) - keep only the text
+        $text = preg_replace('/\[([^\]]+)\]\([^)]+\)/', '$1', $text);
+
+        // Remove blockquotes (> text)
+        $text = preg_replace('/^>\s+(.+)$/m', '$1', $text);
+
+        // Remove HTML tags (in case any exist)
+        $text = strip_tags($text);
+
+        return $text;
+    }
+
+    /**
+     * Send final message with markdown handling and fallbacks.
+     * 1. Try to send with MarkdownV2 formatting
+     * 2. If that fails, strip markdown and send plain text
+     * 3. If that fails, send original text as-is
+     */
+    protected function sendFinalMessage(int|string $chatId, int $messageId, string $content): void
+    {
+        // First, try to convert to MarkdownV2 and send
+        try {
+            $markdownService = new TelegramMarkdownService;
+            $formattedContent = $markdownService->toMarkdownV2($content);
+
+            $this->telegram->editMessageText([
+                'chat_id' => $chatId,
+                'message_id' => $messageId,
+                'text' => $formattedContent,
+                'parse_mode' => 'MarkdownV2',
+            ]);
+
+            return;
+        } catch (\Exception $e) {
+            // Log the markdown conversion failure for debugging
+            Log::debug('MarkdownV2 conversion failed, falling back to stripped markdown', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // Second fallback: strip all markdown and send plain text
+        try {
+            $strippedContent = $this->stripMarkdown($content);
+            $this->editMessage($chatId, $messageId, $strippedContent);
+
+            return;
+        } catch (\Exception $e) {
+            // Log the stripped markdown failure
+            Log::debug('Stripped markdown send failed, falling back to original', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
+        // Final fallback: send original content as-is
+        try {
+            $this->editMessage($chatId, $messageId, $content);
+        } catch (\Exception $e) {
+            Log::error('All message send attempts failed', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }
