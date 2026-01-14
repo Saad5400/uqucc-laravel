@@ -1,29 +1,31 @@
 <template>
   <div>
     <!-- Calculator Card -->
-    <Card class="!mb-4">
-      <CardHeader>
+    <Card size="sm" class="!mb-4">
+      <CardHeader size="sm">
         <CardTitle>حساب مركبة التحويل</CardTitle>
       </CardHeader>
-      <CardContent class="space-y-4">
+      <CardContent size="sm">
         <div class="grid gap-4 md:grid-cols-2">
-          <div class="space-y-2">
-            <Label for="weighted-score">النسبة الموزونة</Label>
+          <div>
+            <Label for="weighted-score" class="mb-1.5 block">النسبة الموزونة</Label>
             <Input
               id="weighted-score"
               v-model="weightedScore"
               type="text"
               placeholder="مثال: 99"
+              variant="visible"
               class="text-base"
             />
           </div>
-          <div class="space-y-2">
-            <Label for="cumulative-gpa">المعدل التراكمي</Label>
+          <div>
+            <Label for="cumulative-gpa" class="mb-1.5 block">المعدل التراكمي</Label>
             <Input
               id="cumulative-gpa"
               v-model="cumulativeGpa"
               type="text"
               placeholder="مثال: 3.7"
+              variant="visible"
               class="text-base"
             />
           </div>
@@ -33,8 +35,8 @@
 
     <!-- Result Card -->
     <div v-auto-animate>
-      <Card v-if="transferScore !== null" class="!mb-4 border-primary/20 bg-primary/5">
-        <CardContent class="!py-4">
+      <Card v-if="transferScore !== null" size="sm" class="!mb-4 border-primary/20 bg-primary/5">
+        <CardContent size="sm">
           <div class="text-center">
             <p class="mb-1 text-sm text-muted-foreground">مركبة التحويل</p>
             <p class="text-3xl font-bold text-primary">
@@ -50,14 +52,14 @@
     </div>
 
     <!-- Configuration Card -->
-    <Card class="!mb-4">
-      <CardHeader>
+    <Card size="sm" class="!mb-4">
+      <CardHeader size="sm">
         <CardTitle>إعدادات الحساب</CardTitle>
       </CardHeader>
-      <CardContent class="space-y-4">
+      <CardContent size="sm">
         <div class="grid gap-4 md:grid-cols-2">
-          <div class="space-y-2">
-            <Label for="weighted-percentage">نسبة الموزونة (%)</Label>
+          <div>
+            <Label for="weighted-percentage" class="mb-1.5 block">نسبة الموزونة (%)</Label>
             <Input
               id="weighted-percentage"
               v-model="weightedPercentage"
@@ -66,11 +68,12 @@
               max="100"
               step="0.1"
               placeholder="50"
+              variant="visible"
               class="text-base"
             />
           </div>
-          <div class="space-y-2">
-            <Label for="gpa-percentage">نسبة المعدل التراكمي (%)</Label>
+          <div>
+            <Label for="gpa-percentage" class="mb-1.5 block">نسبة المعدل التراكمي (%)</Label>
             <Input
               id="gpa-percentage"
               v-model="gpaPercentage"
@@ -79,11 +82,12 @@
               max="100"
               step="0.1"
               placeholder="50"
+              variant="visible"
               class="text-base"
             />
           </div>
         </div>
-        <Button variant="secondary" size="sm" @click="resetToDefaults">
+        <Button class="mt-4" @click="resetToDefaults">
           إعادة تعيين القيم الافتراضية
         </Button>
       </CardContent>
