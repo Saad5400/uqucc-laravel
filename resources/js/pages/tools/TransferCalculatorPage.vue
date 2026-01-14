@@ -1,6 +1,6 @@
 <template>
   <DocsLayout>
-    <PageHeader title="حاسبة التحويل الداخلي" icon="solar:transfer-horizontal-bold" />
+    <PageHeader title="حاسبة التحويل الداخلي" />
 
     <div class="typography">
       <TransferCalculator />
