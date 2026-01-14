@@ -1,7 +1,7 @@
 <template>
-  <div class="space-y-6">
+  <div>
     <!-- Calculator Card -->
-    <Card size="sm">
+    <Card size="sm" class="mb-4">
       <CardHeader size="sm">
         <CardTitle>حساب مركبة التحويل</CardTitle>
       </CardHeader>
@@ -34,7 +34,7 @@
     </Card>
 
     <!-- Result Card -->
-    <div v-auto-animate>
+    <div v-auto-animate class="mb-4">
       <Card v-if="transferScore !== null" size="sm" class="border-primary/20 bg-primary/5">
         <CardContent size="sm" class="space-y-3">
           <div class="text-center">
@@ -52,7 +52,7 @@
     </div>
 
     <!-- Configuration Card -->
-    <Card size="sm">
+    <Card size="sm" class="mb-4">
       <CardHeader size="sm">
         <CardTitle>إعدادات الحساب</CardTitle>
       </CardHeader>
@@ -124,8 +124,11 @@ const cumulativeGpa = ref('')
 // Computed multipliers based on percentages
 const weightedMultiplier = computed(() => parseArabicNumber(weightedPercentage.value) / 100)
 const gpaMultiplier = computed(() => {
+  // GPA is out of 4, so to get percentage points: GPA × (percentage / 4)
+  // For 50%: 4 × 12.5 = 50, so multiplier = 50 / 4 = 12.5
+  // For any percentage: multiplier = percentage / 4
   const percentage = parseArabicNumber(gpaPercentage.value)
-  return (percentage / 100) * 12.5
+  return percentage / 4
 })
 
 // Parsed input values
