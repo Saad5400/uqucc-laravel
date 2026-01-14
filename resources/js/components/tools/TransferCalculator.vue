@@ -1,14 +1,14 @@
 <template>
-  <div>
+  <div class="space-y-6">
     <!-- Calculator Card -->
-    <Card size="sm" class="!mb-4">
+    <Card size="sm">
       <CardHeader size="sm">
         <CardTitle>حساب مركبة التحويل</CardTitle>
       </CardHeader>
-      <CardContent size="sm">
+      <CardContent size="sm" class="space-y-4">
         <div class="grid gap-4 md:grid-cols-2">
           <div>
-            <Label for="weighted-score" class="mb-1.5 block">النسبة الموزونة</Label>
+            <Label for="weighted-score" class="mb-2 block">النسبة الموزونة</Label>
             <Input
               id="weighted-score"
               v-model="weightedScore"
@@ -19,7 +19,7 @@
             />
           </div>
           <div>
-            <Label for="cumulative-gpa" class="mb-1.5 block">المعدل التراكمي</Label>
+            <Label for="cumulative-gpa" class="mb-2 block">المعدل التراكمي</Label>
             <Input
               id="cumulative-gpa"
               v-model="cumulativeGpa"
@@ -35,14 +35,14 @@
 
     <!-- Result Card -->
     <div v-auto-animate>
-      <Card v-if="transferScore !== null" size="sm" class="!mb-4 border-primary/20 bg-primary/5">
-        <CardContent size="sm">
+      <Card v-if="transferScore !== null" size="sm" class="border-primary/20 bg-primary/5">
+        <CardContent size="sm" class="space-y-3">
           <div class="text-center">
-            <p class="mb-1 text-sm text-muted-foreground">مركبة التحويل</p>
+            <p class="mb-2 text-sm text-muted-foreground">مركبة التحويل</p>
             <p class="text-3xl font-bold text-primary">
               {{ transferScore.toFixed(2) }}
             </p>
-            <div class="mt-3 space-y-1 text-xs text-muted-foreground">
+            <div class="mt-4 space-y-1 text-xs text-muted-foreground">
               <p>{{ parsedWeightedScore.toFixed(2) }} × {{ weightedMultiplier.toFixed(2) }} = {{ (parsedWeightedScore * weightedMultiplier).toFixed(2) }}</p>
               <p>{{ parsedCumulativeGpa.toFixed(2) }} × {{ gpaMultiplier.toFixed(2) }} = {{ (parsedCumulativeGpa * gpaMultiplier).toFixed(2) }}</p>
             </div>
@@ -52,14 +52,14 @@
     </div>
 
     <!-- Configuration Card -->
-    <Card size="sm" class="!mb-4">
+    <Card size="sm">
       <CardHeader size="sm">
         <CardTitle>إعدادات الحساب</CardTitle>
       </CardHeader>
-      <CardContent size="sm">
+      <CardContent size="sm" class="space-y-6">
         <div class="grid gap-4 md:grid-cols-2">
           <div>
-            <Label for="weighted-percentage" class="mb-1.5 block">نسبة الموزونة (%)</Label>
+            <Label for="weighted-percentage" class="mb-2 block">نسبة الموزونة (%)</Label>
             <Input
               id="weighted-percentage"
               v-model="weightedPercentage"
@@ -73,7 +73,7 @@
             />
           </div>
           <div>
-            <Label for="gpa-percentage" class="mb-1.5 block">نسبة المعدل التراكمي (%)</Label>
+            <Label for="gpa-percentage" class="mb-2 block">نسبة المعدل التراكمي (%)</Label>
             <Input
               id="gpa-percentage"
               v-model="gpaPercentage"
@@ -87,7 +87,7 @@
             />
           </div>
         </div>
-        <Button class="mt-4" @click="resetToDefaults">
+        <Button @click="resetToDefaults">
           إعادة تعيين القيم الافتراضية
         </Button>
       </CardContent>
