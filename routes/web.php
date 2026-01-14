@@ -24,6 +24,7 @@ Route::middleware(CacheResponse::class)->group(function () {
     Route::inertia('/adoat/almkafa', 'tools/NextRewardPage')->name('tools.next-reward');
     Route::inertia('/adoat/hasb-alhrman', 'tools/DeprivationCalculatorPage')->name('tools.deprivation-calculator');
     Route::inertia('/adwat/hasbh-almadl', 'tools/GpaCalculatorPage')->name('tools.gpa-calculator');
+    Route::inertia('/adwat/hasbh-altahwel', 'tools/TransferCalculatorPage')->name('tools.transfer-calculator');
 });
 
 // Catch-all route for content pages (must be last!) - with full response caching
