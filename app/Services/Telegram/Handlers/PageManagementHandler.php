@@ -315,10 +315,19 @@ class PageManagementHandler extends BaseHandler
         $mode = $existingPage ? '(تعديل)' : '(جديدة)';
         $keyboard = $this->buildOptionsKeyboard($state);
 
+        // Show current content if editing
+        $messageText = "اسم الصفحة: {$name} {$mode}\n\n";
+        if ($existingPage && $existingPage->quick_response_message) {
+            $messageText .= "المحتوى الحالي:\n━━━━━━━━━━━━━━\n{$existingPage->quick_response_message}\n━━━━━━━━━━━━━━\n\n";
+        }
+        $messageText .= "أرسل محتوى الصفحة:\n\n(أرسل 'إلغاء' للإلغاء)";
+
         $response = $this->telegram->sendMessage([
             'chat_id' => $message->getChat()->getId(),
-            'text' => "اسم الصفحة: {$name} {$mode}\n\nأرسل محتوى الصفحة:\n\n(أرسل 'إلغاء' للإلغاء)",
+            'text' => $messageText,
+            'parse_mode' => $existingPage ? 'HTML' : null,
             'reply_markup' => $keyboard,
+            'disable_web_page_preview' => true,
         ]);
         $state['message_ids'][] = $response->getMessageId();
 
@@ -384,8 +393,14 @@ class PageManagementHandler extends BaseHandler
             $parsed['row_layout']
         );
 
-        // Now apply HTML formatting from entities to the message (after buttons are extracted)
-        $formattedMessage = $this->applyEntitiesFormatting($parsed['message'], $activeEntities);
+        // IMPORTANT: Apply HTML formatting to ORIGINAL text (not parsed) because:
+        // - Entity offsets reference the original text positions
+        // - Parsing removes button lines, which shifts offsets
+        // - We need entities applied before button removal
+        $formattedMessage = $this->applyEntitiesFormatting($textContent ?? '', $activeEntities);
+
+        // Remove button syntax lines from formatted HTML
+        $formattedMessage = $this->removeButtonLinesFromHtml($formattedMessage);
 
         // Get toggle states
         $smartSearch = $state['smart_search'] ?? false;
@@ -423,7 +438,8 @@ class PageManagementHandler extends BaseHandler
 
                 // Only update main content if toggle is ON
                 if ($updateMainContent) {
-                    $updateData['html_content'] = $this->convertToTipTap($parsed['message'], $attachments, $activeEntities);
+                    // Use original text for entity processing, entities reference original offsets
+                    $updateData['html_content'] = $this->convertToTipTap($textContent ?? '', $attachments, $activeEntities);
                     // Don't change hidden state - leave as is
                 }
 
@@ -454,10 +470,10 @@ class PageManagementHandler extends BaseHandler
                 // New pages: hidden from website unless update_main_content is ON
                 $hiddenFromWebsite = ! $updateMainContent;
 
-                // For new pages, only update html_content with attachments if update_main_content is ON
+                // For new pages, use original text for entity processing (entities reference original offsets)
                 $htmlContent = $updateMainContent
-                    ? $this->convertToTipTap($parsed['message'], $attachments, $activeEntities)
-                    : $this->convertToTipTap($parsed['message'], [], $activeEntities);
+                    ? $this->convertToTipTap($textContent ?? '', $attachments, $activeEntities)
+                    : $this->convertToTipTap($textContent ?? '', [], $activeEntities);
 
                 $pageData = [
                     'title' => $state['name'],
@@ -639,6 +655,34 @@ class PageManagementHandler extends BaseHandler
 
             return null;
         }
+    }
+
+    /**
+     * Remove button syntax lines and row layout lines from HTML-formatted text.
+     * Removes lines matching: (button text|url) or [صف:X-Y-Z]
+     */
+    protected function removeButtonLinesFromHtml(string $html): string
+    {
+        $lines = explode("<br>", $html);
+        $filtered = [];
+
+        foreach ($lines as $line) {
+            $trimmed = trim(strip_tags($line));
+
+            // Skip button pattern lines
+            if (preg_match('/^\((.+?)\|(.+?)\)$/', $trimmed)) {
+                continue;
+            }
+
+            // Skip row layout pattern lines
+            if (preg_match('/^\[صف:([0-9\-]+)\]$/', $trimmed)) {
+                continue;
+            }
+
+            $filtered[] = $line;
+        }
+
+        return implode("<br>", $filtered);
     }
 
     /**
@@ -892,7 +936,24 @@ class PageManagementHandler extends BaseHandler
         // Process each line with cumulative offset tracking
         $cumulativeOffset = 0;
         foreach ($lines as $lineIndex => $line) {
-            if (empty(trim($line))) {
+            $trimmedLine = trim($line);
+
+            // Calculate line length for offset tracking BEFORE filtering
+            $lineLength = mb_strlen($line, 'UTF-8');
+
+            // Skip button pattern lines: (text|url)
+            if (preg_match('/^\((.+?)\|(.+?)\)$/', $trimmedLine)) {
+                $cumulativeOffset += $lineLength + 1; // +1 for newline
+                continue;
+            }
+
+            // Skip row layout pattern lines: [صف:X-Y-Z]
+            if (preg_match('/^\[صف:([0-9\-]+)\]$/', $trimmedLine)) {
+                $cumulativeOffset += $lineLength + 1; // +1 for newline
+                continue;
+            }
+
+            if (empty($trimmedLine)) {
                 // Add empty lines as paragraph breaks (skip offset calculation)
                 if ($lineIndex > 0) {
                     $cumulativeOffset += 1; // Account for newline character
@@ -900,7 +961,6 @@ class PageManagementHandler extends BaseHandler
                 continue;
             }
 
-            $lineLength = mb_strlen($line, 'UTF-8');
             $lineStart = $cumulativeOffset;
             $lineEnd = $lineStart + $lineLength;
 
