@@ -423,7 +423,7 @@ class PageManagementHandler extends BaseHandler
 
                 // Only update main content if toggle is ON
                 if ($updateMainContent) {
-                    $updateData['html_content'] = $this->convertToTipTap($parsed['message'], $attachments);
+                    $updateData['html_content'] = $this->convertToTipTap($parsed['message'], $attachments, $activeEntities);
                     // Don't change hidden state - leave as is
                 }
 
@@ -456,8 +456,8 @@ class PageManagementHandler extends BaseHandler
 
                 // For new pages, only update html_content with attachments if update_main_content is ON
                 $htmlContent = $updateMainContent
-                    ? $this->convertToTipTap($parsed['message'], $attachments)
-                    : $this->convertToTipTap($parsed['message']);
+                    ? $this->convertToTipTap($parsed['message'], $attachments, $activeEntities)
+                    : $this->convertToTipTap($parsed['message'], [], $activeEntities);
 
                 $pageData = [
                     'title' => $state['name'],
@@ -715,6 +715,9 @@ class PageManagementHandler extends BaseHandler
             $result = $beforeText.$formattedText.$afterText;
         }
 
+        // Convert newlines to <br> tags for HTML display
+        $result = nl2br($result, false);
+
         return $result;
     }
 
@@ -829,7 +832,7 @@ class PageManagementHandler extends BaseHandler
         return implode("\n", $result);
     }
 
-    protected function convertToTipTap(string $text, array $attachments = []): array
+    protected function convertToTipTap(string $text, array $attachments = [], $entities = null): array
     {
         // Convert plain text to TipTap JSON format
         $lines = explode("\n", $text);
@@ -880,26 +883,161 @@ class PageManagementHandler extends BaseHandler
             }
         }
 
-        foreach ($lines as $line) {
+        // Process entities if provided
+        $entitiesArray = [];
+        if (! empty($entities)) {
+            $entitiesArray = $entities instanceof \Illuminate\Support\Collection ? $entities->toArray() : (array) $entities;
+        }
+
+        // Process each line with cumulative offset tracking
+        $cumulativeOffset = 0;
+        foreach ($lines as $lineIndex => $line) {
             if (empty(trim($line))) {
+                // Add empty lines as paragraph breaks (skip offset calculation)
+                if ($lineIndex > 0) {
+                    $cumulativeOffset += 1; // Account for newline character
+                }
                 continue;
             }
 
-            $content[] = [
-                'type' => 'paragraph',
-                'content' => [
-                    [
-                        'type' => 'text',
-                        'text' => $line,
+            $lineLength = mb_strlen($line, 'UTF-8');
+            $lineStart = $cumulativeOffset;
+            $lineEnd = $lineStart + $lineLength;
+
+            // Find entities that apply to this line
+            $lineEntities = array_filter($entitiesArray, function ($entity) use ($lineStart, $lineEnd) {
+                $offset = is_array($entity) ? ($entity['offset'] ?? 0) : ($entity->offset ?? 0);
+                $length = is_array($entity) ? ($entity['length'] ?? 0) : ($entity->length ?? 0);
+                $entityEnd = $offset + $length;
+
+                // Check if entity overlaps with this line
+                return $offset < $lineEnd && $entityEnd > $lineStart;
+            });
+
+            if (empty($lineEntities)) {
+                // Simple paragraph with plain text
+                $content[] = [
+                    'type' => 'paragraph',
+                    'content' => [
+                        [
+                            'type' => 'text',
+                            'text' => $line,
+                        ],
                     ],
-                ],
-            ];
+                ];
+            } else {
+                // Build paragraph with formatted text
+                $paragraphContent = $this->buildTipTapTextWithMarks($line, $lineEntities, $lineStart);
+                $content[] = [
+                    'type' => 'paragraph',
+                    'content' => $paragraphContent,
+                ];
+            }
+
+            // Update cumulative offset (line length + newline character)
+            $cumulativeOffset = $lineEnd + 1;
         }
 
         return [
             'type' => 'doc',
             'content' => $content,
         ];
+    }
+
+    /**
+     * Build TipTap text nodes with marks from Telegram entities.
+     */
+    protected function buildTipTapTextWithMarks(string $line, array $entities, int $lineOffset): array
+    {
+        $result = [];
+        $currentPos = 0;
+        $lineLength = mb_strlen($line, 'UTF-8');
+
+        // Sort entities by offset
+        usort($entities, function ($a, $b) {
+            $offsetA = is_array($a) ? ($a['offset'] ?? 0) : ($a->offset ?? 0);
+            $offsetB = is_array($b) ? ($b['offset'] ?? 0) : ($b->offset ?? 0);
+
+            return $offsetA - $offsetB;
+        });
+
+        foreach ($entities as $entity) {
+            $type = is_array($entity) ? ($entity['type'] ?? '') : ($entity->type ?? '');
+            $offset = is_array($entity) ? ($entity['offset'] ?? 0) : ($entity->offset ?? 0);
+            $length = is_array($entity) ? ($entity['length'] ?? 0) : ($entity->length ?? 0);
+            $url = is_array($entity) ? ($entity['url'] ?? null) : ($entity->url ?? null);
+
+            // Convert absolute offset to line-relative offset
+            $relativeOffset = max(0, $offset - $lineOffset);
+            $relativeEnd = min($lineLength, $offset + $length - $lineOffset);
+
+            // Skip if entity is outside this line
+            if ($relativeOffset >= $lineLength || $relativeEnd <= 0) {
+                continue;
+            }
+
+            // Add plain text before entity if any
+            if ($currentPos < $relativeOffset) {
+                $plainText = mb_substr($line, $currentPos, $relativeOffset - $currentPos, 'UTF-8');
+                if (! empty($plainText)) {
+                    $result[] = [
+                        'type' => 'text',
+                        'text' => $plainText,
+                    ];
+                }
+            }
+
+            // Add formatted text
+            $entityText = mb_substr($line, $relativeOffset, $relativeEnd - $relativeOffset, 'UTF-8');
+            if (! empty($entityText)) {
+                $marks = $this->getTipTapMarksForEntity($type, $url);
+                $textNode = [
+                    'type' => 'text',
+                    'text' => $entityText,
+                ];
+                if (! empty($marks)) {
+                    $textNode['marks'] = $marks;
+                }
+                $result[] = $textNode;
+            }
+
+            $currentPos = $relativeEnd;
+        }
+
+        // Add remaining plain text if any
+        if ($currentPos < $lineLength) {
+            $plainText = mb_substr($line, $currentPos, null, 'UTF-8');
+            if (! empty($plainText)) {
+                $result[] = [
+                    'type' => 'text',
+                    'text' => $plainText,
+                ];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Convert Telegram entity type to TipTap marks.
+     */
+    protected function getTipTapMarksForEntity(string $type, ?string $url = null): array
+    {
+        return match ($type) {
+            'bold' => [['type' => 'bold']],
+            'italic' => [['type' => 'italic']],
+            'underline' => [['type' => 'underline']],
+            'strikethrough' => [['type' => 'strike']],
+            'code' => [['type' => 'code']],
+            'text_link' => $url ? [[
+                'type' => 'link',
+                'attrs' => [
+                    'href' => $url,
+                    'target' => '_blank',
+                ],
+            ]] : [],
+            default => [],
+        };
     }
 
     protected function getState(int $userId): ?array
