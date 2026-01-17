@@ -71,8 +71,9 @@ class ExternalSearchHandler extends BaseHandler
         $escapedUrl = $this->escapeHtml($qeeemUrl);
 
         // Send the response with the Qeeem search link
-        $responseText = "⭐ <b>بحث قييم عن:</b> {$escapedQuery}\n\n";
-        $responseText .= "🔗 <a href=\"{$escapedUrl}\">افتح النتائج</a>";
+        $responseText = "⭐ <b>بحث قيم عن:</b> {$escapedQuery}\n\n";
+        $responseText .= "🔗 <a href=\"{$escapedUrl}\">افتح النتائج</a>\n\n";
+        $responseText .= "⚠️ <i>ليس من الضروري أن يكون تقييم الطلبة صحيح 100%, آراء الطلبة تعكس تجارب شخصية وقد تختلف تجربتك الخاصة.</i>";
 
         $this->replyHtml($message, $responseText);
     }
