@@ -7,6 +7,7 @@ use App\Jobs\DeleteTelegramMessages;
 use App\Models\Page;
 use App\Models\User;
 use App\Services\Telegram\ContentParser;
+use App\Settings\TelegramSettings;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -17,7 +18,6 @@ use Telegram\Bot\Objects\Message;
 
 class PageManagementHandler extends BaseHandler
 {
-
     protected ContentParser $contentParser;
 
     public function __construct(Api $telegram, ContentParser $contentParser)
@@ -32,10 +32,11 @@ class PageManagementHandler extends BaseHandler
         $userId = $message->getFrom()->getId();
         $text = trim($message->getText() ?? '');
 
-        // Only handle private messages for page management
-        // if ($message->getChat()->getType() !== 'private') {
-        //     return;
-        // }
+        // Check if this chat is allowed for page management
+        $settings = app(TelegramSettings::class);
+        if (! $settings->isChatAllowedForPageManagement($chatId)) {
+            return;
+        }
 
         // Check if user is in a page management state
         $state = $this->getState($userId);
@@ -571,7 +572,7 @@ class PageManagementHandler extends BaseHandler
         if (str_contains($errorMessage, 'foreign key') || str_contains($errorMessage, 'FOREIGN KEY')) {
             return "❌ تعذر حفظ الصفحة بسبب ارتباط بيانات غير صحيح.\n\n".
                    "الرجاء المحاولة مرة أخرى أو إرسال 'إلغاء' للإلغاء.\n\n".
-                   "(للمطورين: مشكلة في Foreign Key)";
+                   '(للمطورين: مشكلة في Foreign Key)';
         }
 
         // Check for null constraint violation
@@ -857,6 +858,7 @@ class PageManagementHandler extends BaseHandler
     protected function getState(int $userId): ?array
     {
         $prefix = config('app-cache.keys.telegram_page_mgmt_state', 'telegram_page_mgmt_state_');
+
         return Cache::get($prefix.$userId);
     }
 
@@ -876,9 +878,15 @@ class PageManagementHandler extends BaseHandler
     /**
      * Delete all messages from an interaction after a delay.
      * Uses queue to avoid blocking the bot.
+     * Respects the page_management_auto_delete_messages setting.
      */
     protected function deleteAllInteractionMessages(int $chatId, array $messageIds, int $delaySeconds = 5): void
     {
+        $settings = app(TelegramSettings::class);
+        if (! $settings->page_management_auto_delete_messages) {
+            return;
+        }
+
         // Dispatch to queue with delay - non-blocking
         DeleteTelegramMessages::dispatch($chatId, $messageIds)
             ->delay(now()->addSeconds($delaySeconds));
