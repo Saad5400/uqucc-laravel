@@ -114,19 +114,13 @@ class ExternalSearchHandler extends BaseHandler
     {
         try {
             $response = Http::timeout(10)
-                ->withHeaders([
-                    'Content-Type' => 'application/json',
-                ])
-                ->get('https://qeeem.com/api/trpc/doctor.search', [
-                    'batch' => 1,
-                    'input' => json_encode([
-                        '0' => [
-                            'json' => [
-                                'universitySlug' => 'uqu',
-                                'name' => $query,
-                            ],
+                ->post('https://qeeem.com/api/trpc/doctor.search?batch=1', [
+                    '0' => [
+                        'json' => [
+                            'universitySlug' => 'uqu',
+                            'name' => $query,
                         ],
-                    ]),
+                    ],
                 ]);
 
             if (! $response->successful()) {
