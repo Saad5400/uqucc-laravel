@@ -17,30 +17,7 @@
   </div>
 
   <div class="space-y-2">
-<!--      <div class="grid grid-cols-2">-->
-<!--        <Label for="lecturesPerWeek">عدد الساعات في الأسبوع:</Label>-->
-<!--        <div class="relative">-->
-<!--          <Input id="lecturesPerWeek" type="number" v-model="lecsPerWk" :min="1" :max="4" />-->
-<!--          <span-->
-<!--            class="pointer-events-none absolute end-8 top-1/2 max-w-32 -translate-y-1/2 transform text-muted-foreground sm:max-w-none"-->
-<!--          >-->
-<!--            {{ formatLecturesPerWeek(lecsPerWk) }}-->
-<!--          </span>-->
-<!--        </div>-->
-<!--      </div>-->
-
-<!--      <div class="grid grid-cols-2">-->
-<!--        <Label for="currentNoExcusedAbsences">ساعات الغياب الحالية بدون عذر:</Label>-->
-<!--        <Input id="currentNoExcusedAbsences" type="number" v-model="unexcCnt" />-->
-<!--      </div>-->
-
-<!--      <div class="grid grid-cols-2">-->
-<!--        <Label for="currentExcusedAbsences">ساعات الغياب الحالية بعذر:</Label>-->
-<!--        <Input id="currentExcusedAbsences" type="number" v-model="excCnt" />-->
-<!--      </div>-->
-
-<!--      Same inputs but in a better more clear UI -->
-      <div class="grid grid-cols-1 !gap-y-0 gap-x-2 !space-y-0 md:grid-cols-2 lg:grid-cols-3">
+      <div class="my-4 grid grid-cols-1 !gap-y-0 gap-x-2 !space-y-0 md:grid-cols-2 lg:grid-cols-3">
         <div class="space-y-1 !mb-2">
           <Label for="lecturesPerWeek">عدد الساعات في الأسبوع:</Label>
             <Input class="mt-2 mb-0" id="lecturesPerWeek" type="number" v-model="lecsPerWk" :min="1" :max="4" />

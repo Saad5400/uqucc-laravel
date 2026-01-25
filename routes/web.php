@@ -21,8 +21,8 @@ Route::get('/robots.txt', App\Http\Controllers\RobotsController::class)
 
 // Tool routes (must come before catch-all route) - with response caching
 Route::middleware(CacheResponse::class)->group(function () {
-    Route::inertia('/adoat/almkafa', 'tools/NextRewardPage')->name('tools.next-reward');
-    Route::inertia('/adoat/hasb-alhrman', 'tools/DeprivationCalculatorPage')->name('tools.deprivation-calculator');
+    Route::inertia('/adwat/almkafa', 'tools/NextRewardPage')->name('tools.next-reward');
+    Route::inertia('/adwat/hasbh-alhrman', 'tools/DeprivationCalculatorPage')->name('tools.deprivation-calculator');
     Route::inertia('/adwat/hasbh-almadl', 'tools/GpaCalculatorPage')->name('tools.gpa-calculator');
     Route::inertia('/adwat/hasbh-altahwel', 'tools/TransferCalculatorPage')->name('tools.transfer-calculator');
 });
