@@ -109,7 +109,7 @@ const compareItems = (a: SearchItem | null, b: SearchItem | null) => a?.id === b
             v-model="query"
             autocomplete="off"
             aria-autocomplete="list"
-            placeholder="ابحث بسرعة عن أي صفحة"
+            placeholder="البحث السريع"
             type="search"
             class="h-full w-full border-0 pl-3 pr-9 text-base shadow-none outline-none focus-visible:ring-0 md:text-sm text-right"
             dir="rtl"

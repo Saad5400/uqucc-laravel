@@ -9,7 +9,7 @@ export { default as CardHeader } from "./CardHeader.vue"
 export { default as CardTitle } from "./CardTitle.vue"
 
 export const cardVariants = cva(
-  "bg-card text-card-foreground flex flex-col rounded-xl border shadow-sm",
+  "bg-card text-card-foreground flex flex-col justify-between rounded-xl border shadow-sm",
   {
     variants: {
       size: {

@@ -13,7 +13,7 @@ const colorMode = useColorMode();
     <header
         class="screenshot-hidden flex items-center justify-between w-full gap-2 p-2 border rounded-lg shadow-sm bg-sidebar border-sidebar-border !h-14"
     >
-        <div class="flex items-center">
+        <div class="flex items-center min-w-fit">
             <Button aria-label="فاتح القائمة" as-child variant="ghost" size="icon" class="md:hidden">
                 <SidebarTrigger />
             </Button>
@@ -23,7 +23,7 @@ const colorMode = useColorMode();
             </Link>
         </div>
         <div class="flex items-center gap-2">
-            <div class="min-w-[220px] sm:min-w-[280px]">
+            <div>
                 <SearchBar />
             </div>
 
