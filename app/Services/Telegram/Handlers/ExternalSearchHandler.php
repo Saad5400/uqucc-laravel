@@ -113,15 +113,18 @@ class ExternalSearchHandler extends BaseHandler
     protected function fetchQeeemApiResults(string $query): ?array
     {
         try {
-            $response = Http::timeout(10)
-                ->post('https://qeeem.com/api/trpc/doctor.search?batch=1', [
-                    '0' => [
-                        'json' => [
-                            'universitySlug' => 'uqu',
-                            'name' => $query,
-                        ],
+            $payload = [
+                '0' => [
+                    'json' => [
+                        'universitySlug' => 'uqu',
+                        'name' => $query,
                     ],
-                ]);
+                ],
+            ];
+            $response = Http::timeout(10)
+                ->acceptJson()
+                ->withBody(json_encode($payload, JSON_FORCE_OBJECT), 'application/json')
+                ->send('POST', 'https://qeeem.com/api/trpc/doctor.search?batch=1');
 
             if (! $response->successful()) {
                 Log::debug('Qeeem API request failed', [
@@ -132,6 +135,14 @@ class ExternalSearchHandler extends BaseHandler
             }
 
             $data = $response->json();
+
+            if (is_array($data) && isset($data[0]['error'])) {
+                Log::debug('Qeeem API request returned error', [
+                    'error' => $data[0]['error']['json']['message'] ?? null,
+                ]);
+
+                return null;
+            }
 
             // Parse the response structure: [{"result":{"data":{"json":[...results...]}}}]
             if (! is_array($data) || empty($data[0]['result']['data']['json'])) {
