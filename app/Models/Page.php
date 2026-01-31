@@ -11,12 +11,14 @@ use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Cache;
+use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Traits\LogsActivity;
 use Spatie\EloquentSortable\Sortable;
 use Spatie\EloquentSortable\SortableTrait;
 
 class Page extends Model implements Sortable
 {
-    use SoftDeletes;
+    use LogsActivity, SoftDeletes;
     use SortableTrait;
 
     protected static function booted(): void
@@ -52,10 +54,10 @@ class Page extends Model implements Sortable
     protected static function clearPageCaches(): void
     {
         $patterns = [
-            config('app-cache.keys.page', 'page') . ':*',
-            config('app-cache.keys.page_breadcrumbs', 'page_breadcrumbs') . ':*',
-            config('app-cache.keys.catalog_pages', 'catalog_pages') . ':*',
-            config('app-cache.keys.response_cache', 'response_cache') . ':*',
+            config('app-cache.keys.page', 'page').':*',
+            config('app-cache.keys.page_breadcrumbs', 'page_breadcrumbs').':*',
+            config('app-cache.keys.catalog_pages', 'catalog_pages').':*',
+            config('app-cache.keys.response_cache', 'response_cache').':*',
         ];
 
         // Get the cache prefix
@@ -65,12 +67,12 @@ class Page extends Model implements Sortable
         if (config('cache.default') === 'redis') {
             $redis = Cache::getRedis();
             foreach ($patterns as $pattern) {
-                $fullPattern = $prefix ? $prefix . ':' . $pattern : $pattern;
+                $fullPattern = $prefix ? $prefix.':'.$pattern : $pattern;
                 $keys = $redis->keys($fullPattern);
-                if (!empty($keys)) {
+                if (! empty($keys)) {
                     // Remove prefix from keys before forgetting
                     foreach ($keys as $key) {
-                        $cacheKey = $prefix ? str_replace($prefix . ':', '', $key) : $key;
+                        $cacheKey = $prefix ? str_replace($prefix.':', '', $key) : $key;
                         Cache::forget($cacheKey);
                     }
                 }
@@ -211,5 +213,29 @@ class Page extends Model implements Sortable
     public function scopeRootLevel($query)
     {
         return $query->whereNull('parent_id');
+    }
+
+    /**
+     * Configure activity logging options
+     */
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly([
+                'slug',
+                'title',
+                'html_content',
+                'order',
+                'icon',
+                'hidden',
+                'hidden_from_bot',
+                'smart_search',
+                'requires_prefix',
+                'parent_id',
+                'level',
+                'extension',
+            ])
+            ->logOnlyDirty()
+            ->dontSubmitEmptyLogs();
     }
 }
