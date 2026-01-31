@@ -29,21 +29,17 @@ class ManageTelegramSettings extends SettingsPage
     {
         return $schema
             ->components([
-                Section::make('إعدادات إدارة الصفحات')
-                    ->description('تحكم في أوامر إدارة الصفحات عبر التليجرام')
-                    ->schema([
-                        TagsInput::make('page_management_allowed_chat_ids')
-                            ->label('معرّفات المحادثات المسموح لها')
-                            ->helperText('أدخل معرّفات المحادثات (Chat IDs) المسموح لها باستخدام أوامر إدارة الصفحات. اتركها فارغة للسماح لجميع المحادثات.')
-                            ->placeholder('أضف معرّف محادثة...')
-                            ->splitKeys(['Tab', 'Enter', ' ', ','])
-                            ->reorderable(),
+                TagsInput::make('page_management_allowed_chat_ids')
+                    ->label('معرّفات المحادثات المسموح لها')
+                    ->helperText('أدخل معرّفات المحادثات (Chat IDs) المسموح لها باستخدام أوامر إدارة الصفحات. اتركها فارغة للسماح لجميع المحادثات.')
+                    ->placeholder('أضف معرّف محادثة...')
+                    ->splitKeys(['Tab', 'Enter', ' ', ','])
+                    ->reorderable(),
 
-                        Toggle::make('page_management_auto_delete_messages')
-                            ->label('حذف رسائل إدارة الصفحات تلقائياً')
-                            ->helperText('عند التفعيل، سيتم حذف رسائل أوامر إدارة الصفحات تلقائياً بعد اكتمال العملية.')
-                            ->default(true),
-                    ]),
+                Toggle::make('page_management_auto_delete_messages')
+                    ->label('حذف رسائل إدارة الصفحات تلقائياً')
+                    ->helperText('عند التفعيل، سيتم حذف رسائل أوامر إدارة الصفحات تلقائياً بعد اكتمال العملية.')
+                    ->default(true),
             ]);
     }
 }
