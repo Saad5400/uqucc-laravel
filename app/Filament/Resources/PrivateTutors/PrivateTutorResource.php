@@ -27,7 +27,7 @@ class PrivateTutorResource extends Resource
 
     protected static ?string $navigationLabel = 'الخصوصيين';
 
-    protected static ?string $navigationGroup = 'الخصوصيين';
+    protected static string|null|\UnitEnum $navigationGroup = 'الخصوصيين';
 
     protected static ?int $navigationSort = 1;
 

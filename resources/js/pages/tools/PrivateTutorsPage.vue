@@ -2,9 +2,7 @@
   <DocsLayout>
     <PageHeader title="الخصوصيين" icon="solar:users-group-rounded-broken" />
 
-    <div class="typography">
       <PrivateTutors :courses="courses" :tutors="tutors" />
-    </div>
   </DocsLayout>
 </template>
 
