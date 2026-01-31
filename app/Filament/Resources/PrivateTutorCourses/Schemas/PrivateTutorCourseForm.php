@@ -2,8 +2,8 @@
 
 namespace App\Filament\Resources\PrivateTutorCourses\Schemas;
 
-use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TextInput;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 
 class PrivateTutorCourseForm
@@ -12,13 +12,10 @@ class PrivateTutorCourseForm
     {
         return $schema
             ->components([
-                Section::make('معلومات المادة')
-                    ->schema([
-                        TextInput::make('name')
-                            ->label('اسم المادة')
-                            ->required()
-                            ->maxLength(255),
-                    ]),
+                TextInput::make('name')
+                    ->label('اسم المادة')
+                    ->required()
+                    ->maxLength(255),
             ]);
     }
 }

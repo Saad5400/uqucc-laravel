@@ -2,8 +2,11 @@
 
 namespace App\Filament\Resources\PrivateTutors\RelationManagers;
 
+use App\Models\PrivateTutor\PrivateTutorCourse;
 use Filament\Actions\AttachAction;
+use Filament\Actions\CreateAction;
 use Filament\Actions\DetachAction;
+use Filament\Forms\Components\TextInput;
 use Filament\Resources\RelationManagers\RelationManager;
 use Filament\Schemas\Schema;
 use Filament\Tables\Columns\TextColumn;
@@ -19,10 +22,17 @@ class CoursesRelationManager extends RelationManager
 
     protected static ?string $pluralModelLabel = 'مواد';
 
+    protected static ?string $inverseRelationship = 'tutors';
+
     public function form(Schema $schema): Schema
     {
         return $schema
-            ->components([]);
+            ->components([
+                TextInput::make('name')
+                    ->label('اسم المادة')
+                    ->required()
+                    ->maxLength(255),
+            ]);
     }
 
     public function table(Table $table): Table
@@ -36,14 +46,13 @@ class CoursesRelationManager extends RelationManager
             ])
             ->defaultSort('order')
             ->headerActions([
+                CreateAction::make()
+                    ->label('إضافة مادة جديدة'),
                 AttachAction::make()
-                    ->label('ربط مادة')
+                    ->label('ربط مادة موجودة')
                     ->preloadRecordSelect()
-                    ->recordSelect(
-                        fn ($select) => $select
-                            ->label('المادة')
-                            ->searchable()
-                    ),
+                    ->recordSelectSearchColumns(['name'])
+                    ->recordTitle(fn (PrivateTutorCourse $record) => $record->name),
             ])
             ->actions([
                 DetachAction::make()
