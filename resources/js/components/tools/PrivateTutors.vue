@@ -42,7 +42,7 @@
       <Search class="absolute right-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
       <Input
         v-model="searchQuery"
-        :placeholder="activeTab === 'courses' ? 'ابحث عن مادة أو خصوصي...' : 'ابحث عن خصوصي أو مادة...'"
+        :placeholder="activeTab === 'courses' ? 'ابحث عن مادة...' : 'ابحث عن خصوصي...'"
         class="pr-10"
       />
     </div>
@@ -180,19 +180,95 @@ function normalizeArabic(text: string): string {
     // Remove Arabic diacritics (tashkeel)
     .replace(/[\u064B-\u065F\u0670]/g, '')
     // Normalize alef variations to plain alef
-    .replace(/[\u0622\u0623\u0625\u0627]/g, '\u0627')
+    .replace(/[\u0622\u0623\u0625\u0627\u0671]/g, '\u0627')
     // Normalize teh marbuta to heh
     .replace(/\u0629/g, '\u0647')
     // Normalize alef maksura to yeh
     .replace(/\u0649/g, '\u064A')
+    // Normalize waw with hamza to waw
+    .replace(/\u0624/g, '\u0648')
+    // Normalize yeh with hamza to yeh
+    .replace(/\u0626/g, '\u064A')
+    // Remove tatweel (kashida)
+    .replace(/\u0640/g, '')
     // Remove extra spaces
     .replace(/\s+/g, ' ')
     .trim()
 }
 
 /**
- * Check if text matches the search query
- * Uses fuzzy matching for better Arabic search experience
+ * Calculate similarity score between two strings (0 to 1)
+ * Uses a combination of techniques for Arabic fuzzy matching
+ */
+function calculateSimilarity(text: string, query: string): number {
+  if (text === query) return 1
+  if (text.includes(query)) return 0.9
+  if (query.length === 0) return 1
+
+  // Check if all characters of query exist in text (in order)
+  let queryIdx = 0
+  for (let i = 0; i < text.length && queryIdx < query.length; i++) {
+    if (text[i] === query[queryIdx]) {
+      queryIdx++
+    }
+  }
+  if (queryIdx === query.length) {
+    return 0.7 // All characters found in sequence
+  }
+
+  // Calculate character overlap ratio
+  const queryChars = new Set(query.split(''))
+  const textChars = new Set(text.split(''))
+  let matchCount = 0
+  for (const char of queryChars) {
+    if (textChars.has(char)) matchCount++
+  }
+  const overlapRatio = matchCount / queryChars.size
+
+  // Levenshtein distance for short queries
+  if (query.length <= 10) {
+    const distance = levenshteinDistance(text.slice(0, query.length + 5), query)
+    const maxLen = Math.max(text.length, query.length)
+    const distanceScore = 1 - (distance / maxLen)
+    return Math.max(overlapRatio * 0.5, distanceScore)
+  }
+
+  return overlapRatio * 0.5
+}
+
+/**
+ * Levenshtein distance calculation
+ */
+function levenshteinDistance(a: string, b: string): number {
+  const matrix: number[][] = []
+
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i]
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j
+  }
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b[i - 1] === a[j - 1]) {
+        matrix[i][j] = matrix[i - 1][j - 1]
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1, // substitution
+          matrix[i][j - 1] + 1,     // insertion
+          matrix[i - 1][j] + 1      // deletion
+        )
+      }
+    }
+  }
+
+  return matrix[b.length][a.length]
+}
+
+/**
+ * Check if text matches the search query with fuzzy matching
+ * Returns true if similarity is above threshold
  */
 function matchesSearch(text: string, query: string): boolean {
   if (!query) return true
@@ -200,61 +276,39 @@ function matchesSearch(text: string, query: string): boolean {
   const normalizedText = normalizeArabic(text)
   const normalizedQuery = normalizeArabic(query)
 
-  // Split query into words and check if all words are found
+  // Split query into words
   const queryWords = normalizedQuery.split(' ').filter(w => w.length > 0)
 
-  return queryWords.every(word => normalizedText.includes(word))
+  // For each query word, check if it fuzzy matches any part of text
+  return queryWords.every(word => {
+    // Exact or substring match
+    if (normalizedText.includes(word)) return true
+
+    // Check each word in the text for fuzzy match
+    const textWords = normalizedText.split(' ')
+    return textWords.some(textWord => {
+      const similarity = calculateSimilarity(textWord, word)
+      // Allow match if similarity is above 0.6 (60%)
+      return similarity >= 0.6
+    })
+  })
 }
 
 const filteredCourses = computed(() => {
   if (!searchQuery.value) return props.courses
 
-  return props.courses
-    .map(course => {
-      // Check if course name matches
-      const courseMatches = matchesSearch(course.name, searchQuery.value)
-
-      // Filter tutors that match
-      const matchingTutors = course.tutors.filter(tutor =>
-        matchesSearch(tutor.name, searchQuery.value)
-      )
-
-      // Include course if course name matches OR any tutor matches
-      if (courseMatches || matchingTutors.length > 0) {
-        return {
-          ...course,
-          tutors: courseMatches ? course.tutors : matchingTutors
-        }
-      }
-
-      return null
-    })
-    .filter((course): course is CourseWithTutors => course !== null)
+  // Search only by course name in courses tab
+  return props.courses.filter(course =>
+    matchesSearch(course.name, searchQuery.value)
+  )
 })
 
 const filteredTutors = computed(() => {
   if (!searchQuery.value) return props.tutors
 
-  return props.tutors
-    .map(tutor => {
-      // Check if tutor name matches
-      const tutorMatches = matchesSearch(tutor.name, searchQuery.value)
-
-      // Filter courses that match
-      const matchingCourses = tutor.courses.filter(course =>
-        matchesSearch(course.name, searchQuery.value)
-      )
-
-      // Include tutor if tutor name matches OR any course matches
-      if (tutorMatches || matchingCourses.length > 0) {
-        return {
-          ...tutor,
-          courses: tutorMatches ? tutor.courses : matchingCourses
-        }
-      }
-
-      return null
-    })
-    .filter((tutor): tutor is TutorWithCourses => tutor !== null)
+  // Search only by tutor name in tutors tab
+  return props.tutors.filter(tutor =>
+    matchesSearch(tutor.name, searchQuery.value)
+  )
 })
 </script>
