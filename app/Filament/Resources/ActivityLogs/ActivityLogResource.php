@@ -68,7 +68,7 @@ class ActivityLogResource extends Resource
                         TextEntry::make('event')
                             ->label('الحدث')
                             ->badge()
-                            ->color(fn(string $state): string => match ($state) {
+                            ->color(fn (string $state): string => match ($state) {
                                 'created' => 'success',
                                 'updated' => 'warning',
                                 'deleted' => 'danger',
@@ -76,7 +76,7 @@ class ActivityLogResource extends Resource
                             }),
                         TextEntry::make('subject_type')
                             ->label('نوع الموضوع')
-                            ->formatStateUsing(fn(?string $state): string => $state ? class_basename($state) : '-'),
+                            ->formatStateUsing(fn (?string $state): string => $state ? class_basename($state) : '-'),
                         TextEntry::make('subject_id')
                             ->label('معرّف الموضوع'),
                         TextEntry::make('causer.name')
@@ -90,16 +90,73 @@ class ActivityLogResource extends Resource
                             ->dateTime(),
                     ])
                     ->columns(2),
-                Section::make('الخصائص')
+                Section::make('القيم القديمة (قبل التغيير)')
                     ->schema([
                         TextEntry::make('properties')
                             ->label('')
-                            ->formatStateUsing(fn($state): string => $state ? json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) : '-')
+                            ->formatStateUsing(function ($state, $record): string {
+                                if (! $state) {
+                                    return '-';
+                                }
+
+                                $old = $state['old'] ?? null;
+
+                                if (! $old || empty($old)) {
+                                    return $record->event === 'created' ? 'لا توجد قيم قديمة (تم الإنشاء)' : '-';
+                                }
+
+                                $output = '';
+                                foreach ($old as $key => $value) {
+                                    $displayValue = is_null($value) ? 'null' : (is_bool($value) ? ($value ? 'true' : 'false') : $value);
+                                    $output .= "<strong>{$key}:</strong> {$displayValue}<br>";
+                                }
+
+                                return $output;
+                            })
+                            ->html()
+                            ->columnSpanFull(),
+                    ])
+                    ->collapsible()
+                    ->hidden(fn ($record) => $record->event === 'created'),
+                Section::make('القيم الجديدة (بعد التغيير)')
+                    ->schema([
+                        TextEntry::make('properties')
+                            ->label('')
+                            ->formatStateUsing(function ($state, $record): string {
+                                if (! $state) {
+                                    return '-';
+                                }
+
+                                $attributes = $state['attributes'] ?? null;
+
+                                if (! $attributes || empty($attributes)) {
+                                    return $record->event === 'deleted' ? 'لا توجد قيم جديدة (تم الحذف)' : '-';
+                                }
+
+                                $output = '';
+                                foreach ($attributes as $key => $value) {
+                                    $displayValue = is_null($value) ? 'null' : (is_bool($value) ? ($value ? 'true' : 'false') : $value);
+                                    $output .= "<strong>{$key}:</strong> {$displayValue}<br>";
+                                }
+
+                                return $output;
+                            })
+                            ->html()
+                            ->columnSpanFull(),
+                    ])
+                    ->collapsible()
+                    ->hidden(fn ($record) => $record->event === 'deleted'),
+                Section::make('جميع الخصائص (JSON)')
+                    ->schema([
+                        TextEntry::make('properties')
+                            ->label('')
+                            ->formatStateUsing(fn ($state): string => $state ? json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) : '-')
                             ->html()
                             ->extraAttributes(['class' => 'font-mono text-sm'])
                             ->columnSpanFull(),
                     ])
-                    ->collapsible(),
+                    ->collapsible()
+                    ->collapsed(),
             ]);
     }
 
