@@ -92,24 +92,26 @@ class ActivityLogResource extends Resource
                     ->columns(2),
                 Section::make('القيم القديمة (قبل التغيير)')
                     ->schema([
-                        TextEntry::make('properties')
+                        TextEntry::make('old_values')
                             ->label('')
-                            ->formatStateUsing(function ($state, $record): string {
-                                if (! $state) {
+                            ->state(function ($record): string {
+                                if (! $record->properties) {
                                     return '-';
                                 }
 
-                                $old = $state['old'] ?? null;
+                                $properties = is_array($record->properties) ? $record->properties : $record->properties->toArray();
+                                $old = $properties['old'] ?? null;
 
                                 if (! $old || empty($old)) {
-                                    return $record->event === 'created' ? 'لا توجد قيم قديمة (تم الإنشاء)' : '-';
+                                    return $record->event === 'created' ? 'لا توجد قيم قديمة (تم الإنشاء)' : 'لا توجد تغييرات';
                                 }
 
-                                $output = '';
+                                $output = '<div style="line-height: 1.8;">';
                                 foreach ($old as $key => $value) {
-                                    $displayValue = is_null($value) ? 'null' : (is_bool($value) ? ($value ? 'true' : 'false') : $value);
-                                    $output .= "<strong>{$key}:</strong> {$displayValue}<br>";
+                                    $displayValue = is_null($value) ? '<em>null</em>' : (is_bool($value) ? ($value ? '<em>true</em>' : '<em>false</em>') : htmlspecialchars($value));
+                                    $output .= "<div><strong>{$key}:</strong> {$displayValue}</div>";
                                 }
+                                $output .= '</div>';
 
                                 return $output;
                             })
@@ -120,24 +122,26 @@ class ActivityLogResource extends Resource
                     ->hidden(fn ($record) => $record->event === 'created'),
                 Section::make('القيم الجديدة (بعد التغيير)')
                     ->schema([
-                        TextEntry::make('properties')
+                        TextEntry::make('new_values')
                             ->label('')
-                            ->formatStateUsing(function ($state, $record): string {
-                                if (! $state) {
+                            ->state(function ($record): string {
+                                if (! $record->properties) {
                                     return '-';
                                 }
 
-                                $attributes = $state['attributes'] ?? null;
+                                $properties = is_array($record->properties) ? $record->properties : $record->properties->toArray();
+                                $attributes = $properties['attributes'] ?? null;
 
                                 if (! $attributes || empty($attributes)) {
-                                    return $record->event === 'deleted' ? 'لا توجد قيم جديدة (تم الحذف)' : '-';
+                                    return $record->event === 'deleted' ? 'لا توجد قيم جديدة (تم الحذف)' : 'لا توجد تغييرات';
                                 }
 
-                                $output = '';
+                                $output = '<div style="line-height: 1.8;">';
                                 foreach ($attributes as $key => $value) {
-                                    $displayValue = is_null($value) ? 'null' : (is_bool($value) ? ($value ? 'true' : 'false') : $value);
-                                    $output .= "<strong>{$key}:</strong> {$displayValue}<br>";
+                                    $displayValue = is_null($value) ? '<em>null</em>' : (is_bool($value) ? ($value ? '<em>true</em>' : '<em>false</em>') : htmlspecialchars($value));
+                                    $output .= "<div><strong>{$key}:</strong> {$displayValue}</div>";
                                 }
+                                $output .= '</div>';
 
                                 return $output;
                             })
@@ -148,11 +152,33 @@ class ActivityLogResource extends Resource
                     ->hidden(fn ($record) => $record->event === 'deleted'),
                 Section::make('جميع الخصائص (JSON)')
                     ->schema([
-                        TextEntry::make('properties')
+                        TextEntry::make('all_properties')
                             ->label('')
-                            ->formatStateUsing(fn ($state): string => $state ? json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) : '-')
+                            ->state(function ($record): string {
+                                if (! $record->properties) {
+                                    return '-';
+                                }
+
+                                $properties = is_array($record->properties) ? $record->properties : $record->properties->toArray();
+                                $output = '';
+
+                                if (isset($properties['old']) && ! empty($properties['old'])) {
+                                    $output .= '<strong style="color: #ef4444;">القيم القديمة (Old Values):</strong><br>';
+                                    $output .= '<pre style="margin: 10px 0; padding: 10px; background: #1f2937; border-radius: 5px; overflow-x: auto;">';
+                                    $output .= htmlspecialchars(json_encode($properties['old'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                                    $output .= '</pre>';
+                                }
+
+                                if (isset($properties['attributes']) && ! empty($properties['attributes'])) {
+                                    $output .= '<strong style="color: #10b981;">القيم الجديدة (New Values):</strong><br>';
+                                    $output .= '<pre style="margin: 10px 0; padding: 10px; background: #1f2937; border-radius: 5px; overflow-x: auto;">';
+                                    $output .= htmlspecialchars(json_encode($properties['attributes'], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE));
+                                    $output .= '</pre>';
+                                }
+
+                                return $output ?: '-';
+                            })
                             ->html()
-                            ->extraAttributes(['class' => 'font-mono text-sm'])
                             ->columnSpanFull(),
                     ])
                     ->collapsible()
