@@ -6,26 +6,26 @@ use App\Filament\Resources\ActivityLogs\Pages\ListActivityLogs;
 use App\Filament\Resources\ActivityLogs\Pages\ViewActivityLog;
 use App\Filament\Resources\ActivityLogs\Tables\ActivityLogsTable;
 use BackedEnum;
-use Filament\Infolists\Components\Section;
 use Filament\Infolists\Components\TextEntry;
-use Filament\Infolists\Infolist;
 use Filament\Resources\Resource;
+use Filament\Schemas\Components\Section;
+use Filament\Schemas\Schema;
 use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Model;
-use Spatie\Activitylog\Models\ActivityLog;
+use Spatie\Activitylog\Models\Activity;
 
 class ActivityLogResource extends Resource
 {
-    protected static ?string $model = ActivityLog::class;
+    protected static ?string $model = Activity::class;
 
     protected static string|BackedEnum|null $navigationIcon = Heroicon::OutlinedClipboardDocumentList;
 
     protected static ?string $modelLabel = 'سجل نشاط';
 
-    protected static ?string $pluralModelLabel = 'سجلات النشاط';
+    protected static ?string $pluralModelLabel = 'سجل الأنشطة';
 
-    protected static ?string $navigationLabel = 'سجلات النشاط';
+    protected static ?string $navigationLabel = 'سجل الأنشطة';
 
     protected static ?int $navigationSort = 10;
 
@@ -54,10 +54,10 @@ class ActivityLogResource extends Resource
         return ActivityLogsTable::configure($table);
     }
 
-    public static function infolist(Infolist $infolist): Infolist
+    public static function infolist(Schema $schema): Schema
     {
-        return $infolist
-            ->schema([
+        return parent::infolist($schema)
+            ->components([
                 Section::make('معلومات النشاط')
                     ->schema([
                         TextEntry::make('log_name')
@@ -68,7 +68,7 @@ class ActivityLogResource extends Resource
                         TextEntry::make('event')
                             ->label('الحدث')
                             ->badge()
-                            ->color(fn (string $state): string => match ($state) {
+                            ->color(fn(string $state): string => match ($state) {
                                 'created' => 'success',
                                 'updated' => 'warning',
                                 'deleted' => 'danger',
@@ -76,7 +76,7 @@ class ActivityLogResource extends Resource
                             }),
                         TextEntry::make('subject_type')
                             ->label('نوع الموضوع')
-                            ->formatStateUsing(fn (?string $state): string => $state ? class_basename($state) : '-'),
+                            ->formatStateUsing(fn(?string $state): string => $state ? class_basename($state) : '-'),
                         TextEntry::make('subject_id')
                             ->label('معرّف الموضوع'),
                         TextEntry::make('causer.name')
@@ -94,7 +94,7 @@ class ActivityLogResource extends Resource
                     ->schema([
                         TextEntry::make('properties')
                             ->label('')
-                            ->formatStateUsing(fn ($state): string => $state ? json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) : '-')
+                            ->formatStateUsing(fn($state): string => $state ? json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE) : '-')
                             ->html()
                             ->extraAttributes(['class' => 'font-mono text-sm'])
                             ->columnSpanFull(),

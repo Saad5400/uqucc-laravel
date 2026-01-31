@@ -23,6 +23,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'assign-roles',
             'edit-content',
             'manage-private-tutors',
+            'view-activity-logs',
         ];
 
         foreach ($permissions as $permission) {
@@ -31,10 +32,10 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // Create roles and assign permissions
         $adminRole = Role::firstOrCreate(['name' => 'admin']);
-        $adminRole->givePermissionTo(['manage-users', 'assign-roles', 'edit-content', 'manage-private-tutors']);
+        $adminRole->givePermissionTo(['manage-users', 'assign-roles', 'edit-content', 'manage-private-tutors', 'view-activity-logs']);
 
         $editorRole = Role::firstOrCreate(['name' => 'editor']);
-        $editorRole->givePermissionTo(['edit-content']);
+        $editorRole->givePermissionTo(['edit-content', 'view-activity-logs']);
 
         // Assign admin role to user ID 1
         $user = User::find(1);
