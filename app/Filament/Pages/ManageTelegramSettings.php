@@ -4,10 +4,10 @@ namespace App\Filament\Pages;
 
 use App\Settings\TelegramSettings;
 use BackedEnum;
-use Filament\Forms\Components\Section;
 use Filament\Forms\Components\TagsInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Pages\SettingsPage;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use UnitEnum;
 
