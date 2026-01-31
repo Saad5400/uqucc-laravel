@@ -25,6 +25,7 @@ Route::middleware(CacheResponse::class)->group(function () {
     Route::inertia('/adwat/hasbh-alhrman', 'tools/DeprivationCalculatorPage')->name('tools.deprivation-calculator');
     Route::inertia('/adwat/hasbh-almadl', 'tools/GpaCalculatorPage')->name('tools.gpa-calculator');
     Route::inertia('/adwat/hasbh-altahwel', 'tools/TransferCalculatorPage')->name('tools.transfer-calculator');
+    Route::get('/adwat/alkhosousieen', [App\Http\Controllers\PrivateTutorController::class, 'index'])->name('tools.private-tutors');
 });
 
 // Catch-all route for content pages (must be last!) - with full response caching
