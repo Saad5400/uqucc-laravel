@@ -26,14 +26,14 @@ const isMounted = ref(false);
 
 onMounted(() => {
     isMounted.value = true;
-
-    setTimeout(() => {
-        const hash = window.location.hash;
-        if (hash) {
-            document.querySelector(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-    }, 500);
 });
+
+const scrollToHash = () => {
+    const hash = window.location.hash;
+    if (hash) {
+        document.querySelector(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+};
 
 const isJsonContent = computed(
     () => props.content != null && typeof props.content === 'object' && !Array.isArray(props.content),
@@ -156,6 +156,9 @@ const editor = useEditor({
         attributes: {
             class: 'typography',
         },
+    },
+    onCreate: () => {
+        setTimeout(scrollToHash, 100);
     },
 });
 
