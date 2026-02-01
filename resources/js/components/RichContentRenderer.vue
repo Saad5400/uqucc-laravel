@@ -16,7 +16,6 @@ import { computed, watch, ref, onMounted } from 'vue';
 import AlertBlock from '@/tiptap/extensions/alertBlock';
 import CollapsibleBlock from '@/tiptap/extensions/collapsibleBlock';
 import { HeadingWithId, HeadingWithIdSSR } from '@/tiptap/extensions/heading';
-import HashScroller from '@/components/HashScroller.vue';
 
 const props = defineProps<{
     content?: unknown;
@@ -27,6 +26,13 @@ const isMounted = ref(false);
 
 onMounted(() => {
     isMounted.value = true;
+
+    setTimeout(() => {
+        const hash = window.location.hash;
+        if (hash) {
+            document.querySelector(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }, 500);
 });
 
 const isJsonContent = computed(
@@ -171,9 +177,7 @@ watch(
     <!-- For JSON content: use SSR HTML during SSR, then hydrate with TipTap editor -->
     <template v-if="isJsonContent">
         <!-- Client-side: use the interactive TipTap editor -->
-        <HashScroller v-if="isMounted">
-            <EditorContent :editor="editor" />
-        </HashScroller>
+        <EditorContent v-if="isMounted" :editor="editor" />
         <!-- SSR: render static HTML that matches the editor output -->
         <div v-else class="typography" v-html="ssrHtml" />
     </template>
