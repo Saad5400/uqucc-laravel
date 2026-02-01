@@ -11,7 +11,7 @@ import TableRow from '@tiptap/extension-table-row';
 import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import DOMPurify from 'isomorphic-dompurify';
-import { computed, watch, ref, onMounted } from 'vue';
+import { computed, watch, ref, onMounted, nextTick } from 'vue';
 
 import AlertBlock from '@/tiptap/extensions/alertBlock';
 import CollapsibleBlock from '@/tiptap/extensions/collapsibleBlock';
@@ -24,24 +24,13 @@ const props = defineProps<{
 // Track if we're on the client side
 const isMounted = ref(false);
 
-// Restore scroll position after hydration if there's a hash in the URL
-const restoreHashScroll = () => {
+onMounted(async () => {
+    isMounted.value = true;
+    await nextTick();
     const hash = window.location.hash;
     if (hash) {
-        // Use requestAnimationFrame to ensure DOM is fully updated
-        requestAnimationFrame(() => {
-            const element = document.querySelector(hash);
-            if (element) {
-                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }
-        });
+        document.querySelector(hash)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
-};
-
-onMounted(() => {
-    isMounted.value = true;
-    // Restore scroll after a short delay to ensure editor is fully rendered
-    setTimeout(restoreHashScroll, 100);
 });
 
 const isJsonContent = computed(
