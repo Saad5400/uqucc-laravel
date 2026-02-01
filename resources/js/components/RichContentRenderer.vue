@@ -15,7 +15,7 @@ import { computed, watch, ref, onMounted } from 'vue';
 
 import AlertBlock from '@/tiptap/extensions/alertBlock';
 import CollapsibleBlock from '@/tiptap/extensions/collapsibleBlock';
-import HeadingWithId from '@/tiptap/extensions/heading';
+import { HeadingWithId, HeadingWithIdSSR } from '@/tiptap/extensions/heading';
 
 const props = defineProps<{
     content?: unknown;
@@ -23,8 +23,25 @@ const props = defineProps<{
 
 // Track if we're on the client side
 const isMounted = ref(false);
+
+// Restore scroll position after hydration if there's a hash in the URL
+const restoreHashScroll = () => {
+    const hash = window.location.hash;
+    if (hash) {
+        // Use requestAnimationFrame to ensure DOM is fully updated
+        requestAnimationFrame(() => {
+            const element = document.querySelector(hash);
+            if (element) {
+                element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+        });
+    }
+};
+
 onMounted(() => {
     isMounted.value = true;
+    // Restore scroll after a short delay to ensure editor is fully rendered
+    setTimeout(restoreHashScroll, 100);
 });
 
 const isJsonContent = computed(
@@ -67,12 +84,13 @@ const cleanHtml = computed(() =>
         : '',
 );
 
-// Extensions used for SSR HTML generation (without custom node views)
+// Extensions used for SSR HTML generation (with IDs for scroll anchors)
 const ssrExtensions = [
     StarterKit.configure({
-        heading: {
-            levels: [1, 2, 3, 4, 5, 6],
-        },
+        heading: false,
+    }),
+    HeadingWithIdSSR.configure({
+        levels: [1, 2, 3, 4, 5, 6],
     }),
     Underline,
     Link.configure({
