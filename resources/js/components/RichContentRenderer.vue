@@ -15,6 +15,7 @@ import { computed, watch, ref, onMounted } from 'vue';
 
 import AlertBlock from '@/tiptap/extensions/alertBlock';
 import CollapsibleBlock from '@/tiptap/extensions/collapsibleBlock';
+import HeadingWithId from '@/tiptap/extensions/heading';
 
 const props = defineProps<{
     content?: unknown;
@@ -66,8 +67,8 @@ const cleanHtml = computed(() =>
         : '',
 );
 
-// Extensions used for both SSR HTML generation and client-side editor
-const extensions = [
+// Extensions used for SSR HTML generation (without custom node views)
+const ssrExtensions = [
     StarterKit.configure({
         heading: {
             levels: [1, 2, 3, 4, 5, 6],
@@ -96,11 +97,42 @@ const extensions = [
     CollapsibleBlock,
 ];
 
+// Extensions for client-side editor with custom heading node view
+const extensions = [
+    StarterKit.configure({
+        heading: false,
+    }),
+    HeadingWithId.configure({
+        levels: [1, 2, 3, 4, 5, 6],
+    }),
+    Underline,
+    Link.configure({
+        openOnClick: true,
+        autolink: true,
+        linkOnPaste: true,
+    }),
+    TextAlign.configure({
+        types: ['heading', 'paragraph', 'tableCell'],
+    }),
+    Image.configure({
+        inline: true,
+        allowBase64: true,
+    }),
+    CustomTable.configure({
+        resizable: true,
+    }),
+    TableRow,
+    TableHeader,
+    TableCell,
+    AlertBlock,
+    CollapsibleBlock,
+];
+
 // Generate static HTML for SSR - this works without DOM
 const ssrHtml = computed(() => {
     if (!isJsonContent.value || !transformedContent.value) return '';
     try {
-        return generateHTML(transformedContent.value as Record<string, any>, extensions);
+        return generateHTML(transformedContent.value as Record<string, any>, ssrExtensions);
     } catch {
         return '';
     }

@@ -149,6 +149,7 @@
   /* apply stable scrollbar to html on desktop only */
   html {
     scrollbar-gutter: stable;
+    scroll-behavior: smooth;
   }
 
   body {

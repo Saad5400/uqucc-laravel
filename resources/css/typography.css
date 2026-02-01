@@ -29,6 +29,24 @@
         @apply text-base font-semibold tracking-tight scroll-m-20;
     }
 
+    /* Heading anchor links */
+    .typography .heading-with-anchor {
+        @apply relative;
+    }
+
+    .typography .heading-anchor {
+        @apply ms-2 text-muted-foreground/0 transition-colors duration-200 no-underline font-normal;
+    }
+
+    .typography .heading-with-anchor:hover .heading-anchor,
+    .typography .heading-anchor:focus {
+        @apply text-muted-foreground;
+    }
+
+    .typography .heading-anchor:hover {
+        @apply text-primary;
+    }
+
     .typography p {
         @apply leading-7;
     }
