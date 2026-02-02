@@ -4,24 +4,10 @@
 
     <!-- Rich content from database -->
     <div v-if="hasContent" class="typography mb-6">
-      <RichContentRenderer :content="page.html_content" />
+      <RichContentRenderer :content="page?.html_content" />
     </div>
 
-    <div class="typography">
-      <div class="text-sm typography">
-        <p>
-          <b> 🚨 تنويه مهم: </b>
-          نود أن نوضح أننا غير مسؤولين عن الخصوصيين المذكورين أدناه أو عن أي تعامل يتم معهم،
-          وجميعهم غير تابعين للكلية أو الجامعة رسميًا.
-        </p>
-
-        <ul class="mt-0">
-          <li>لا يوجد أي خصوصي يطلب عربون أو دفع مقابل مشاهدة الشرح التجريبي.</li>
-          <li>مافي خصوصي يطلب عربون مقابل مشاهدة الشرح التجريبي.</li>
-          <li>في حال واجهتم أي مشكلة مع أحد الخصوصيين، يرجى التواصل معنا مباشرة.</li>
-        </ul>
-      </div>
-
+    <div>
       <!-- Tabs -->
       <div class="flex gap-2 mb-4">
         <Button :variant="activeTab === 'courses' ? 'default' : 'ghost'" @click="activeTab = 'courses'">
