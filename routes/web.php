@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\OgImageController;
 use App\Http\Controllers\PageController;
+use App\Http\Controllers\PrivateTutorController;
+use App\Http\Controllers\ToolController;
 use App\Http\Middleware\CacheResponse;
 use Illuminate\Support\Facades\Route;
 
@@ -21,11 +23,11 @@ Route::get('/robots.txt', App\Http\Controllers\RobotsController::class)
 
 // Tool routes (must come before catch-all route) - with response caching
 Route::middleware(CacheResponse::class)->group(function () {
-    Route::inertia('/adwat/almkafa', 'tools/NextRewardPage')->name('tools.next-reward');
-    Route::inertia('/adwat/hasbh-alhrman', 'tools/DeprivationCalculatorPage')->name('tools.deprivation-calculator');
-    Route::inertia('/adwat/hasbh-almadl', 'tools/GpaCalculatorPage')->name('tools.gpa-calculator');
-    Route::inertia('/adwat/hasbh-altahwel', 'tools/TransferCalculatorPage')->name('tools.transfer-calculator');
-    Route::get('/adwat/alkhosousieen', [App\Http\Controllers\PrivateTutorController::class, 'index'])->name('tools.private-tutors');
+    Route::get('/adwat/almkafa', [ToolController::class, 'nextReward'])->name('tools.next-reward');
+    Route::get('/adwat/hasbh-alhrman', [ToolController::class, 'deprivationCalculator'])->name('tools.deprivation-calculator');
+    Route::get('/adwat/hasbh-almadl', [ToolController::class, 'gpaCalculator'])->name('tools.gpa-calculator');
+    Route::get('/adwat/hasbh-altahwel', [ToolController::class, 'transferCalculator'])->name('tools.transfer-calculator');
+    Route::get('/adwat/alkhosousieen', [PrivateTutorController::class, 'index'])->name('tools.private-tutors');
 });
 
 // Catch-all route for content pages (must be last!) - with full response caching

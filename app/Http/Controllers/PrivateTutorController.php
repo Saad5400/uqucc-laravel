@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Page;
 use App\Models\PrivateTutor\PrivateTutor;
 use App\Models\PrivateTutor\PrivateTutorCourse;
 use Illuminate\Support\Facades\Cache;
@@ -17,9 +18,18 @@ class PrivateTutorController extends Controller
     {
         $data = $this->getCachedData();
 
+        $page = Page::where('slug', '/adwat/alkhosousieen')
+            ->where('hidden', false)
+            ->first();
+
         return Inertia::render('tools/PrivateTutorsPage', [
             'courses' => $data['courses'],
             'tutors' => $data['tutors'],
+            'page' => $page ? [
+                'html_content' => $page->html_content,
+                'title' => $page->title,
+            ] : null,
+            'hasContent' => $page && ! empty($page->html_content),
         ]);
     }
 
