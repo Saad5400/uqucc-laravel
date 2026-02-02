@@ -19,7 +19,6 @@ class PrivateTutorController extends Controller
         $data = $this->getCachedData();
 
         $page = Page::where('slug', '/adwat/alkhosousieen')
-            ->where('hidden', false)
             ->first();
 
         return Inertia::render('tools/PrivateTutorsPage', [

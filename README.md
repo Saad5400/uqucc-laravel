@@ -11,12 +11,12 @@
 
 2. Locate the database container id:
    ```bash
-   docker ps # 825737edfc7c
+   docker ps # 1b55b24c0223
    ```
 
 3. Create a dump of the database:
    ```bash
-   docker exec -it 825737edfc7c pg_dump -U postgres -d postgres > postgres_backup.sql
+   docker exec -it 1b55b24c0223 pg_dump -U postgres -d uqucc > postgres_backup.sql
     ```
 
 4. Exit the vps:
@@ -31,6 +31,6 @@
 
 6. Restore the dump to your local database:
    ```bash
-   psql -U admin -h localhost -d medical_college -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-   psql -U admin -h localhost -d medical_college -f postgres_backup.sql
+   psql -U admin -h localhost -d uqucc -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+   psql -U admin -h localhost -d uqucc -f postgres_backup.sql
    ```
