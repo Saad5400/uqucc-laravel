@@ -93,6 +93,11 @@ class CacheResponse
     {
         $path = $request->path();
 
+        // Exclude paths that exceed fnmatch's maximum length (4096 characters)
+        if (strlen($path) > 4096) {
+            return true;
+        }
+
         foreach ($this->excludedPaths as $pattern) {
             if ($pattern === $path || fnmatch($pattern, $path)) {
                 return true;
