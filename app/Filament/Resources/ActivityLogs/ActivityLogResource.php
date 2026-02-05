@@ -108,7 +108,12 @@ class ActivityLogResource extends Resource
 
                                 $output = '<div style="line-height: 1.8;">';
                                 foreach ($old as $key => $value) {
-                                    $displayValue = is_null($value) ? '<em>null</em>' : (is_bool($value) ? ($value ? '<em>true</em>' : '<em>false</em>') : htmlspecialchars($value));
+                                    $displayValue = match (true) {
+                                        is_null($value) => '<em>null</em>',
+                                        is_bool($value) => $value ? '<em>true</em>' : '<em>false</em>',
+                                        is_array($value) => '<pre style="margin:2px 0;">' . htmlspecialchars(json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)) . '</pre>',
+                                        default => htmlspecialchars((string) $value),
+                                    };
                                     $output .= "<div><strong>{$key}:</strong> {$displayValue}</div>";
                                 }
                                 $output .= '</div>';
@@ -138,7 +143,12 @@ class ActivityLogResource extends Resource
 
                                 $output = '<div style="line-height: 1.8;">';
                                 foreach ($attributes as $key => $value) {
-                                    $displayValue = is_null($value) ? '<em>null</em>' : (is_bool($value) ? ($value ? '<em>true</em>' : '<em>false</em>') : htmlspecialchars($value));
+                                    $displayValue = match (true) {
+                                        is_null($value) => '<em>null</em>',
+                                        is_bool($value) => $value ? '<em>true</em>' : '<em>false</em>',
+                                        is_array($value) => '<pre style="margin:2px 0;">' . htmlspecialchars(json_encode($value, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)) . '</pre>',
+                                        default => htmlspecialchars((string) $value),
+                                    };
                                     $output .= "<div><strong>{$key}:</strong> {$displayValue}</div>";
                                 }
                                 $output .= '</div>';
