@@ -9,7 +9,7 @@ use Illuminate\Support\Str;
 class SearchIndexService
 {
     /**
-     * Build the cached search index for the public website.
+     * Build cached search index for public website.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -55,7 +55,7 @@ class SearchIndexService
     }
 
     /**
-     * Build breadcrumb titles for a page using the in-memory page collection.
+     * Build breadcrumb titles for a page using in-memory page collection.
      *
      * @param  Collection<int, Page>  $pages
      * @return array<int, string>
@@ -109,7 +109,7 @@ class SearchIndexService
     }
 
     /**
-     * Generate a short, plain-text preview of the page content.
+     * Generate a short, plain-text preview of page content.
      */
     private function makeExcerpt(mixed $content): string
     {

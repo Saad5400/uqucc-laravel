@@ -21,8 +21,6 @@ class QuickResponseService
                     'id',
                     'slug',
                     'title',
-                    'html_content',
-                    'updated_at',
                     'hidden',
                     'smart_search',
                     'requires_prefix',

@@ -2,9 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\SearchIndexService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
-use App\Services\SearchIndexService;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -36,7 +36,7 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
-        return [
+        $shared = [
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
@@ -48,8 +48,15 @@ class HandleInertiaRequests extends Middleware
                 config('app-cache.navigation.ttl'),
                 fn () => app(\App\Services\NavigationService::class)->buildTree()
             ),
-            // Search data (cached, auto-invalidates on page changes)
-            'searchData' => fn () => app(SearchIndexService::class)->getCachedIndex(),
         ];
+
+        // Only share search data for GET requests to reduce memory load
+        // Search data is cached but when it expires, rebuilding it is memory-intensive
+        // This prevents rebuilding on POST/PUT/DELETE requests (form submissions, API calls, etc.)
+        if ($request->isMethod('GET')) {
+            $shared['searchData'] = fn () => app(SearchIndexService::class)->getCachedIndex();
+        }
+
+        return $shared;
     }
 }
