@@ -4,6 +4,8 @@ namespace App\Filament\Resources\Pages\Schemas;
 
 use App\Filament\Forms\Blocks\AlertBlock;
 use App\Filament\Forms\Blocks\CollapsibleBlock;
+use App\Models\Page;
+use Illuminate\Database\Eloquent\Builder;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\RichEditor;
@@ -46,7 +48,28 @@ class PageForm
                         Select::make('parent_id')
                             ->label('الصفحة الأب')
                             ->default(request('default_parent_id') ?? null)
-                            ->relationship('parent', 'title')
+                            ->relationship(
+                                'parent',
+                                'title',
+                                modifyQueryUsing: function (Builder $query, ?Page $record): Builder {
+                                    if (! $record) {
+                                        return $query;
+                                    }
+
+                                    return $query->whereKeyNot($record->getKey());
+                                },
+                            )
+                            ->rule(function (?Page $record): \Closure {
+                                return function (string $attribute, mixed $value, \Closure $fail) use ($record): void {
+                                    if (! $record || ! $value) {
+                                        return;
+                                    }
+
+                                    if ((int) $value === (int) $record->getKey()) {
+                                        $fail('لا يمكن اختيار الصفحة نفسها كصفحة أب.');
+                                    }
+                                };
+                            })
                             ->searchable()
                             ->preload(),
                     ])
