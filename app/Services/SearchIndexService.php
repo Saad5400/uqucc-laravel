@@ -33,10 +33,11 @@ class SearchIndexService
             ->select('id', 'slug', 'title', 'icon', 'parent_id', 'html_content', 'smart_search')
             ->orderBy('title')
             ->get();
+        $pagesById = $pages->keyBy('id');
 
         return $pages
-            ->map(function (Page $page) use ($pages) {
-                $breadcrumbs = $this->buildBreadcrumbTitles($page, $pages);
+            ->map(function (Page $page) use ($pagesById) {
+                $breadcrumbs = $this->buildBreadcrumbTitles($page, $pagesById);
                 $preview = $this->makeExcerpt($page->html_content);
 
                 return [
@@ -63,17 +64,26 @@ class SearchIndexService
     {
         $titles = [$page->title];
         $current = $page;
+        $visited = [$page->id => true];
+        $maxDepth = 30;
+        $depth = 0;
 
-        while ($current->parent_id) {
+        while ($current->parent_id && $depth < $maxDepth) {
+            if (isset($visited[$current->parent_id])) {
+                break;
+            }
+
             /** @var Page|null $parent */
-            $parent = $pages->firstWhere('id', $current->parent_id);
+            $parent = $pages->get($current->parent_id);
 
             if (! $parent) {
                 break;
             }
 
+            $visited[$parent->id] = true;
             array_unshift($titles, $parent->title);
             $current = $parent;
+            $depth++;
         }
 
         return $titles;
