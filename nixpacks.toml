@@ -31,9 +31,6 @@ cmds = [
     "php artisan route:cache",
     "php artisan view:cache",
 
-    # Add database indexes for search performance
-    "php artisan migrate --force || true",
-
     # Filament
     "php artisan filament:optimize",
 
@@ -47,13 +44,7 @@ cmds = [
     "mkdir -p /etc/supervisor/conf.d/",
     "cp /assets/worker-*.conf /etc/supervisor/conf.d/",
     "cp /assets/supervisord.conf /etc/supervisord.conf",
-    "chmod +x /assets/start.sh",
-
-    # Clear caches after build to ensure fresh state
-    "php artisan cache:clear",
-    "php artisan view:clear",
-    "php artisan route:clear",
-    "php artisan config:clear"
+    "chmod +x /assets/start.sh"
 ]
 
 [start]
@@ -238,8 +229,8 @@ clear_env = no
 
 ; Useful production tweaks
 php_admin_value[memory_limit] = 512M
-php_admin_value[max_execution_time] = 300
-php_admin_value[max_input_time] = 300
+php_admin_value[max_execution_time] = 60
+php_admin_value[max_input_time] = 60
 php_admin_value[post_max_size] = 256M
 php_admin_value[upload_max_filesize] = 64M
 
