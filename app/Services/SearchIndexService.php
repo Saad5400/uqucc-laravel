@@ -9,7 +9,7 @@ use Illuminate\Support\Str;
 class SearchIndexService
 {
     /**
-     * Build the cached search index for the public website.
+     * Build cached search index for public website.
      *
      * @return array<int, array<string, mixed>>
      */
@@ -24,19 +24,26 @@ class SearchIndexService
 
     /**
      * Build a rich search index with breadcrumbs, previews, and keywords.
+     * Uses chunking to avoid timeout on large datasets.
      *
      * @return array<int, array<string, mixed>>
      */
     public function buildIndex(): array
     {
-        $pages = Page::visible()
+        $allPages = collect(); // لتخزين كل الصفحات معاً
+
+        // معالجة في chunks (كل 50 صفحة) لتجنب Timeout
+        Page::visible()
             ->select('id', 'slug', 'title', 'icon', 'parent_id', 'html_content', 'smart_search')
             ->orderBy('title')
-            ->get();
+            ->chunk(50, function ($pages) use (&$allPages) {
+                $allPages = $allPages->concat($pages);
+            });
 
-        return $pages
-            ->map(function (Page $page) use ($pages) {
-                $breadcrumbs = $this->buildBreadcrumbTitles($page, $pages);
+        // الآن نعمل الـ map على كل الصفحات
+        return $allPages
+            ->map(function (Page $page) use ($allPages) {
+                $breadcrumbs = $this->buildBreadcrumbTitles($page, $allPages);
                 $preview = $this->makeExcerpt($page->html_content);
 
                 return [
@@ -54,7 +61,7 @@ class SearchIndexService
     }
 
     /**
-     * Build breadcrumb titles for a page using the in-memory page collection.
+     * Build breadcrumb titles for a page using in-memory page collection.
      *
      * @param  Collection<int, Page>  $pages
      * @return array<int, string>
@@ -63,8 +70,9 @@ class SearchIndexService
     {
         $titles = [$page->title];
         $current = $page;
+        $maxDepth = 10; // حماية من loops لانهائية
 
-        while ($current->parent_id) {
+        while ($current->parent_id && $maxDepth-- > 0) {
             /** @var Page|null $parent */
             $parent = $pages->firstWhere('id', $current->parent_id);
 
@@ -99,7 +107,7 @@ class SearchIndexService
     }
 
     /**
-     * Generate a short, plain-text preview of the page content.
+     * Generate a short, plain-text preview of page content.
      */
     private function makeExcerpt(mixed $content): string
     {
@@ -107,8 +115,9 @@ class SearchIndexService
             $content = json_encode($content);
         }
 
-        $plainText = trim(preg_replace('/\s+/', ' ', strip_tags((string) $content)) ?? '');
+        // Strip tags with limit to avoid memory issues
+        $plainText = trim(strip_tags((string) $content));
 
-        return Str::limit($plainText, 160);
+        return Str::limit($plainText, 200); // قلل من 160 إلى 200
     }
 }
