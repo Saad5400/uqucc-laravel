@@ -39,11 +39,16 @@ class Page extends Model implements Sortable
 
     protected static function clearAppCache(): void
     {
+        // Clear navigation and response cache immediately
         Cache::forget(config('app-cache.keys.navigation_tree'));
-        Cache::forget(config('app-cache.keys.search_data'));
-        Cache::forget(config('app-cache.keys.quick_responses'));
+        Cache::forget(config('app-cache.keys.response_cache'));
 
-        // Clear all page-related caches using pattern-based flush
+        // Dispatch background jobs for search index and quick responses
+        // These are CPU and memory intensive, so they run asynchronously
+        dispatch(new \App\Jobs\RebuildSearchIndex);
+        dispatch(new \App\Jobs\RebuildQuickResponses);
+
+        // Clear page-specific caches using pattern-based flush
         // This uses Redis SCAN to find and delete matching keys efficiently
         self::clearPageCaches();
     }
