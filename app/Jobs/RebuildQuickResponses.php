@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\Page;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -41,7 +42,7 @@ class RebuildQuickResponses implements ShouldQueue
                 'quick_response_attachments',
             ])
             ->orderBy('order')
-            ->chunk($chunkSize, function (Collection $pages) use (&$responses) {
+            ->chunk($chunkSize, function (EloquentCollection $pages) use (&$responses) {
                 $responses = $responses->concat($pages);
             });
 
