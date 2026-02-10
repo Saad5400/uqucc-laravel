@@ -9,7 +9,6 @@ use Illuminate\Support\Facades\Route;
 
 // Homepage - with full response caching
 Route::get('/', [PageController::class, 'home'])
-    ->middleware(CacheResponse::class)
     ->name('home');
 
 // OG Image generation endpoint (must come before catch-all route)
@@ -18,11 +17,10 @@ Route::get('/_og-image/{route?}', [OgImageController::class, 'generate'])
     ->name('og-image');
 
 // Robots.txt (must come before catch-all route)
-Route::get('/robots.txt', App\Http\Controllers\RobotsController::class)
-    ->middleware(CacheResponse::class);
+Route::get('/robots.txt', App\Http\Controllers\RobotsController::class);
 
 // Tool routes (must come before catch-all route) - with response caching
-Route::middleware(CacheResponse::class)->group(function () {
+Route::group(function () {
     Route::get('/adwat/almkafa', [ToolController::class, 'nextReward'])->name('tools.next-reward');
     Route::get('/adwat/hasbh-alhrman', [ToolController::class, 'deprivationCalculator'])->name('tools.deprivation-calculator');
     Route::get('/adwat/hasbh-almadl', [ToolController::class, 'gpaCalculator'])->name('tools.gpa-calculator');
@@ -33,5 +31,4 @@ Route::middleware(CacheResponse::class)->group(function () {
 // Catch-all route for content pages (must be last!) - with full response caching
 Route::get('/{slug}', [PageController::class, 'show'])
     ->where('slug', '.*')
-    ->middleware(CacheResponse::class)
     ->name('pages.show');
