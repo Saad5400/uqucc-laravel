@@ -20,7 +20,7 @@ Route::get('/_og-image/{route?}', [OgImageController::class, 'generate'])
 Route::get('/robots.txt', App\Http\Controllers\RobotsController::class);
 
 // Tool routes (must come before catch-all route) - with response caching
-Route::group(function () {
+Route::group([], function () {
     Route::get('/adwat/almkafa', [ToolController::class, 'nextReward'])->name('tools.next-reward');
     Route::get('/adwat/hasbh-alhrman', [ToolController::class, 'deprivationCalculator'])->name('tools.deprivation-calculator');
     Route::get('/adwat/hasbh-almadl', [ToolController::class, 'gpaCalculator'])->name('tools.gpa-calculator');
