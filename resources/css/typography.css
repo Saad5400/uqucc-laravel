@@ -2,31 +2,31 @@
 
 @layer components {
     .typography * {
-        @apply my-2 break-words whitespace-normal transition-all text-foreground;
+        @apply my-2 break-words whitespace-normal text-foreground transition-all;
     }
 
     .typography h1 {
-        @apply mb-4 text-3xl tracking-tight scroll-m-20;
+        @apply mb-4 scroll-m-20 text-3xl tracking-tight;
     }
 
     .typography h2 {
-        @apply pb-2 my-4 text-[1.7rem] font-semibold tracking-tight transition-colors border-b scroll-m-20 first:mt-0;
+        @apply my-4 scroll-m-20 border-b pb-2 text-[1.7rem] font-semibold tracking-tight transition-colors first:mt-0;
     }
 
     .typography h3 {
-        @apply my-4 text-2xl font-semibold tracking-tight scroll-m-20;
+        @apply my-4 scroll-m-20 text-2xl font-semibold tracking-tight;
     }
 
     .typography h4 {
-        @apply my-4 text-xl font-semibold tracking-tight scroll-m-20;
+        @apply my-4 scroll-m-20 text-xl font-semibold tracking-tight;
     }
 
     .typography h5 {
-        @apply text-lg font-semibold tracking-tight scroll-m-20;
+        @apply scroll-m-20 text-lg font-semibold tracking-tight;
     }
 
     .typography h6 {
-        @apply text-base font-semibold tracking-tight scroll-m-20;
+        @apply scroll-m-20 text-base font-semibold tracking-tight;
     }
 
     .typography p {
@@ -34,7 +34,7 @@
     }
 
     .typography blockquote {
-        @apply mt-6 italic border-l-2 ps-6;
+        @apply mt-6 border-l-2 ps-6 italic;
     }
 
     .typography hr {
@@ -64,12 +64,28 @@
     }
 
     .typography pre {
-        @apply p-4 my-6 overflow-x-auto rounded-lg bg-muted whitespace-pre;
+        @apply relative my-6 overflow-x-auto rounded-lg bg-muted p-4 pt-10 whitespace-pre;
         direction: ltr;
     }
 
+    .typography .code-copy-button {
+        @apply absolute end-3 top-3 inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-background/80 text-sm leading-none text-muted-foreground transition-colors;
+    }
+
+    .typography .code-copy-button:hover {
+        @apply bg-background text-foreground;
+    }
+
+    .typography .code-copy-button[data-state='success'] {
+        @apply text-green-600 dark:text-green-400;
+    }
+
+    .typography .code-copy-button[data-state='error'] {
+        @apply text-red-600 dark:text-red-400;
+    }
+
     .typography pre code {
-        @apply px-0 py-0 bg-transparent rounded-none whitespace-pre;
+        @apply rounded-none bg-transparent px-0 py-0 whitespace-pre;
     }
 
     .typography ul {
@@ -81,7 +97,7 @@
     }
 
     .typography img {
-        @apply max-w-full my-6 rounded-lg;
+        @apply my-6 max-w-full rounded-lg;
     }
 
     .typography ul ul,
@@ -100,7 +116,7 @@
     }
 
     .typography small {
-        @apply text-sm font-medium leading-none;
+        @apply text-sm leading-none font-medium;
     }
 
     .typography p.muted {
@@ -108,7 +124,7 @@
     }
 
     /* Table wrapper - matches old project's Table component wrapper */
-    .typography > div[class*="overflow-auto"] {
+    .typography > div[class*='overflow-auto'] {
         @apply my-6;
     }
 
@@ -126,11 +142,11 @@
     }
 
     .typography tr {
-        @apply hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors;
+        @apply border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted;
     }
 
     .typography th {
-        @apply text-muted-foreground h-10 px-2 text-start align-middle font-medium whitespace-nowrap;
+        @apply h-10 px-2 text-start align-middle font-medium whitespace-nowrap text-muted-foreground;
     }
 
     .typography td {
