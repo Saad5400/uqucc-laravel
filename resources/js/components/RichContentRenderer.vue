@@ -15,6 +15,8 @@ import { computed, watch, ref, onMounted } from 'vue';
 
 import AlertBlock from '@/tiptap/extensions/alertBlock';
 import CollapsibleBlock from '@/tiptap/extensions/collapsibleBlock';
+import CodeBlock from '@/tiptap/extensions/codeBlock';
+import { useCodeBlockCopy } from '@/composables/useCodeBlockCopy';
 
 const props = defineProps<{
     content?: unknown;
@@ -72,7 +74,9 @@ const extensions = [
         heading: {
             levels: [1, 2, 3, 4, 5, 6],
         },
+        codeBlock: false, // Use custom CodeBlock instead
     }),
+    CodeBlock, // Custom CodeBlock with copy button
     Underline,
     Link.configure({
         openOnClick: true,
@@ -130,6 +134,12 @@ watch(
         }
     },
 );
+
+// Ref for HTML content container (for copy buttons on v-html content)
+const htmlContainerRef = ref<HTMLElement | null>(null);
+
+// Use composable for HTML content copy buttons
+useCodeBlockCopy(htmlContainerRef);
 </script>
 
 <template>
@@ -141,5 +151,5 @@ watch(
         <div v-else class="typography" v-html="ssrHtml" />
     </template>
     <!-- For HTML string content -->
-    <div v-else class="typography" v-html="cleanHtml" />
+    <div v-else ref="htmlContainerRef" class="typography" v-html="cleanHtml" />
 </template>
