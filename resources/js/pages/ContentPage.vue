@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { Head, Link, usePage } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { Icon } from '@iconify/vue';
-import { computed } from 'vue';
 import DocsLayout from '@/components/layout/DocsLayout.vue';
+import SeoHead, { type SeoData } from '@/components/SeoHead.vue';
 import {
     Breadcrumb,
     BreadcrumbList,
@@ -61,37 +61,15 @@ const props = defineProps<{
     page: PageData;
     breadcrumbs: Breadcrumb[];
     hasContent: boolean;
+    seo: SeoData;
 }>();
 
 // Set page metadata
 usePage().props.title = props.page.title;
-
-// Compute page description for meta tags
-const pageDescription = computed(() => {
-    const defaultDesc = 'دليل طالب كلية الحاسبات';
-
-    // If page has custom quick response message, use it
-    if (props.page.quick_response?.message) {
-        const plainText = props.page.quick_response.message
-            .replace(/<[^>]*>/g, '') // Strip HTML tags
-            .replace(/\s+/g, ' ')    // Normalize whitespace
-            .trim();
-        return plainText.slice(0, 160) || defaultDesc;
-    }
-
-    return `${props.page.title} - ${defaultDesc}`;
-});
 </script>
 
 <template>
-    <Head>
-        <title>{{ page.title }}</title>
-        <meta name="description" :content="pageDescription" />
-        <meta property="og:title" :content="page.title" />
-        <meta property="og:description" :content="pageDescription" />
-        <meta name="twitter:title" :content="page.title" />
-        <meta name="twitter:description" :content="pageDescription" />
-    </Head>
+    <SeoHead :seo="seo" />
 
     <div class="space-y-6">
         <!-- Breadcrumbs -->

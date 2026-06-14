@@ -1,4 +1,5 @@
 <template>
+  <SeoHead :seo="seo" />
   <DocsLayout>
     <PageHeader title="الخصوصيين" icon="solar:users-group-rounded-broken" />
 
@@ -115,6 +116,7 @@ import { Search, User, GraduationCap } from 'lucide-vue-next'
 import DocsLayout from '@/components/layout/DocsLayout.vue'
 import PageHeader from '@/components/page/PageHeader.vue'
 import RichContentRenderer from '@/components/RichContentRenderer.vue'
+import SeoHead, { type SeoData } from '@/components/SeoHead.vue'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -150,6 +152,7 @@ interface Props {
     title?: string
   }
   hasContent?: boolean
+  seo: SeoData
 }
 
 const props = withDefaults(defineProps<Props>(), {

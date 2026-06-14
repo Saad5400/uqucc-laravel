@@ -3,11 +3,26 @@
 namespace App\Http\Controllers;
 
 use App\Models\Page;
+use App\Support\Seo;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class ToolController extends Controller
 {
+    /**
+     * Build SEO metadata for a tool page, preferring the backing page record.
+     *
+     * @return array<string, mixed>
+     */
+    private function toolSeo(?Page $page, string $fallbackTitle, string $fallbackDescription): array
+    {
+        if ($page) {
+            return Seo::forPage($page);
+        }
+
+        return Seo::forDefault($fallbackTitle, $fallbackDescription);
+    }
+
     /**
      * Display the GPA calculator tool.
      */
@@ -23,6 +38,7 @@ class ToolController extends Controller
                 'title' => $page->title,
             ] : null,
             'hasContent' => $page && ! empty($page->html_content),
+            'seo' => $this->toolSeo($page, 'حاسبة المعدل', 'احسب معدلك التراكمي والفصلي بسهولة عبر حاسبة المعدل لطلاب كلية الحاسبات بجامعة أم القرى.'),
         ]);
     }
 
@@ -41,6 +57,7 @@ class ToolController extends Controller
                 'title' => $page->title,
             ] : null,
             'hasContent' => $page && ! empty($page->html_content),
+            'seo' => $this->toolSeo($page, 'حاسبة الحرمان', 'احسب نسبة غيابك ونقاط الحرمان المتبقية لكل مقرر دراسي عبر حاسبة الحرمان لطلاب كلية الحاسبات.'),
         ]);
     }
 
@@ -59,6 +76,7 @@ class ToolController extends Controller
                 'title' => $page->title,
             ] : null,
             'hasContent' => $page && ! empty($page->html_content),
+            'seo' => $this->toolSeo($page, 'حاسبة التحويل', 'احسب معدلك بعد التحويل بين التخصصات أو الجامعات عبر حاسبة التحويل لطلاب كلية الحاسبات.'),
         ]);
     }
 
@@ -77,6 +95,7 @@ class ToolController extends Controller
                 'title' => $page->title,
             ] : null,
             'hasContent' => $page && ! empty($page->html_content),
+            'seo' => $this->toolSeo($page, 'حاسبة المكافأة القادمة', 'اعرف موعد ومقدار مكافأتك الجامعية القادمة عبر حاسبة المكافأة لطلاب كلية الحاسبات.'),
         ]);
     }
 }

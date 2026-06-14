@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Filament\Resources\Pages\PageResource;
 use App\Models\Page;
+use App\Support\Seo;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -21,7 +22,9 @@ class PageController extends Controller
 
         if (! $page) {
             // If no homepage exists yet, show welcome message
-            return Inertia::render('Welcome');
+            return Inertia::render('Welcome', [
+                'seo' => Seo::forDefault(Seo::siteName()),
+            ]);
         }
 
         return $this->renderPage($page);
@@ -152,6 +155,7 @@ class PageController extends Controller
             ],
             'breadcrumbs' => $breadcrumbs,
             'hasContent' => ! empty($page->html_content),
+            'seo' => Seo::forPage($page, $breadcrumbs),
         ]);
     }
 
