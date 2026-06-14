@@ -1,4 +1,5 @@
 <template>
+  <SeoHead :seo="seo" />
   <DocsLayout>
     <PageHeader title="المكافأة القادمة" icon="solar:wallet-money-broken" />
 
@@ -87,6 +88,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import DocsLayout from '@/components/layout/DocsLayout.vue'
 import PageHeader from '@/components/page/PageHeader.vue'
 import RichContentRenderer from '@/components/RichContentRenderer.vue'
+import SeoHead, { type SeoData } from '@/components/SeoHead.vue'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
 defineOptions({
@@ -99,6 +101,7 @@ interface Props {
     title?: string
   }
   hasContent?: boolean
+  seo: SeoData
 }
 
 const props = withDefaults(defineProps<Props>(), {

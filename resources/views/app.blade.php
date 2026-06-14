@@ -4,52 +4,68 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="theme-color" content="#1a1a1a">
+        @php
+            $siteName = config('app.name', 'دليل طالب كلية الحاسبات');
+            $defaultDescription = \App\Support\Seo::DEFAULT_DESCRIPTION;
 
-        <title inertia>{{ config('app.name', 'Laravel') }}</title>
+            $seo = $page['props']['seo'] ?? [];
+            $currentUrl = $seo['canonical'] ?? url()->current();
+            $currentPath = request()->path() === '/' ? '/' : '/' . request()->path();
+            $ogImageUrl = route('og-image', ['route' => ltrim($currentPath, '/')]);
+
+            $metaTitle = $seo['fullTitle'] ?? $siteName;
+            $metaDescription = $seo['description'] ?? $defaultDescription;
+            $ogTitle = $seo['title'] ?? $siteName;
+            $ogType = $seo['ogType'] ?? 'website';
+            $schemas = $seo['schema'] ?? [];
+        @endphp
+
+        <title inertia>{{ $metaTitle }}</title>
 
         {{-- Favicon --}}
-        <link rel="icon" href="/favicon.ico" sizes="any">
+        <link rel="icon" href="/favicon.ico" sizes="48x48">
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <link rel="manifest" href="/site.webmanifest">
 
         {{-- Fonts --}}
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
-        {{-- OG Meta Tags for Social Sharing --}}
-        @php
-            $currentUrl = url()->current();
-            $currentPath = request()->path() === '/' ? '/' : '/' . request()->path();
-            $ogImageUrl = route('og-image', ['route' => ltrim($currentPath, '/')]);
-            $siteName = config('app.name', 'دليل طالب كلية الحاسبات');
-            $defaultDescription = 'دليلك الشامل لكل ما يخص كلية الحاسبات، من تخصصات، نصائح، وأدوات لمساعدتك في رحلتك الأكاديمية.';
-        @endphp
-
         {{-- Open Graph / Facebook --}}
-        <meta property="og:type" content="website">
-        <meta property="og:url" content="{{ $currentUrl }}">
-        <meta property="og:site_name" content="{{ $siteName }}">
-        <meta property="og:locale" content="ar_SA">
-        <meta property="og:image" content="{{ $ogImageUrl }}">
-        <meta property="og:image:width" content="720">
-        <meta property="og:image:height" content="378">
-        <meta property="og:image:type" content="{{ \App\Support\ScreenshotConfig::mimeType() }}">
-        <meta property="og:image:alt" content="{{ $siteName }}">
+        <meta inertia="og:type" property="og:type" content="{{ $ogType }}">
+        <meta inertia="og:title" property="og:title" content="{{ $ogTitle }}">
+        <meta inertia="og:description" property="og:description" content="{{ $metaDescription }}">
+        <meta inertia="og:url" property="og:url" content="{{ $currentUrl }}">
+        <meta inertia="og:site_name" property="og:site_name" content="{{ $siteName }}">
+        <meta inertia="og:locale" property="og:locale" content="ar_SA">
+        <meta inertia="og:image" property="og:image" content="{{ $ogImageUrl }}">
+        <meta inertia="og:image:width" property="og:image:width" content="720">
+        <meta inertia="og:image:height" property="og:image:height" content="378">
+        <meta inertia="og:image:type" property="og:image:type" content="{{ \App\Support\ScreenshotConfig::mimeType() }}">
+        <meta inertia="og:image:alt" property="og:image:alt" content="{{ $ogTitle }}">
 
         {{-- Twitter Card --}}
-        <meta name="twitter:card" content="summary_large_image">
-        <meta name="twitter:url" content="{{ $currentUrl }}">
-        <meta name="twitter:image" content="{{ $ogImageUrl }}">
-        <meta name="twitter:image:alt" content="{{ $siteName }}">
+        <meta inertia="twitter:card" name="twitter:card" content="summary_large_image">
+        <meta inertia="twitter:title" name="twitter:title" content="{{ $ogTitle }}">
+        <meta inertia="twitter:description" name="twitter:description" content="{{ $metaDescription }}">
+        <meta inertia="twitter:url" name="twitter:url" content="{{ $currentUrl }}">
+        <meta inertia="twitter:image" name="twitter:image" content="{{ $ogImageUrl }}">
+        <meta inertia="twitter:image:alt" name="twitter:image:alt" content="{{ $ogTitle }}">
 
         {{-- Additional SEO Meta Tags --}}
-        <meta name="description" content="{{ $defaultDescription }}">
+        <meta inertia="description" name="description" content="{{ $metaDescription }}">
         <meta name="keywords" content="كلية الحاسبات, جامعة أم القرى, دليل الطالب, تخصصات الحاسب, البرمجة, علم البيانات">
         <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
         <meta name="author" content="{{ $siteName }}">
         <meta name="language" content="Arabic">
-        <link rel="canonical" href="{{ $currentUrl }}">
+        <link inertia="canonical" rel="canonical" href="{{ $currentUrl }}">
+
+        {{-- Structured Data (JSON-LD) --}}
+        @foreach ($schemas as $schema)
+            <script type="application/ld+json">{!! json_encode($schema, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) !!}</script>
+        @endforeach
 
         @vite(['resources/css/app.css', 'resources/css/typography.css', 'resources/js/app.ts', "resources/js/pages/{$page['component']}.vue"])
         @inertiaHead

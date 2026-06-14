@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Page;
 use App\Models\PrivateTutor\PrivateTutor;
 use App\Models\PrivateTutor\PrivateTutorCourse;
+use App\Support\Seo;
 use Illuminate\Support\Facades\Cache;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -29,6 +30,9 @@ class PrivateTutorController extends Controller
                 'title' => $page->title,
             ] : null,
             'hasContent' => $page && ! empty($page->html_content),
+            'seo' => $page
+                ? Seo::forPage($page)
+                : Seo::forDefault('المدرسون الخصوصيون', 'دليل المدرسين الخصوصيين لمقررات كلية الحاسبات بجامعة أم القرى لمساعدتك في دراستك.'),
         ]);
     }
 

@@ -1,4 +1,5 @@
 <template>
+  <SeoHead :seo="seo" />
   <DocsLayout>
     <PageHeader title="حاسبة المعدل" icon="solar:calculator-broken" />
 
@@ -112,6 +113,7 @@ import { toast } from 'vue-sonner'
 import DocsLayout from '@/components/layout/DocsLayout.vue'
 import PageHeader from '@/components/page/PageHeader.vue'
 import RichContentRenderer from '@/components/RichContentRenderer.vue'
+import SeoHead, { type SeoData } from '@/components/SeoHead.vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -133,6 +135,7 @@ interface Props {
     title?: string
   }
   hasContent?: boolean
+  seo: SeoData
 }
 
 const props = withDefaults(defineProps<Props>(), {
