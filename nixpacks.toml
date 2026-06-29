@@ -20,8 +20,11 @@ cmds = [
     "php -v && php --ini",
     "composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction",
     "npm i --no-audit --no-fund --loglevel=error",
-    # Puppeteer for Browsershot (skip chromium download since we use system chromium)
-    "PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true npm install -g puppeteer",
+    # Puppeteer for Browsershot (skip browser download since we use system chromium).
+    # NOTE: modern Puppeteer (>=20) ignores PUPPETEER_SKIP_CHROMIUM_DOWNLOAD and still
+    # pulls chrome + chrome-headless-shell, which fails on the nixpacks builder (no unzip
+    # in PATH). PUPPETEER_SKIP_DOWNLOAD=true is the correct flag and skips all downloads.
+    "PUPPETEER_SKIP_DOWNLOAD=true npm install -g puppeteer",
 ]
 
 [phases.build]
@@ -58,7 +61,7 @@ set -e
 # --- Browsershot / Puppeteer environment variables
 # Use readlink -f to resolve symlinks to actual Nix store paths
 # This ensures www-data can access them (not just root's profile)
-export PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+export PUPPETEER_SKIP_DOWNLOAD=true
 export PUPPETEER_EXECUTABLE_PATH=$(readlink -f "$(which chromium)")
 export CHROME_PATH=$(readlink -f "$(which chromium)")
 export NODE_BINARY=$(readlink -f "$(which node)")
@@ -210,7 +213,7 @@ stderr_logfile=/var/log/worker-telegram-bot.log
 stdout_logfile_maxbytes=10MB
 stderr_logfile_maxbytes=10MB
 stopwaitsecs=3600
-environment=PUPPETEER_SKIP_CHROMIUM_DOWNLOAD="true",NODE_PATH="%(ENV_NODE_PATH)s",CHROME_PATH="%(ENV_CHROME_PATH)s"
+environment=PUPPETEER_SKIP_DOWNLOAD="true",NODE_PATH="%(ENV_NODE_PATH)s",CHROME_PATH="%(ENV_CHROME_PATH)s"
 '''
 
 "php-fpm.conf" = '''
@@ -241,7 +244,7 @@ php_admin_value[opcache.max_accelerated_files] = 20000
 php_admin_value[opcache.memory_consumption] = 128
 
 ; Browsershot / Puppeteer environment
-env[PUPPETEER_SKIP_CHROMIUM_DOWNLOAD] = true
+env[PUPPETEER_SKIP_DOWNLOAD] = true
 env[NODE_PATH] = $NODE_PATH
 env[CHROME_PATH] = $CHROME_PATH
 env[NODE_BINARY] = $NODE_BINARY
