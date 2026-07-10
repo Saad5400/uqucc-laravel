@@ -1,5 +1,11 @@
 # UQU Computer College - Laravel
 
+## Documentation
+
+- [docs/admin-rebuild-plan.md](docs/admin-rebuild-plan.md) — living plan and status for the Filament → Inertia admin rebuild (`/manage`).
+- [docs/ux-principles.md](docs/ux-principles.md) — UX principles every screen (public and admin) is reviewed against.
+- [docs/code-principles.md](docs/code-principles.md) — code structure and abstraction principles for contributors.
+
 ## Maintenance
 
 ### Downloading a local copy of the database:

@@ -34,10 +34,7 @@ const AlertBlock = Node.create({
     },
 
     renderHTML({ HTMLAttributes }) {
-        const config =
-            typeof HTMLAttributes.config === 'string'
-                ? HTMLAttributes.config
-                : JSON.stringify(HTMLAttributes.config ?? {});
+        const config = typeof HTMLAttributes.config === 'string' ? HTMLAttributes.config : JSON.stringify(HTMLAttributes.config ?? {});
 
         return [
             'div',

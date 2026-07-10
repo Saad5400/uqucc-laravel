@@ -5,7 +5,7 @@
 
         <!-- Rich content from database -->
         <div v-if="hasContent" class="typography mb-6">
-            <RichContentRenderer :content="page.html_content" />
+            <RichContentRenderer :content="page?.html_content" />
         </div>
 
         <div class="typography">
@@ -16,7 +16,7 @@
                         <CardHeader size="sm">
                             <CardTitle class="text-lg">المعدل الدقيق</CardTitle>
                         </CardHeader>
-                        <CardContent size="sm" class="text-end text-2xl font-bold">
+                        <CardContent size="sm" class="text-end text-2xl font-bold tabular-nums">
                             {{ gpa }}
                         </CardContent>
                     </Card>
@@ -26,7 +26,7 @@
                         <CardHeader size="sm">
                             <CardTitle class="text-lg">المعدل التقريبي</CardTitle>
                         </CardHeader>
-                        <CardContent size="sm" class="text-end text-2xl font-bold">
+                        <CardContent size="sm" class="text-end text-2xl font-bold tabular-nums">
                             {{ approximateGpa }}
                         </CardContent>
                     </Card>
@@ -36,7 +36,7 @@
                         <CardHeader size="sm">
                             <CardTitle class="text-lg">إجمالي الساعات</CardTitle>
                         </CardHeader>
-                        <CardContent size="sm" class="text-end text-2xl font-bold">
+                        <CardContent size="sm" class="text-end text-2xl font-bold tabular-nums">
                             {{ totalCredits }}
                         </CardContent>
                     </Card>
@@ -46,7 +46,7 @@
                         <CardHeader size="sm">
                             <CardTitle class="text-lg">إجمالي النقاط</CardTitle>
                         </CardHeader>
-                        <CardContent size="sm" class="text-end text-2xl font-bold">
+                        <CardContent size="sm" class="text-end text-2xl font-bold tabular-nums">
                             {{ totalPoints }}
                         </CardContent>
                     </Card>
@@ -56,7 +56,7 @@
             </div>
 
             <div class="!my-4 flex flex-col gap-2">
-                <div class="flex items-center justify-between gap-2 overflow-x-auto">
+                <div class="flex flex-wrap items-center justify-between gap-2">
                     <Button @click="addCourse" class="flex-1">
                         إضافة مقرر
                         <Plus />
@@ -83,16 +83,16 @@
 
             <div v-auto-animate class="!space-y-2">
                 <div v-for="course in courses" :key="course.id" class="my-0 flex gap-2">
-                    <Button class="!size-9" aria-label="حذف" variant="destructive" @click="removeCourse(course.id)">
+                    <Button class="!size-9 shrink-0" aria-label="حذف" variant="destructive" @click="removeCourse(course.id)">
                         <Trash />
                     </Button>
                     <Input v-model="course.name" placeholder="اسم المقرر" />
-                    <Input v-model="course.credits" placeholder="الساعات" class="w-42" />
+                    <Input v-model="course.credits" placeholder="الساعات" inputmode="decimal" class="w-20 shrink-0 tabular-nums sm:w-42" />
                     <Select
                         :model-value="course.grade?.value"
                         @update:model-value="(val) => updateCourseField(course.id, 'grade', { value: val, label: val })"
                     >
-                        <SelectTrigger class="w-42">
+                        <SelectTrigger class="w-24 shrink-0 sm:w-42">
                             <SelectValue placeholder="التقدير" />
                         </SelectTrigger>
                         <SelectContent>
@@ -116,6 +116,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { computeGpaStats, gradeValues } from '@/lib/calculators/gpa';
 import { deserializeCourses, serializeCourses, type PortableCourse } from '@/lib/calculators/gpaSerialization';
 import { transcriptToCourses } from '@/lib/transcript/transcriptToCourses';
 import { vAutoAnimate } from '@formkit/auto-animate/vue';
@@ -150,27 +151,6 @@ interface Course {
         label: string;
     };
 }
-
-// Convert Arabic-Indic digits and separators to a JS number
-const parseArabicNumber = (text = '') =>
-    parseFloat(
-        text
-            .trim()
-            .replace(/[٠-٩]/g, (digit) => '٠١٢٣٤٥٦٧٨٩'.indexOf(digit) + '')
-            .replace(/[٫،,]/g, '.'),
-    ) || 0;
-
-const gradeValues: Record<string, number> = {
-    'A+': 4,
-    A: 3.75,
-    'B+': 3.5,
-    B: 3,
-    'C+': 2.5,
-    C: 2,
-    'D+': 1.5,
-    D: 1,
-    F: 0,
-};
 
 // Initialize courses with data from localStorage (client-side only)
 const courses = ref<Course[]>([]);
@@ -220,31 +200,8 @@ const saveCourses = () => {
 // Watch for changes and save to localStorage
 watch(courses, saveCourses, { deep: true });
 
-// Computed statistics
-const stats = computed(() => {
-    const { creditsSum, pointsSum } = courses.value.reduce(
-        (acc, { credits, grade }) => {
-            const creditValue = parseArabicNumber(credits);
-
-            // Only include in calculation if BOTH credits and grade are entered
-            if (creditValue > 0 && grade?.value && gradeValues[grade.value] !== undefined) {
-                acc.creditsSum += creditValue;
-                acc.pointsSum += creditValue * gradeValues[grade.value];
-            }
-
-            return acc;
-        },
-        { creditsSum: 0, pointsSum: 0 },
-    );
-
-    const average = creditsSum ? pointsSum / creditsSum : 0;
-    return {
-        gpa: +average.toFixed(5),
-        approximateGpa: +average.toFixed(2),
-        totalCredits: creditsSum,
-        totalPoints: pointsSum,
-    };
-});
+// Computed statistics (pinned by the vitest suite for computeGpaStats)
+const stats = computed(() => computeGpaStats(courses.value));
 
 // Individual computed refs for easier template access
 const gpa = computed(() => stats.value.gpa);

@@ -502,3 +502,15 @@ $pages->assertNoJavascriptErrors()->assertNoConsoleLogs();
 | decoration-slice | box-decoration-slice |
 | decoration-clone | box-decoration-clone |
 </laravel-boost-guidelines>
+
+## Project docs
+
+- UI/UX work (public site and admin) must follow `docs/ux-principles.md` — frequency-driven
+  prominence, logical CSS properties only (`ms/me/ps/pe/start/end`), LTR islands +
+  `tabular-nums` for machine text/numbers, empty states that teach, disabled-with-reason.
+- Code structure must follow `docs/code-principles.md` — one source of truth per concern
+  (shared UI in `components/ui/` and `components/manage/`, shared logic in composables and
+  `resources/js/lib/`), thin controllers + Form Requests, all writes via Eloquent so model
+  events fire.
+- The admin panel lives at `/manage` (Inertia + Vue, no Filament). Status and phase plan:
+  `docs/admin-rebuild-plan.md`.

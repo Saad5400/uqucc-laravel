@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted, useSlots, h, type VNode } from 'vue';
+import { onMounted, ref } from 'vue';
 
 const isMounted = ref(false);
-const slots = useSlots();
 
 onMounted(() => {
     isMounted.value = true;
@@ -17,6 +16,3 @@ onMounted(() => {
         <slot name="fallback" />
     </template>
 </template>
-
-
-

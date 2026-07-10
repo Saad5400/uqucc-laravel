@@ -1,17 +1,13 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue';
-import { NodeViewWrapper } from '@tiptap/vue-3';
+import { NodeViewWrapper, type NodeViewProps } from '@tiptap/vue-3';
 import DOMPurify from 'isomorphic-dompurify';
 import { computed } from 'vue';
 
 import Alert from '@/components/ui/alert/Alert.vue';
 import AlertDescription from '@/components/ui/alert/AlertDescription.vue';
 
-const props = defineProps<{
-    node: {
-        attrs: Record<string, unknown>;
-    };
-}>();
+const props = defineProps<NodeViewProps>();
 
 const alertBody = computed(() => {
     const raw = props.node?.attrs?.config;
@@ -20,7 +16,7 @@ const alertBody = computed(() => {
     if (typeof raw === 'string') {
         try {
             content = JSON.parse(raw)?.content ?? '';
-        } catch (error) {
+        } catch {
             content = '';
         }
     } else if (raw && typeof raw === 'object') {
@@ -35,7 +31,7 @@ const alertIcon = computed(() => {
     if (typeof raw === 'string') {
         try {
             return JSON.parse(raw)?.icon || 'solar:info-circle-linear';
-        } catch (error) {
+        } catch {
             return 'solar:info-circle-linear';
         }
     }
@@ -47,7 +43,9 @@ const alertIcon = computed(() => {
     <NodeViewWrapper class="block">
         <Alert>
             <Icon class="m-0" :icon="alertIcon" />
-            <AlertDescription v-html="alertBody" />
+            <AlertDescription>
+                <div v-html="alertBody"></div>
+            </AlertDescription>
         </Alert>
     </NodeViewWrapper>
 </template>

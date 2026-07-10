@@ -1,5 +1,5 @@
-import Table from '@tiptap/extension-table';
 import { mergeAttributes } from '@tiptap/core';
+import Table from '@tiptap/extension-table';
 
 const CustomTable = Table.extend({
     renderHTML({ HTMLAttributes }) {
@@ -20,6 +20,3 @@ const CustomTable = Table.extend({
 });
 
 export default CustomTable;
-
-
-
