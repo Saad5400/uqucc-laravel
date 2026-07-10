@@ -4,6 +4,7 @@ import CorpusStatusBadge from '@/components/manage/corpus/CorpusStatusBadge.vue'
 import {
     authoringStatusLabels,
     canAuthor,
+    fileKindLabels,
     proposalStatusLabels,
     type AuthoringGate,
     type CorpusDocumentWorkspace,
@@ -127,7 +128,7 @@ const authoringDisabledReason = computed<string | null>(() => {
             </div>
 
             <div class="flex flex-wrap items-center gap-2">
-                <Badge variant="secondary">{{ document.is_pdf ? 'PDF' : 'صورة' }}</Badge>
+                <Badge variant="secondary">{{ fileKindLabels[document.kind] }}</Badge>
                 <CorpusStatusBadge kind="extraction" :status="document.status" :error="document.error" />
                 <CorpusStatusBadge kind="index" :status="document.index_status" />
             </div>

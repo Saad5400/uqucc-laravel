@@ -100,6 +100,85 @@ describe('extraction job', function () {
         DocumentExtractionAgent::assertNeverPrompted();
     });
 
+    it('reads a plain-text upload directly, normalizing line endings, without any AI call', function () {
+        enableDocumentAiSearch();
+        DocumentExtractionAgent::fake();
+
+        $path = CorpusDocument::DIRECTORY.'/notes.txt';
+
+        Storage::disk(CorpusDocument::DISK)->put(
+            $path,
+            "\u{FEFF}شروط القبول في الجامعة\r\nيجب على الطالب إكمال جميع المتطلبات المذكورة في اللائحة."
+        );
+
+        $document = CorpusDocument::factory()->create([
+            'original_filename' => 'notes.txt',
+            'path' => $path,
+            'mime' => 'text/plain',
+        ]);
+
+        ExtractCorpusDocumentJob::dispatch($document->id);
+
+        $document->refresh();
+
+        expect($document->status)->toBe(CorpusDocument::STATUS_READY)
+            ->and($document->extracted_markdown)->toBe("شروط القبول في الجامعة\nيجب على الطالب إكمال جميع المتطلبات المذكورة في اللائحة.")
+            ->and($document->error)->toBeNull()
+            ->and(documentCorpusItem($document)?->chunks()->exists())->toBeTrue();
+
+        DocumentExtractionAgent::assertNeverPrompted();
+    });
+
+    it('round-trips a markdown upload: the file contents become the extracted markdown as-is', function () {
+        enableDocumentAiSearch();
+        DocumentExtractionAgent::fake();
+
+        $markdown = "## لائحة الدراسة\n\n- المادة الأولى: تفاصيل كاملة عن نظام الدراسة.\n- المادة الثانية: تفاصيل الاختبارات.";
+        $path = CorpusDocument::DIRECTORY.'/regulation.md';
+
+        Storage::disk(CorpusDocument::DISK)->put($path, $markdown);
+
+        $document = CorpusDocument::factory()->create([
+            'original_filename' => 'regulation.md',
+            'path' => $path,
+            'mime' => 'text/markdown',
+        ]);
+
+        ExtractCorpusDocumentJob::dispatch($document->id);
+
+        $document->refresh();
+
+        expect($document->status)->toBe(CorpusDocument::STATUS_READY)
+            ->and($document->extracted_markdown)->toBe($markdown)
+            ->and(documentCorpusItem($document))->not->toBeNull();
+
+        DocumentExtractionAgent::assertNeverPrompted();
+    });
+
+    it('marks a text document failed when the file is empty', function () {
+        enableDocumentAiSearch();
+        DocumentExtractionAgent::fake();
+
+        $path = CorpusDocument::DIRECTORY.'/empty.txt';
+
+        Storage::disk(CorpusDocument::DISK)->put($path, "  \r\n\t ");
+
+        $document = CorpusDocument::factory()->create([
+            'original_filename' => 'empty.txt',
+            'path' => $path,
+            'mime' => 'text/plain',
+        ]);
+
+        ExtractCorpusDocumentJob::dispatch($document->id);
+
+        $document->refresh();
+
+        expect($document->status)->toBe(CorpusDocument::STATUS_FAILED)
+            ->and($document->error)->toContain('لم يُستخرج أي نص');
+
+        DocumentExtractionAgent::assertNeverPrompted();
+    });
+
     it('falls back to the vision model for a scanned PDF, attaching the PDF as a document', function () {
         enableDocumentAiSearch();
         enableDocumentVision();
@@ -152,7 +231,7 @@ describe('extraction job', function () {
     it('marks the document failed for an unsupported file type', function () {
         enableDocumentAiSearch();
 
-        $document = makeCorpusDocument('text-layer.pdf', 'text/plain');
+        $document = makeCorpusDocument('text-layer.pdf', 'application/zip');
 
         ExtractCorpusDocumentJob::dispatch($document->id);
 

@@ -52,6 +52,7 @@ Route::prefix('manage')->name('manage.')->group(function () {
 
         Route::get('/corpus', [CorpusDocumentController::class, 'index'])->name('corpus.index');
         Route::post('/corpus', [CorpusDocumentController::class, 'store'])->name('corpus.store');
+        Route::post('/corpus/text', [CorpusDocumentController::class, 'storeText'])->name('corpus.store-text');
         Route::get('/corpus/proposals/{proposal}', [PageAuthoringController::class, 'show'])->name('corpus.proposals.show');
         Route::post('/corpus/proposals/{proposal}/apply', [PageAuthoringController::class, 'apply'])->name('corpus.proposals.apply');
         Route::post('/corpus/proposals/{proposal}/reject', [PageAuthoringController::class, 'reject'])->name('corpus.proposals.reject');

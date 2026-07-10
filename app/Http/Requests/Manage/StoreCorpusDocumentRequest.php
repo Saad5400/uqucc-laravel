@@ -20,8 +20,11 @@ class StoreCorpusDocumentRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * PDF or image, 20 MB max — the same constraints the upload form
-     * advertises. Text is extracted from the stored bytes after upload.
+     * PDF, image, or plain-text/markdown file, 20 MB max — the same
+     * constraints the upload form advertises. Mimetypes are validated
+     * against the stored bytes (not the client-supplied type); markdown
+     * files sniff as text/plain, but the markdown mimes are listed for
+     * systems that detect them explicitly.
      *
      * @return array<string, array<int, string>>
      */
@@ -29,7 +32,12 @@ class StoreCorpusDocumentRequest extends FormRequest
     {
         return [
             'title' => ['required', 'string', 'max:255'],
-            'file' => ['required', 'file', 'mimetypes:application/pdf,image/png,image/jpeg,image/webp', 'max:20480'],
+            'file' => [
+                'required',
+                'file',
+                'mimetypes:application/pdf,image/png,image/jpeg,image/webp,text/plain,text/markdown,text/x-markdown',
+                'max:20480',
+            ],
         ];
     }
 
@@ -45,7 +53,7 @@ class StoreCorpusDocumentRequest extends FormRequest
             'title.max' => 'العنوان طويل جداً.',
             'file.required' => 'حقل الملف مطلوب.',
             'file.file' => 'الملف غير صالح.',
-            'file.mimetypes' => 'الملف يجب أن يكون PDF أو صورة (PNG / JPG / WebP).',
+            'file.mimetypes' => 'الملف يجب أن يكون PDF أو صورة (PNG / JPG / WebP) أو ملفاً نصياً (TXT / MD).',
             'file.max' => 'حجم الملف يتجاوز الحد الأقصى (20 ميجابايت).',
         ];
     }

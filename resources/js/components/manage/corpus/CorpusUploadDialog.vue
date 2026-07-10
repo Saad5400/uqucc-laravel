@@ -97,7 +97,7 @@ function submit(): void {
                         ref="fileInput"
                         type="file"
                         class="sr-only"
-                        accept="application/pdf,image/png,image/jpeg,image/webp"
+                        accept="application/pdf,image/png,image/jpeg,image/webp,text/plain,text/markdown,.txt,.md,.markdown"
                         :aria-invalid="form.errors.file ? true : undefined"
                         @change="handleFileChange"
                     />
@@ -112,7 +112,7 @@ function submit(): void {
                     >
                         <FileUp class="size-6 text-muted-foreground" aria-hidden="true" />
                         <span class="text-sm font-medium">اختر ملفاً أو أفلته هنا</span>
-                        <span class="text-xs text-muted-foreground"><span dir="ltr">PDF / PNG / JPG / WebP</span> — بحد أقصى 20 ميجابايت</span>
+                        <span class="text-xs text-muted-foreground"><span dir="ltr">PDF / PNG / JPG / WebP / TXT / MD</span> — بحد أقصى 20 ميجابايت</span>
                     </label>
                     <div v-else class="flex items-center gap-2 rounded-lg border border-input px-3 py-2.5">
                         <FileUp class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />

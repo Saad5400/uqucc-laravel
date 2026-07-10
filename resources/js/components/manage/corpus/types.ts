@@ -3,7 +3,7 @@ export interface CorpusDocumentRow {
     id: number;
     title: string;
     original_filename: string;
-    is_pdf: boolean;
+    kind: CorpusFileKind;
     size: number | null;
     status: CorpusDocumentStatus;
     error: string | null;
@@ -21,6 +21,9 @@ export interface CorpusDocumentRow {
 export interface CorpusDocumentWorkspace extends Omit<CorpusDocumentRow, 'has_markdown'> {
     extracted_markdown: string | null;
 }
+
+/** Coarse stored-file kind, for the type badge. */
+export type CorpusFileKind = 'pdf' | 'image' | 'text' | 'other';
 
 export type CorpusDocumentStatus = 'pending' | 'extracting' | 'ready' | 'failed';
 
@@ -41,6 +44,13 @@ export interface CorpusFilters {
     status: string | null;
     search: string | null;
 }
+
+export const fileKindLabels: Record<CorpusFileKind, string> = {
+    pdf: 'PDF',
+    image: 'صورة',
+    text: 'نص',
+    other: 'ملف',
+};
 
 export const extractionStatusLabels: Record<CorpusDocumentStatus, string> = {
     pending: 'بانتظار الاستخراج',

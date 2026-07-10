@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Manage;
 
 use App\Ai\Authoring\PageAuthor;
+use App\Ai\Corpus\UploadedTextExtractor;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Manage\StoreCorpusDocumentRequest;
+use App\Http\Requests\Manage\StoreCorpusTextRequest;
 use App\Http\Requests\Manage\UpdateCorpusDocumentRequest;
 use App\Jobs\Ai\ExtractCorpusDocumentJob;
 use App\Jobs\Ai\IngestDocumentJob;
@@ -14,6 +16,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -38,7 +41,7 @@ class CorpusDocumentController extends Controller
                 'id' => $document->id,
                 'title' => $document->title,
                 'original_filename' => $document->original_filename,
-                'is_pdf' => $document->isPdf(),
+                'kind' => $document->fileKind(),
                 'size' => $document->size,
                 'status' => $document->status,
                 'error' => $document->error,
@@ -92,6 +95,37 @@ class CorpusDocumentController extends Controller
     }
 
     /**
+     * Store pasted text as a normal corpus document: the text is written to
+     * a .md file on the same disk/path scheme (so re-extract keeps working),
+     * the extracted markdown is set immediately (no AI needed), and only
+     * ingestion is queued.
+     */
+    public function storeText(StoreCorpusTextRequest $request): RedirectResponse
+    {
+        $content = trim(UploadedTextExtractor::normalizeText($request->validated('content')));
+
+        $path = CorpusDocument::DIRECTORY.'/'.Str::random(40).'.md';
+
+        Storage::disk(CorpusDocument::DISK)->put($path, $content);
+
+        $document = CorpusDocument::query()->create([
+            'title' => $request->validated('title'),
+            'original_filename' => Str::limit($request->validated('title'), 100, '').'.md',
+            'disk' => CorpusDocument::DISK,
+            'path' => $path,
+            'mime' => 'text/markdown',
+            'size' => strlen($content),
+            'status' => CorpusDocument::STATUS_READY,
+            'extracted_markdown' => $content,
+            'uploaded_by' => $request->user()->id,
+        ]);
+
+        IngestDocumentJob::dispatch($document->id);
+
+        return back()->with('success', 'تمت إضافة النص وجدولة فهرسته.');
+    }
+
+    /**
      * Show a document's workspace: metadata plus the editable extracted
      * markdown.
      */
@@ -104,7 +138,7 @@ class CorpusDocumentController extends Controller
                 'id' => $document->id,
                 'title' => $document->title,
                 'original_filename' => $document->original_filename,
-                'is_pdf' => $document->isPdf(),
+                'kind' => $document->fileKind(),
                 'size' => $document->size,
                 'status' => $document->status,
                 'error' => $document->error,

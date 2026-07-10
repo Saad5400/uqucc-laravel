@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Paginated } from '@/components/manage/activity/types';
 import ConfirmDialog from '@/components/manage/ConfirmDialog.vue';
+import CorpusPasteDialog from '@/components/manage/corpus/CorpusPasteDialog.vue';
 import CorpusStatusBadge from '@/components/manage/corpus/CorpusStatusBadge.vue';
 import CorpusUploadDialog from '@/components/manage/corpus/CorpusUploadDialog.vue';
 import {
@@ -8,6 +9,7 @@ import {
     canAuthor,
     canReingest,
     extractionStatusLabels,
+    fileKindLabels,
     type AuthoringGate,
     type CorpusDocumentRow,
     type CorpusFilters,
@@ -23,7 +25,20 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatFileSize, formatRelativeTime } from '@/lib/formatters';
 import { Head, Link, router, usePoll } from '@inertiajs/vue3';
-import { EllipsisVertical, FilePlus2, FileSearch, FileUp, FilterX, Loader2, Pencil, RefreshCw, Sparkles, Trash2, Upload } from 'lucide-vue-next';
+import {
+    ClipboardPaste,
+    EllipsisVertical,
+    FilePlus2,
+    FileSearch,
+    FileUp,
+    FilterX,
+    Loader2,
+    Pencil,
+    RefreshCw,
+    Sparkles,
+    Trash2,
+    Upload,
+} from 'lucide-vue-next';
 import { computed, onUnmounted, ref, watch } from 'vue';
 
 defineOptions({ layout: ManageLayout });
@@ -97,6 +112,7 @@ onUnmounted(() => {
 });
 
 const uploading = ref(false);
+const pasting = ref(false);
 
 /* ------------------------------------------------------------------ */
 /* Row actions (each behind a ConfirmDialog)                           */
@@ -161,6 +177,10 @@ function authoringDisabledReason(document: CorpusDocumentRow): string | null {
     <Head title="مستندات الذكاء الاصطناعي" />
     <PageHeader title="مستندات الذكاء الاصطناعي" description="ملفات المعرفة (لوائح، أدلة، نماذج) التي يبحث فيها الذكاء الاصطناعي">
         <template #actions>
+            <Button variant="outline" @click="pasting = true">
+                <ClipboardPaste />
+                لصق نص
+            </Button>
             <Button @click="uploading = true">
                 <Upload />
                 رفع مستند
@@ -192,12 +212,18 @@ function authoringDisabledReason(document: CorpusDocumentRow): string | null {
             v-if="!documents.data.length && !hasActiveFilters"
             :icon="FileUp"
             title="لا توجد مستندات بعد"
-            description="ارفع لوائح وأدلة PDF أو صوراً ليستخرج النظام نصوصها ويفهرسها في البحث الذكي والمساعد."
+            description="ارفع لوائح وأدلة (PDF أو صوراً أو ملفات نصية) أو الصق نصاً مباشرة، ليفهرسها النظام في البحث الذكي والمساعد."
         >
-            <Button @click="uploading = true">
-                <Upload />
-                رفع مستند
-            </Button>
+            <div class="flex flex-wrap items-center justify-center gap-2">
+                <Button @click="uploading = true">
+                    <Upload />
+                    رفع مستند
+                </Button>
+                <Button variant="outline" @click="pasting = true">
+                    <ClipboardPaste />
+                    لصق نص
+                </Button>
+            </div>
         </EmptyState>
 
         <p v-else-if="!documents.data.length" class="py-8 text-center text-sm text-muted-foreground">لا نتائج مطابقة للتصفية الحالية.</p>
@@ -207,7 +233,7 @@ function authoringDisabledReason(document: CorpusDocumentRow): string | null {
                 <div class="min-w-0 flex-1 space-y-1">
                     <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <Link :href="`/manage/corpus/${document.id}/edit`" class="font-medium hover:underline">{{ document.title }}</Link>
-                        <Badge variant="secondary">{{ document.is_pdf ? 'PDF' : 'صورة' }}</Badge>
+                        <Badge variant="secondary">{{ fileKindLabels[document.kind] }}</Badge>
                         <CorpusStatusBadge kind="extraction" :status="document.status" :error="document.error" />
                         <CorpusStatusBadge kind="index" :status="document.index_status" />
                         <Badge
@@ -284,6 +310,8 @@ function authoringDisabledReason(document: CorpusDocumentRow): string | null {
         <Pagination :page="documents.current_page" :pages="documents.last_page" :total="documents.total" @update:page="goToPage" />
 
         <CorpusUploadDialog v-model:open="uploading" />
+
+        <CorpusPasteDialog v-model:open="pasting" />
 
         <ConfirmDialog
             :open="confirmingAction === 'reextract'"

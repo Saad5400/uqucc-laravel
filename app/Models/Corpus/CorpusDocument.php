@@ -173,6 +173,30 @@ class CorpusDocument extends Model
         return str_starts_with((string) $this->mime, 'image/');
     }
 
+    /**
+     * Whether the stored file is plain text (txt / markdown) whose contents
+     * are the document text itself — extraction needs no AI.
+     */
+    public function isText(): bool
+    {
+        return str_starts_with((string) $this->mime, 'text/');
+    }
+
+    /**
+     * Coarse file kind for UI labelling.
+     *
+     * @return 'pdf'|'image'|'text'|'other'
+     */
+    public function fileKind(): string
+    {
+        return match (true) {
+            $this->isPdf() => 'pdf',
+            $this->isImage() => 'image',
+            $this->isText() => 'text',
+            default => 'other',
+        };
+    }
+
     protected static function newFactory(): CorpusDocumentFactory
     {
         return CorpusDocumentFactory::new();

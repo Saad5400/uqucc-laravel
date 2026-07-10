@@ -41,6 +41,7 @@ describe('corpus documents manage area', function () {
                 ->count('documents.data', 2)
                 ->where('documents.data.1.title', 'لائحة الدراسة والاختبارات')
                 ->where('documents.data.1.status', CorpusDocument::STATUS_READY)
+                ->where('documents.data.1.kind', 'pdf')
                 ->where('documents.data.0.status', CorpusDocument::STATUS_FAILED)
             );
     });
@@ -108,6 +109,30 @@ describe('corpus document upload', function () {
         Queue::assertPushed(ExtractCorpusDocumentJob::class, fn (ExtractCorpusDocumentJob $job) => $job->documentId === $document->id);
     });
 
+    it('accepts plain-text and markdown uploads and queues extraction', function (string $filename, string $storedMime) {
+        Queue::fake();
+        Storage::fake(CorpusDocument::DISK);
+
+        $this->actingAs($this->admin)
+            ->post('/manage/corpus', [
+                'title' => 'دليل نصي',
+                'file' => UploadedFile::fake()->createWithContent($filename, "# دليل الطالب\n\nمحتوى نصي كافٍ للفهرسة في البحث الذكي."),
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success');
+
+        $document = CorpusDocument::query()->sole();
+
+        expect($document->original_filename)->toBe($filename)
+            ->and($document->mime)->toBe($storedMime)
+            ->and($document->status)->toBe(CorpusDocument::STATUS_PENDING);
+
+        Queue::assertPushed(ExtractCorpusDocumentJob::class, fn (ExtractCorpusDocumentJob $job) => $job->documentId === $document->id);
+    })->with([
+        'txt file' => ['notes.txt', 'text/plain'],
+        'md file' => ['guide.md', 'text/markdown'],
+    ]);
+
     it('rejects invalid uploads with Arabic messages', function (array $payload, string $field, string $message) {
         Queue::fake();
         Storage::fake(CorpusDocument::DISK);
@@ -130,9 +155,9 @@ describe('corpus document upload', function () {
             'حقل الملف مطلوب.',
         ],
         'unsupported type' => [
-            ['title' => 'مستند', 'file' => UploadedFile::fake()->create('notes.txt', 10, 'text/plain')],
+            ['title' => 'مستند', 'file' => UploadedFile::fake()->createWithContent('archive.zip', "PK\x03\x04".random_bytes(64))],
             'file',
-            'الملف يجب أن يكون PDF أو صورة (PNG / JPG / WebP).',
+            'الملف يجب أن يكون PDF أو صورة (PNG / JPG / WebP) أو ملفاً نصياً (TXT / MD).',
         ],
         'oversized file' => [
             ['title' => 'مستند', 'file' => UploadedFile::fake()->create('big.pdf', 20481, 'application/pdf')],
@@ -140,6 +165,84 @@ describe('corpus document upload', function () {
             'حجم الملف يتجاوز الحد الأقصى (20 ميجابايت).',
         ],
     ]);
+});
+
+describe('corpus text paste', function () {
+    it('stores pasted text as a ready .md document and queues ingestion only', function () {
+        Queue::fake();
+        Storage::fake(CorpusDocument::DISK);
+
+        $this->actingAs($this->admin)
+            ->from('/manage/corpus')
+            ->post('/manage/corpus/text', [
+                'title' => 'تعميم مواعيد الاختبارات',
+                'content' => "## المواعيد\r\n\r\nتبدأ الاختبارات النهائية في الأسبوع السادس عشر من الفصل الدراسي.",
+            ])
+            ->assertRedirect('/manage/corpus')
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success');
+
+        $document = CorpusDocument::query()->sole();
+
+        expect($document->title)->toBe('تعميم مواعيد الاختبارات')
+            ->and($document->original_filename)->toBe('تعميم مواعيد الاختبارات.md')
+            ->and($document->disk)->toBe(CorpusDocument::DISK)
+            ->and($document->path)->toEndWith('.md')
+            ->and($document->mime)->toBe('text/markdown')
+            ->and($document->status)->toBe(CorpusDocument::STATUS_READY)
+            ->and($document->extracted_markdown)->toBe("## المواعيد\n\nتبدأ الاختبارات النهائية في الأسبوع السادس عشر من الفصل الدراسي.")
+            ->and($document->size)->toBeGreaterThan(0)
+            ->and($document->uploaded_by)->toBe($this->admin->id);
+
+        Storage::disk(CorpusDocument::DISK)->assertExists($document->path);
+
+        expect(Storage::disk(CorpusDocument::DISK)->get($document->path))->toBe($document->extracted_markdown);
+
+        Queue::assertPushed(IngestDocumentJob::class, fn (IngestDocumentJob $job) => $job->documentId === $document->id);
+        Queue::assertNotPushed(ExtractCorpusDocumentJob::class);
+    });
+
+    it('rejects invalid pasted text with Arabic messages', function (array $payload, string $field, string $message) {
+        Queue::fake();
+        Storage::fake(CorpusDocument::DISK);
+
+        $this->actingAs($this->admin)
+            ->post('/manage/corpus/text', $payload)
+            ->assertSessionHasErrors([$field => $message]);
+
+        expect(CorpusDocument::query()->count())->toBe(0);
+        Queue::assertNothingPushed();
+    })->with([
+        'missing title' => [
+            ['content' => str_repeat('نص طويل بما يكفي. ', 10)],
+            'title',
+            'حقل العنوان مطلوب.',
+        ],
+        'missing content' => [
+            ['title' => 'تعميم'],
+            'content',
+            'حقل النص مطلوب.',
+        ],
+        'content too short' => [
+            ['title' => 'تعميم', 'content' => 'نص قصير'],
+            'content',
+            'النص قصير جداً — أدخل ٥٠ حرفاً على الأقل.',
+        ],
+        'content too long' => [
+            ['title' => 'تعميم', 'content' => str_repeat('ن', 500001)],
+            'content',
+            'النص يتجاوز الحد الأقصى (٥٠٠ ألف حرف).',
+        ],
+    ]);
+
+    it('requires a panel role to paste text', function () {
+        $this->actingAs(User::factory()->create());
+
+        $this->post('/manage/corpus/text', [
+            'title' => 'تعميم',
+            'content' => str_repeat('نص طويل بما يكفي. ', 10),
+        ])->assertForbidden();
+    });
 });
 
 describe('corpus document update', function () {
