@@ -11,8 +11,10 @@ use App\Support\Disk;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Sleep;
 
 beforeEach(function () {
+    Sleep::fake();
     Storage::fake(Disk::MEDIA);
 
     config()->set('ai.embeddings.driver', 'fake');

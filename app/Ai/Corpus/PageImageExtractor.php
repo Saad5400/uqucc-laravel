@@ -7,8 +7,11 @@ use App\Models\Corpus\CorpusImageExtraction;
 use App\Settings\AiSettings;
 use App\Support\Disk;
 use App\Support\LocalFile;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Sleep;
 use Laravel\Ai\Files\Image;
 use RuntimeException;
 use Throwable;
@@ -42,6 +45,12 @@ class PageImageExtractor
 
     /** Refuse to download external images larger than this (bytes). */
     private const MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024;
+
+    /** Minimum gap between external image downloads in one process. */
+    private const EXTERNAL_FETCH_SPACING_MS = 1000;
+
+    /** When this process last started an external download (microtime). */
+    private static ?float $lastExternalFetchAt = null;
 
     public function __construct(
         private readonly AiSettings $settings,
@@ -153,11 +162,17 @@ class PageImageExtractor
                 return null;
             }
 
+            $this->pauseBetweenExternalFetches();
+
             // Stream straight to disk: buffering bodies in memory exhausted
             // the 128M CLI limit over a long ai:ingest-pages run in prod.
+            // Hosts rate-limit bursty anonymous fetches (GitHub answered a
+            // production ingest with 429s), hence the spacing + backoff.
             $response = Http::timeout(15)
                 ->withHeaders(['Accept' => 'image/*'])
                 ->maxRedirects(3)
+                ->retry([2000, 10000], throw: false, when: fn (Throwable $e): bool => $e instanceof ConnectionException
+                    || ($e instanceof RequestException && in_array($e->response->status(), [429, 502, 503], true)))
                 ->sink($temporaryPath)
                 ->get($src);
 
@@ -307,6 +322,24 @@ class PageImageExtractor
 
             return null;
         }
+    }
+
+    /**
+     * Keep at least a second between external downloads within one process:
+     * bulk ingestion walks many images hosted by the same third party, and
+     * back-to-back anonymous fetches are what earned the 429s.
+     */
+    private function pauseBetweenExternalFetches(): void
+    {
+        if (self::$lastExternalFetchAt !== null) {
+            $elapsedMs = (int) ((microtime(true) - self::$lastExternalFetchAt) * 1000);
+
+            if ($elapsedMs < self::EXTERNAL_FETCH_SPACING_MS) {
+                Sleep::for(self::EXTERNAL_FETCH_SPACING_MS - $elapsedMs)->milliseconds();
+            }
+        }
+
+        self::$lastExternalFetchAt = microtime(true);
     }
 
     /**
