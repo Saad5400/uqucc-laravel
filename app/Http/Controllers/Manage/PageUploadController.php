@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Manage;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Manage\StorePageUploadRequest;
+use App\Support\Disk;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -14,23 +15,26 @@ class PageUploadController extends Controller
      * Store an uploaded file where the original admin panel stored it, so
      * old and new uploads live side by side:
      *
-     * - `editor` (rich-editor image attachments): `public` disk root with a
+     * - `editor` (rich-editor image attachments): media disk root with a
      *   random hashed name, like the previous rich editor's default.
-     * - `quick_response` (Telegram quick-response attachments): `public`
+     * - `quick_response` (Telegram quick-response attachments): media
      *   disk, `quick-responses/` directory, original filename preserved
      *   (as before), deduplicated with a numeric suffix instead of
      *   overwriting.
+     *
+     * The media disk is env-resolved (local `/storage` in dev, S3 in prod);
+     * the returned `url` is always the stable public URL for the file.
      */
     public function store(StorePageUploadRequest $request): JsonResponse
     {
         $file = $request->file('file');
 
         $path = $request->validated('type') === 'quick_response'
-            ? $file->storeAs('quick-responses', $this->uniqueFilename($file), ['disk' => 'public'])
-            : $file->store('', ['disk' => 'public']);
+            ? $file->storeAs('quick-responses', $this->uniqueFilename($file), ['disk' => Disk::MEDIA])
+            : $file->store('', ['disk' => Disk::MEDIA]);
 
         return response()->json([
-            'url' => Storage::disk('public')->url($path),
+            'url' => Storage::disk(Disk::MEDIA)->url($path),
             'path' => $path,
         ]);
     }
@@ -46,7 +50,7 @@ class PageUploadController extends Controller
         $basename = pathinfo($file->getClientOriginalName(), PATHINFO_FILENAME);
         $basename = trim(preg_replace('/[^\pL\pN\-_ ]+/u', '', $basename)) ?: 'file';
 
-        $disk = Storage::disk('public');
+        $disk = Storage::disk(Disk::MEDIA);
         $filename = $extension === '' ? $basename : "{$basename}.{$extension}";
         $counter = 1;
 

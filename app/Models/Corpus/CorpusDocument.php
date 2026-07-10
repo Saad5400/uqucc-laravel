@@ -6,6 +6,7 @@ use App\Ai\Corpus\CorpusSourceType;
 use App\Models\Ai\PageContentProposal;
 use App\Models\Page;
 use App\Models\User;
+use App\Support\Disk;
 use Database\Factories\Corpus\CorpusDocumentFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -60,8 +61,8 @@ class CorpusDocument extends Model
 
     public const AUTHORING_FAILED = 'failed';
 
-    /** The disk uploads are stored on. */
-    public const DISK = 'local';
+    /** The disk uploads are stored on (env-resolved: local in dev, S3 in prod). */
+    public const DISK = Disk::UPLOADS;
 
     /** The directory (on DISK) holding uploaded corpus files. */
     public const DIRECTORY = 'corpus-documents';

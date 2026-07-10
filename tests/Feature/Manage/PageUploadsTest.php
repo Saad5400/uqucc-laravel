@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\User;
+use App\Support\Disk;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -8,7 +9,7 @@ use Illuminate\Support\Facades\Storage;
 beforeEach(function () {
     $this->withoutVite();
     $this->seed(RolesAndPermissionsSeeder::class);
-    Storage::fake('public');
+    Storage::fake(Disk::MEDIA);
 
     $this->editor = User::factory()->create();
     $this->editor->assignRole('editor');
@@ -33,8 +34,8 @@ it('stores editor images at the public disk root like Filament\'s RichEditor', f
     $path = $response->json('path');
     expect($path)->not->toContain('/');
     expect($path)->toEndWith('.png');
-    Storage::disk('public')->assertExists($path);
-    expect($response->json('url'))->toBe(Storage::disk('public')->url($path));
+    Storage::disk(Disk::MEDIA)->assertExists($path);
+    expect($response->json('url'))->toBe(Storage::disk(Disk::MEDIA)->url($path));
 });
 
 it('accepts the type as a query parameter, as the rich editor sends it', function () {
@@ -44,7 +45,7 @@ it('accepts the type as a query parameter, as the rich editor sends it', functio
 
     $response->assertOk();
     $response->assertJsonStructure(['url', 'path']);
-    Storage::disk('public')->assertExists($response->json('path'));
+    Storage::disk(Disk::MEDIA)->assertExists($response->json('path'));
 });
 
 it('stores quick response attachments in quick-responses with the original filename', function () {
@@ -55,7 +56,7 @@ it('stores quick response attachments in quick-responses with the original filen
 
     $response->assertOk();
     expect($response->json('path'))->toBe('quick-responses/report.pdf');
-    Storage::disk('public')->assertExists('quick-responses/report.pdf');
+    Storage::disk(Disk::MEDIA)->assertExists('quick-responses/report.pdf');
 });
 
 it('deduplicates quick response filenames with a numeric suffix instead of overwriting', function () {

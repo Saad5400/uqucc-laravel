@@ -9,6 +9,7 @@ use App\Http\Requests\Manage\UpdatePageRequest;
 use App\Models\Page;
 use App\Models\User;
 use App\Settings\AiSettings;
+use App\Support\Disk;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
@@ -140,7 +141,7 @@ class PageController extends Controller
             ]),
             'attachments' => collect($page->quick_response_attachments ?? [])->map(fn (string $path) => [
                 'path' => $path,
-                'url' => Storage::disk('public')->url($path),
+                'url' => Storage::disk(Disk::MEDIA)->url($path),
                 'name' => basename($path),
             ])->values(),
             'copilot' => [

@@ -64,7 +64,8 @@ class ChatAttachmentTextExtractor
     private function extractRaw(ChatAttachment $attachment): string
     {
         if ($attachment->isPdf()) {
-            $text = $this->fromPdfTextLayer($attachment->absolutePath());
+            $file = $attachment->localFile();
+            $text = $this->fromPdfTextLayer($file->path);
 
             if ($this->isUsableTextLayer($text)) {
                 return $text;
@@ -126,10 +127,12 @@ class ChatAttachmentTextExtractor
 
         $this->ledger->clearContextCosts();
 
+        $file = $attachment->localFile();
+
         $response = (new DocumentExtractionAgent)->prompt(
             'انسخ محتوى الملف المرفق كاملاً بصيغة ماركداون.'."\n\n"
                 .'Attached file: '.$attachment->original_filename.' ('.$attachment->mime.')',
-            [$this->attachmentFile($attachment)],
+            [$this->attachmentFile($attachment, $file->path)],
             provider: (string) config('ai.default', 'openrouter'),
             model: $this->visionModel(),
             timeout: (int) config('ai.vision.timeout', 45),
@@ -145,14 +148,14 @@ class ChatAttachmentTextExtractor
         return trim((string) $response->text);
     }
 
-    private function attachmentFile(ChatAttachment $attachment): Document|Image
+    private function attachmentFile(ChatAttachment $attachment, string $absolutePath): Document|Image
     {
         if ($attachment->isImage()) {
-            return Image::fromPath($attachment->absolutePath(), $attachment->mime)
+            return Image::fromPath($absolutePath, $attachment->mime)
                 ->as($attachment->original_filename);
         }
 
-        return Document::fromPath($attachment->absolutePath())
+        return Document::fromPath($absolutePath)
             ->as($attachment->original_filename);
     }
 

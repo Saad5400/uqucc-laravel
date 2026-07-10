@@ -2,6 +2,8 @@
 
 namespace App\Models\Ai;
 
+use App\Support\Disk;
+use App\Support\LocalFile;
 use Database\Factories\Ai\ChatAttachmentFactory;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -44,8 +46,8 @@ class ChatAttachment extends Model
 
     public const STATUS_FAILED = 'failed';
 
-    /** The disk uploads are stored on. */
-    public const DISK = 'local';
+    /** The disk uploads are stored on (env-resolved: local in dev, S3 in prod). */
+    public const DISK = Disk::UPLOADS;
 
     /** The directory (on DISK) holding uploaded chat attachments. */
     public const DIRECTORY = 'chat-attachments';
@@ -87,11 +89,12 @@ class ChatAttachment extends Model
     }
 
     /**
-     * Absolute filesystem path of the stored file.
+     * The stored file materialized at a local filesystem path (a temp copy
+     * when the disk is remote) — hold the instance while reading the path.
      */
-    public function absolutePath(): string
+    public function localFile(): LocalFile
     {
-        return Storage::disk($this->disk)->path($this->path);
+        return LocalFile::from($this->disk, $this->path);
     }
 
     public function isPdf(): bool

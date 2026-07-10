@@ -7,12 +7,13 @@ use App\Models\Corpus\CorpusImageExtraction;
 use App\Models\Corpus\CorpusItem;
 use App\Models\Page;
 use App\Settings\AiSettings;
+use App\Support\Disk;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function () {
-    Storage::fake('public');
+    Storage::fake(Disk::MEDIA);
 
     config()->set('ai.embeddings.driver', 'fake');
     config()->set('ai.embeddings.dimensions', 64);
@@ -29,7 +30,7 @@ beforeEach(function () {
  */
 function storePublicImage(string $path = 'pages/chart.png'): string
 {
-    Storage::disk('public')->put(
+    Storage::disk(Disk::MEDIA)->put(
         $path,
         (string) UploadedFile::fake()->image(basename($path))->getContent(),
     );
@@ -82,10 +83,32 @@ describe('page image extraction', function () {
         $extraction = CorpusImageExtraction::query()->sole();
 
         expect($extraction->status)->toBe(CorpusImageExtraction::STATUS_EXTRACTED)
-            ->and($extraction->content_hash)->toBe(hash('sha256', Storage::disk('public')->get('pages/chart.png')))
+            ->and($extraction->content_hash)->toBe(hash('sha256', Storage::disk(Disk::MEDIA)->get('pages/chart.png')))
             ->and($extraction->extracted_text)->toContain('برمجة 101');
 
         expect(AiUsage::query()->where('feature', 'ingest')->count())->toBe(1);
+    });
+
+    it('streams images served under the media disk public URL (S3 form) from the disk instead of HTTP-fetching them', function () {
+        Storage::fake(Disk::MEDIA, ['url' => 'https://fsn1.your-objectstorage.com/uqucc']);
+
+        config()->set('ai.providers.openrouter.key', 'test-key');
+        DocumentExtractionAgent::fake(['نص الصورة المخزنة على S3']);
+        Http::fake();
+
+        Storage::disk(Disk::MEDIA)->put(
+            'pages/chart.png',
+            (string) UploadedFile::fake()->image('chart.png')->getContent(),
+        );
+
+        $page = makeImagePage('https://fsn1.your-objectstorage.com/uqucc/pages/chart.png', alt: 'جدول');
+
+        expect(ingestedText($page))->toContain('نص الصورة المخزنة على S3');
+
+        // Resolved as OUR file: hashed by content (not URL) and never fetched over HTTP.
+        Http::assertNothingSent();
+        expect(CorpusImageExtraction::query()->sole()->content_hash)
+            ->toBe(hash('sha256', Storage::disk(Disk::MEDIA)->get('pages/chart.png')));
     });
 
     it('never re-OCRs an unchanged image on re-ingestion (permanent cache)', function () {

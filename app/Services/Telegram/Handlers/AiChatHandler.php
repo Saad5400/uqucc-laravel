@@ -11,6 +11,8 @@ use App\Models\Ai\ChatAttachment;
 use App\Models\TelegramChatSetting;
 use App\Services\TelegramMarkdownService;
 use App\Settings\AiSettings;
+use App\Support\LocalFile;
+use Illuminate\Http\File;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
@@ -433,13 +435,16 @@ class AiChatHandler extends BaseHandler
         $attachment = null;
 
         try {
-            $path = ChatAttachment::DIRECTORY.'/telegram-'.uniqid().'-'.basename($source['filename']);
+            $filename = 'telegram-'.uniqid().'-'.basename($source['filename']);
+            $path = ChatAttachment::DIRECTORY.'/'.$filename;
 
             $disk = Storage::disk(ChatAttachment::DISK);
-            $disk->makeDirectory(ChatAttachment::DIRECTORY);
 
             $file = $this->telegram->getFile(['file_id' => $source['file_id']]);
-            $this->telegram->downloadFile($file, $disk->path($path));
+
+            $download = LocalFile::temporary(pathinfo($source['filename'], PATHINFO_EXTENSION));
+            $this->telegram->downloadFile($file, $download->path);
+            $disk->putFileAs(ChatAttachment::DIRECTORY, new File($download->path), $filename);
 
             $attachment = ChatAttachment::query()->create([
                 'session_id' => 'telegram:'.$chatId,

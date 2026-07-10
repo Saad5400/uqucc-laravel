@@ -3,6 +3,7 @@
 namespace App\Ai\Corpus;
 
 use App\Models\Corpus\CorpusDocument;
+use App\Support\LocalFile;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use Smalot\PdfParser\Parser;
@@ -71,7 +72,8 @@ class UploadedTextExtractor
         }
 
         if ($document->isPdf()) {
-            $text = $this->fromPdfTextLayer($document->absolutePath());
+            $file = LocalFile::from($document->disk, $document->path);
+            $text = $this->fromPdfTextLayer($file->path);
 
             if ($this->isUsableTextLayer($text)) {
                 return $text;

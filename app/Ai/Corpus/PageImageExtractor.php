@@ -5,6 +5,8 @@ namespace App\Ai\Corpus;
 use App\Ai\Spend\SpendLedger;
 use App\Models\Corpus\CorpusImageExtraction;
 use App\Settings\AiSettings;
+use App\Support\Disk;
+use App\Support\LocalFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\Files\Image;
@@ -15,14 +17,17 @@ use Throwable;
  * Resolves the text content of one page-embedded image for corpus ingestion,
  * backed by the permanent {@see CorpusImageExtraction} cache.
  *
- * Locally-stored images (/storage/... URLs, relative or absolute on our own
- * host) map to the `public` disk and are hashed by FILE bytes, so a re-upload
- * with new content re-OCRs while a plain page re-save hits the cache.
- * External http(s) images are DOWNLOADED for OCR (size/type-guarded, only at
- * the moment a paid extraction is actually possible) and cached permanently
- * by URL hash — page content overwhelmingly embeds immutable GitHub/imgur
- * links, so one fetch per URL is the right trade. Anything else (data: URIs,
- * malformed sources) is recorded as "skipped" and contributes only alt text.
+ * Images WE store (/storage/... URLs, relative or absolute on our own host,
+ * plus the media disk's own public URLs — the S3 object-storage form in
+ * production) map to the media disk and are hashed by FILE bytes, so a
+ * re-upload with new content re-OCRs while a plain page re-save hits the
+ * cache; a remote media disk is streamed to a temp file instead of being
+ * HTTP-fetched. External http(s) images are DOWNLOADED for OCR
+ * (size/type-guarded, only at the moment a paid extraction is actually
+ * possible) and cached permanently by URL hash — page content
+ * overwhelmingly embeds immutable GitHub/imgur links, so one fetch per URL
+ * is the right trade. Anything else (data: URIs, malformed sources) is
+ * recorded as "skipped" and contributes only alt text.
  *
  * The vision call happens ONLY when $ocr is true (ingestion), the master
  * ai_enabled switch is on, the OpenRouter key is set, and the daily budget
@@ -32,7 +37,7 @@ use Throwable;
  */
 class PageImageExtractor
 {
-    /** The public-disk URL prefix page images are served under. */
+    /** The URL path prefix locally-served page images live under. */
     private const STORAGE_URL_PREFIX = '/storage/';
 
     /** Refuse to download external images larger than this (bytes). */
@@ -64,13 +69,14 @@ class PageImageExtractor
             return null;
         }
 
-        $absolutePath = $this->localPathFor($src);
+        $relativePath = $this->mediaDiskPathFor($src);
 
-        if ($absolutePath === null) {
+        if ($relativePath === null) {
             return $this->resolveExternal($src, $ocr);
         }
 
-        $hash = hash_file('sha256', $absolutePath);
+        $file = LocalFile::from(Disk::MEDIA, $relativePath);
+        $hash = hash_file('sha256', $file->path);
 
         if ($hash === false) {
             return null;
@@ -88,7 +94,7 @@ class PageImageExtractor
             return null;
         }
 
-        return $this->transcribe($absolutePath, $src, $hash);
+        return $this->transcribe($file->path, $src, $hash);
     }
 
     /**
@@ -183,29 +189,53 @@ class PageImageExtractor
     }
 
     /**
-     * The absolute filesystem path of a locally-stored image, or null for
-     * anything the pipeline must not fetch. Only /storage/... paths (relative
-     * or in an absolute URL — our own host in any environment) qualify, and
-     * only when the file actually exists on the public disk; everything else
-     * is external and never fetched.
+     * The media-disk path of an image WE store, or null for anything the
+     * pipeline must not read from the disk. Two source forms qualify:
+     * /storage/... paths (relative or in an absolute URL — our own host
+     * serving the local driver), and URLs under the media disk's own public
+     * base (the S3 object-storage form in production). Either way only when
+     * the file actually exists on the media disk; everything else is
+     * external and HTTP-fetched instead.
      */
-    private function localPathFor(string $src): ?string
+    private function mediaDiskPathFor(string $src): ?string
     {
+        $relative = null;
         $path = parse_url($src, PHP_URL_PATH);
 
-        if (! is_string($path) || ! str_starts_with($path, self::STORAGE_URL_PREFIX)) {
+        if (is_string($path) && str_starts_with($path, self::STORAGE_URL_PREFIX)) {
+            $relative = substr($path, strlen(self::STORAGE_URL_PREFIX));
+        } elseif (($base = $this->mediaUrlBase()) !== null && str_starts_with($src, $base)) {
+            $relative = substr($src, strlen($base));
+        }
+
+        if ($relative === null || $relative === '' || str_contains($relative, '..')) {
             return null;
         }
 
-        $relative = substr($path, strlen(self::STORAGE_URL_PREFIX));
+        $disk = Storage::disk(Disk::MEDIA);
 
-        if ($relative === '' || str_contains($relative, '..')) {
-            return null;
+        foreach (array_unique([rawurldecode($relative), $relative]) as $candidate) {
+            if ($disk->exists($candidate)) {
+                return $candidate;
+            }
         }
 
-        $disk = Storage::disk('public');
+        return null;
+    }
 
-        return $disk->exists($relative) ? $disk->path($relative) : null;
+    /**
+     * The media disk's public URL base ("…/" terminated), or null when the
+     * disk cannot produce URLs.
+     */
+    private function mediaUrlBase(): ?string
+    {
+        try {
+            $base = rtrim(Storage::disk(Disk::MEDIA)->url(''), '/');
+
+            return $base === '' ? null : $base.'/';
+        } catch (Throwable) {
+            return null;
+        }
     }
 
     /**

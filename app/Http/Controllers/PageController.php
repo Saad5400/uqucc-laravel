@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Page;
+use App\Support\Disk;
 use App\Support\Seo;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -147,7 +148,7 @@ class PageController extends Controller
                         ->filter()
                         ->map(fn (string $path) => [
                             'name' => basename($path),
-                            'url' => Storage::disk('public')->url($path),
+                            'url' => Storage::disk(Disk::MEDIA)->url($path),
                         ])
                         ->values()
                         ->toArray(),

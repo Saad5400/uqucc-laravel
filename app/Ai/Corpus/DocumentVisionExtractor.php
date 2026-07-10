@@ -4,6 +4,7 @@ namespace App\Ai\Corpus;
 
 use App\Models\Corpus\CorpusDocument;
 use App\Settings\AiSettings;
+use App\Support\LocalFile;
 use Laravel\Ai\Files\Document;
 use Laravel\Ai\Files\Image;
 use RuntimeException;
@@ -38,9 +39,11 @@ class DocumentVisionExtractor
             throw new RuntimeException('مفتاح OpenRouter غير مضبوط — لا يمكن استخراج النص عبر نموذج الرؤية.');
         }
 
+        $file = LocalFile::from($document->disk, $document->path);
+
         $response = (new DocumentExtractionAgent)->prompt(
             $this->prompt($document),
-            [$this->attachment($document)],
+            [$this->attachment($document, $file->path)],
             provider: (string) config('ai.default', 'openrouter'),
             model: $this->model(),
             timeout: (int) config('ai.vision.timeout', 45),
@@ -55,14 +58,14 @@ class DocumentVisionExtractor
             .'Attached file: '.$document->original_filename.' ('.$document->mime.')';
     }
 
-    private function attachment(CorpusDocument $document): Document|Image
+    private function attachment(CorpusDocument $document, string $absolutePath): Document|Image
     {
         if ($document->isImage()) {
-            return Image::fromPath($document->absolutePath(), $document->mime)
+            return Image::fromPath($absolutePath, $document->mime)
                 ->as($document->original_filename);
         }
 
-        return Document::fromPath($document->absolutePath())
+        return Document::fromPath($absolutePath)
             ->as($document->original_filename);
     }
 
