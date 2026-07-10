@@ -22,3 +22,8 @@ Schedule::command('ai:prune-conversations')
     ->daily()
     ->withoutOverlapping()
     ->runInBackground();
+
+Schedule::command('ai:ingest-pages')
+    ->weekly()
+    ->withoutOverlapping()
+    ->runInBackground();
