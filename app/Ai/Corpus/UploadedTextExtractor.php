@@ -148,12 +148,59 @@ class UploadedTextExtractor
 
         preg_match_all('/[\x{FB50}-\x{FDFF}\x{FE70}-\x{FEFF}]/u', $text, $shaped);
 
-        if ($shaped[0] === []) {
-            return true;
+        if ($shaped[0] !== []) {
+            preg_match_all('/[\x{0600}-\x{06FF}\x{FB50}-\x{FDFF}\x{FE70}-\x{FEFF}]/u', $text, $arabic);
+
+            if (count($shaped[0]) / max(1, count($arabic[0])) > self::MAX_PRESENTATION_FORM_RATIO) {
+                return false;
+            }
         }
 
-        preg_match_all('/[\x{0600}-\x{06FF}\x{FB50}-\x{FDFF}\x{FE70}-\x{FEFF}]/u', $text, $arabic);
+        return ! $this->looksLikeReversedArabic($text);
+    }
 
-        return count($shaped[0]) / max(1, count($arabic[0])) <= self::MAX_PRESENTATION_FORM_RATIO;
+    /**
+     * Detects the other classic Arabic-PDF failure: logical codepoints dumped
+     * in VISUAL (left-to-right) order, so every word reads backwards —
+     * «جامعة» extracts as «ةعماج». The tell is positional: ة and ى are
+     * word-FINAL letters in real Arabic but lead reversed words, and the
+     * «ال» article prefix flips into a «لا» suffix. When reversed signals
+     * outweigh normal ones across the text's Arabic words, the layer is
+     * unusable.
+     */
+    private function looksLikeReversedArabic(string $text): bool
+    {
+        preg_match_all('/[\x{0620}-\x{064A}]{2,}/u', $text, $matches);
+        $words = $matches[0];
+
+        if (count($words) < 20) {
+            return false;
+        }
+
+        $reversed = 0;
+        $normal = 0;
+
+        foreach ($words as $word) {
+            $first = mb_substr($word, 0, 1);
+            $last = mb_substr($word, -1);
+
+            if ($first === 'ة' || $first === 'ى') {
+                $reversed++;
+            }
+
+            if ($last === 'ة' || $last === 'ى') {
+                $normal++;
+            }
+
+            if (mb_substr($word, 0, 2) === 'ال') {
+                $normal++;
+            }
+
+            if (mb_substr($word, -2) === 'لا') {
+                $reversed++;
+            }
+        }
+
+        return $reversed > $normal;
     }
 }
