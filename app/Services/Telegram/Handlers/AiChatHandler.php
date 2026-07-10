@@ -29,9 +29,9 @@ use Throwable;
  *
  * Layered gates, in order: AiSettings telegram feature toggle → the chat's
  * own activation row ({@see TelegramChatSetting}, default OFF — /ai_on) →
- * explicit addressing in EVERY chat type (the «سيك …» ask prefix, a reply to
- * one of the bot's messages, or an @mention — the bot never answers plain
- * chatter, private or group) → per-CHAT rate limits (burst + operator daily
+ * the explicit «سيك …» ask prefix on the message text/caption (the ONLY
+ * invocation, in every chat type — the bot never answers plain chatter,
+ * replies, or mentions) → per-CHAT rate limits (burst + operator daily
  * quota) → the daily spend budget via the {@see SpendLedger}.
  *
  * Conversation continuity is per chat: the laravel/ai conversation id lives
@@ -51,31 +51,11 @@ class AiChatHandler extends BaseHandler
     /** Burst limit: messages per minute per chat. */
     protected const BURST_LIMIT = 5;
 
-    /** Cache key for the bot's username (avoids a getMe call per message). */
-    protected const BOT_USERNAME_CACHE_KEY = 'telegram_bot_username';
-
     /**
      * The explicit ask prefix: «سيك سؤالك…», with the legacy DeepSeekChatHandler
      * forms «اسال سيك …» / «اسأل سيك …» still honoured.
      */
     protected const ASK_PATTERN = '/^(?:(?:اسال|اسأل)\s+)?سيك\s+(.+)$/us';
-
-    /**
-     * Prefixes and exact phrases owned by the other handlers — the assistant
-     * must not double-answer them in activated chats.
-     */
-    protected const FOREIGN_COMMAND_PATTERNS = [
-        '/^دليل\s+/u',
-        '/^بحث\s+/u',
-        '/^قوقل\s+/u',
-        '/^قيم\s+/u',
-        '/^شغل بايثون\s/u',
-        '/^شغل جافا\s/u',
-        '/^تعديل\s+/u',
-        '/^(الفهرس|رابط|إلغاء|الغاء)$/u',
-        '/^(تسجيل دخول|تسجيل الدخول|تسجيل خروج|تسجيل الخروج)$/u',
-        '/^(أضف صفحة|اضف صفحة|حذف صفحة|الصفحات الذكية)$/u',
-    ];
 
     /**
      * Stateful handlers (using the BaseHandler state cache) whose pending
@@ -116,16 +96,6 @@ class AiChatHandler extends BaseHandler
         }
 
         if ($this->anotherHandlerAwaitsInput((int) $message->getFrom()->getId())) {
-            return;
-        }
-
-        if (! $this->isAddressedToBot($message)) {
-            return;
-        }
-
-        $prompt = $this->stripBotMention($prompt);
-
-        if (trim($prompt) === '') {
             return;
         }
 
@@ -171,9 +141,10 @@ class AiChatHandler extends BaseHandler
     }
 
     /**
-     * The user's ask for this turn: the message text (or the media caption),
-     * with the legacy "اسال سيك" prefix stripped; null when this message is
-     * not an AI turn (a /command or another handler's command).
+     * The user's ask for this turn: the message text (or the media caption)
+     * when — and only when — it starts with the «سيك» ask prefix, which is
+     * stripped. Anything else (plain chatter, /commands, other handlers'
+     * commands, replies, mentions) is null: not an AI turn.
      */
     protected function promptFrom(Message $message): ?string
     {
@@ -188,64 +159,7 @@ class AiChatHandler extends BaseHandler
             return trim($matches[1]);
         }
 
-        foreach (self::FOREIGN_COMMAND_PATTERNS as $pattern) {
-            if (preg_match($pattern, $content) === 1) {
-                return null;
-            }
-        }
-
-        return $content;
-    }
-
-    /**
-     * The bot only answers when explicitly addressed — in EVERY chat type:
-     * the «سيك …» ask prefix, a reply to one of the bot's messages (natural
-     * follow-ups), or an @mention. Activation (/ai_on) opts a chat in; this
-     * gate keeps the assistant from hijacking ordinary conversation.
-     */
-    protected function isAddressedToBot(Message $message): bool
-    {
-        $raw = $message->getText() ?? $message->getCaption();
-        $content = is_string($raw) ? trim($raw) : '';
-
-        if (preg_match(self::ASK_PATTERN, $content) === 1) {
-            return true;
-        }
-
-        $repliedTo = $message->getReplyToMessage();
-
-        if ($repliedTo && $repliedTo->getFrom()?->getIsBot()
-            && strcasecmp((string) $repliedTo->getFrom()->getUsername(), $this->botUsername()) === 0) {
-            return true;
-        }
-
-        $username = $this->botUsername();
-
-        return $username !== '' && mb_stripos($content, '@'.$username) !== false;
-    }
-
-    protected function stripBotMention(string $prompt): string
-    {
-        $username = $this->botUsername();
-
-        if ($username === '') {
-            return $prompt;
-        }
-
-        return trim((string) preg_replace('/@'.preg_quote($username, '/').'/iu', '', $prompt));
-    }
-
-    /**
-     * The bot's username, cached for a day so groups don't cost a getMe call
-     * per message.
-     */
-    protected function botUsername(): string
-    {
-        return (string) Cache::remember(
-            self::BOT_USERNAME_CACHE_KEY,
-            now()->addDay(),
-            fn (): string => (string) $this->telegram->getMe()->getUsername(),
-        );
+        return null;
     }
 
     /**
@@ -579,10 +493,5 @@ class AiChatHandler extends BaseHandler
         }
 
         return false;
-    }
-
-    protected function isGroupChat(Message $message): bool
-    {
-        return in_array($message->getChat()->getType(), ['group', 'supergroup'], true);
     }
 }

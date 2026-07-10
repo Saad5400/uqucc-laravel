@@ -155,8 +155,8 @@ it('strips the سيك prefix from the prompt', function () {
     StudentAssistant::assertPrompted(fn ($prompt) => $prompt->prompt === 'كم مكافأة الامتياز؟');
 });
 
-it('answers a private follow-up that replies to one of the bot messages', function () {
-    StudentAssistant::fake(['رد المتابعة.']);
+it('ignores replies to the bot that lack the سيك prefix', function () {
+    StudentAssistant::fake(['يجب ألا يظهر هذا الرد.']);
 
     activatedChat();
 
@@ -172,7 +172,9 @@ it('answers a private follow-up that replies to one of the bot messages', functi
         ],
     ]));
 
-    StudentAssistant::assertPrompted(fn ($prompt) => $prompt->prompt === 'وكم لمرتبة الشرف؟');
+    StudentAssistant::assertNeverPrompted();
+
+    expect($api->sentMessages)->toBe([]);
 });
 
 it('continues the same conversation across turns and starts fresh after a reset', function () {
@@ -227,8 +229,8 @@ it('ignores group messages that do not address the bot', function () {
     expect($api->sentMessages)->toBe([]);
 });
 
-it('answers group messages that mention the bot, stripping the mention from the prompt', function () {
-    StudentAssistant::fake(['المكافأة ألف ريال.']);
+it('ignores group messages that mention the bot without the سيك prefix', function () {
+    StudentAssistant::fake(['يجب ألا يظهر هذا الرد.']);
 
     activatedChat(-100777);
 
@@ -236,27 +238,21 @@ it('answers group messages that mention the bot, stripping the mention from the 
 
     aiChatHandler($api)->handle(groupAiChatMessage(['text' => '@UquccTestBot كم مكافأة الامتياز؟']));
 
-    StudentAssistant::assertPrompted(fn ($prompt) => str_contains($prompt->prompt, 'كم مكافأة الامتياز؟')
-        && ! str_contains($prompt->prompt, '@UquccTestBot'));
+    StudentAssistant::assertNeverPrompted();
+
+    expect($api->sentMessages)->toBe([]);
 });
 
-it('answers group messages that reply to the bot', function () {
-    StudentAssistant::fake(['رد.']);
+it('answers group messages that start with the سيك prefix', function () {
+    StudentAssistant::fake(['المكافأة ألف ريال.']);
 
     activatedChat(-100777);
 
     $api = new FakeTelegramApi;
 
-    aiChatHandler($api)->handle(groupAiChatMessage([
-        'reply_to_message' => [
-            'message_id' => 5,
-            'from' => ['id' => 42, 'is_bot' => true, 'username' => 'UquccTestBot'],
-            'chat' => ['id' => -100777, 'type' => 'supergroup'],
-            'text' => 'رد سابق من البوت',
-        ],
-    ]));
+    aiChatHandler($api)->handle(groupAiChatMessage(['text' => 'سيك كم مكافأة الامتياز؟']));
 
-    StudentAssistant::assertPrompted(fn ($prompt) => str_contains($prompt->prompt, 'كم مكافأة الامتياز؟'));
+    StudentAssistant::assertPrompted(fn ($prompt) => $prompt->prompt === 'كم مكافأة الامتياز؟');
 });
 
 it('keeps the legacy اسال سيك command working through the shared assistant', function () {

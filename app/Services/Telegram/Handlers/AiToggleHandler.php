@@ -81,7 +81,6 @@ class AiToggleHandler extends BaseHandler
 
         $reply = "تم تفعيل المساعد الذكي في هذه المحادثة ✅\n"
             .'لسؤالي ابدأ رسالتك بكلمة «سيك» — مثال: سيك كم مكافأة الامتياز؟'
-            ."\nويمكنك أيضاً الرد على إحدى رسائلي أو ذكري (منشن) للمتابعة."
             ."\nلإيقافه: /ai_off — لبدء محادثة جديدة: /ai_new";
 
         if (! app(AiSettings::class)->isFeatureEnabled('telegram')) {
