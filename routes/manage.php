@@ -7,6 +7,7 @@ use App\Http\Controllers\Manage\CacheController;
 use App\Http\Controllers\Manage\CorpusDocumentController;
 use App\Http\Controllers\Manage\DashboardController;
 use App\Http\Controllers\Manage\LoginController;
+use App\Http\Controllers\Manage\PageAuthoringController;
 use App\Http\Controllers\Manage\PageAuthorsController;
 use App\Http\Controllers\Manage\PageController;
 use App\Http\Controllers\Manage\PageCopilotController;
@@ -51,6 +52,10 @@ Route::prefix('manage')->name('manage.')->group(function () {
 
         Route::get('/corpus', [CorpusDocumentController::class, 'index'])->name('corpus.index');
         Route::post('/corpus', [CorpusDocumentController::class, 'store'])->name('corpus.store');
+        Route::get('/corpus/proposals/{proposal}', [PageAuthoringController::class, 'show'])->name('corpus.proposals.show');
+        Route::post('/corpus/proposals/{proposal}/apply', [PageAuthoringController::class, 'apply'])->name('corpus.proposals.apply');
+        Route::post('/corpus/proposals/{proposal}/reject', [PageAuthoringController::class, 'reject'])->name('corpus.proposals.reject');
+        Route::post('/corpus/{document}/author', [PageAuthoringController::class, 'store'])->name('corpus.author');
         Route::get('/corpus/{document}/edit', [CorpusDocumentController::class, 'edit'])->name('corpus.edit');
         Route::put('/corpus/{document}', [CorpusDocumentController::class, 'update'])->name('corpus.update');
         Route::post('/corpus/{document}/reextract', [CorpusDocumentController::class, 'reextract'])->name('corpus.reextract');

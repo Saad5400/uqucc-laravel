@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import ConfirmDialog from '@/components/manage/ConfirmDialog.vue';
 import CorpusStatusBadge from '@/components/manage/corpus/CorpusStatusBadge.vue';
-import { type CorpusDocumentWorkspace } from '@/components/manage/corpus/types';
+import {
+    authoringStatusLabels,
+    canAuthor,
+    proposalStatusLabels,
+    type AuthoringGate,
+    type CorpusDocumentWorkspace,
+} from '@/components/manage/corpus/types';
 import ManageLayout from '@/components/manage/ManageLayout.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -10,15 +16,19 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { formatDateTime, formatFileSize } from '@/lib/formatters';
-import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { ChevronLeft, FileSearch, Loader2, RefreshCw, Trash2 } from 'lucide-vue-next';
+import { Head, Link, router, useForm, usePoll } from '@inertiajs/vue3';
+import { ChevronLeft, FilePlus2, FileSearch, Loader2, RefreshCw, Sparkles, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 defineOptions({ layout: ManageLayout });
 
 const props = defineProps<{
     document: CorpusDocumentWorkspace;
+    authoring: AuthoringGate;
 }>();
+
+/** Extraction and authoring run in the background — poll so الحالة moves on its own. */
+usePoll(15_000, { only: ['document'] });
 
 const form = useForm({
     title: props.document.title,
@@ -42,7 +52,7 @@ function submit(): void {
 /* Header actions (each behind a ConfirmDialog)                        */
 /* ------------------------------------------------------------------ */
 
-type ConfirmableAction = 'reextract' | 'reingest' | 'delete';
+type ConfirmableAction = 'reextract' | 'reingest' | 'delete' | 'author';
 
 const confirmingAction = ref<ConfirmableAction | null>(null);
 const processing = ref(false);
@@ -70,6 +80,29 @@ function runConfirmedAction(): void {
         router.post(`/manage/corpus/${props.document.id}/${confirmingAction.value}`, {}, options);
     }
 }
+
+/* ------------------------------------------------------------------ */
+/* Document → page authoring                                           */
+/* ------------------------------------------------------------------ */
+
+const authoringInFlight = computed(() => props.document.authoring_status === 'queued' || props.document.authoring_status === 'running');
+
+/** Why the authoring action is unavailable — null when it can run. */
+const authoringDisabledReason = computed<string | null>(() => {
+    if (!props.authoring.enabled) {
+        return props.authoring.disabled_reason;
+    }
+
+    if (authoringInFlight.value) {
+        return 'يوجد توليد قيد التنفيذ لهذا المستند بالفعل.';
+    }
+
+    if (!canAuthor({ ...props.document, has_markdown: (props.document.extracted_markdown ?? '').trim() !== '' })) {
+        return 'لا يمكن توليد صفحة قبل اكتمال استخراج نص المستند.';
+    }
+
+    return null;
+});
 </script>
 
 <template>
@@ -169,6 +202,71 @@ function runConfirmedAction(): void {
                 </form>
             </CardContent>
         </Card>
+
+        <Card>
+            <CardHeader>
+                <CardTitle class="flex items-center gap-2 text-lg">
+                    <Sparkles class="size-4 text-muted-foreground" aria-hidden="true" />
+                    توليد صفحة من المستند
+                </CardTitle>
+            </CardHeader>
+            <CardContent class="space-y-4">
+                <p class="text-sm text-muted-foreground">
+                    يقرأ الذكاء الاصطناعي نص المستند ثم ينشئ مسودة صفحة جديدة غير منشورة، أو يقترح تحديثاً لصفحة موجودة تراجعه قبل تطبيقه — لن يُنشر
+                    أي شيء تلقائياً.
+                </p>
+
+                <div class="flex flex-wrap items-center gap-2">
+                    <Button size="sm" :disabled="authoringDisabledReason !== null" @click="confirmingAction = 'author'">
+                        <Loader2 v-if="authoringInFlight" class="size-4 animate-spin" />
+                        <Sparkles v-else class="size-4" />
+                        {{ authoringInFlight ? 'جارٍ التوليد…' : 'توليد صفحة من المستند' }}
+                    </Button>
+                    <Badge v-if="document.authoring_status" :variant="document.authoring_status === 'failed' ? 'destructive' : 'secondary'">
+                        {{ authoringStatusLabels[document.authoring_status] }}
+                    </Badge>
+                </div>
+
+                <p v-if="authoringDisabledReason && !authoringInFlight" class="text-xs text-muted-foreground">{{ authoringDisabledReason }}</p>
+
+                <div v-if="document.authoring_error" class="rounded-lg border border-destructive/50 bg-destructive/10 px-4 py-3">
+                    <p class="text-sm text-destructive-foreground">{{ document.authoring_error }}</p>
+                </div>
+
+                <div v-if="document.authored_page || document.latest_proposal" class="flex flex-wrap items-center gap-2">
+                    <Link
+                        v-if="document.authored_page"
+                        :href="`/manage/pages/${document.authored_page.id}/edit`"
+                        class="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-sm text-foreground transition-colors hover:bg-accent"
+                    >
+                        <FilePlus2 class="size-3.5" />
+                        تم إنشاء مسودة صفحة: «{{ document.authored_page.title }}»
+                    </Link>
+                    <Link
+                        v-if="document.latest_proposal"
+                        :href="`/manage/corpus/proposals/${document.latest_proposal.id}`"
+                        class="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-3 py-1 text-sm text-foreground transition-colors hover:bg-accent"
+                    >
+                        <Sparkles class="size-3.5" />
+                        اقتراح تحديث صفحة «{{ document.latest_proposal.page_title ?? '—' }}» ({{
+                            proposalStatusLabels[document.latest_proposal.status]
+                        }})
+                    </Link>
+                </div>
+            </CardContent>
+        </Card>
+
+        <ConfirmDialog
+            :open="confirmingAction === 'author'"
+            title="توليد صفحة من المستند"
+            confirm-label="توليد"
+            :processing="processing"
+            @confirm="runConfirmedAction"
+            @update:open="(value) => (confirmingAction = value ? 'author' : null)"
+        >
+            سيقرأ الذكاء الاصطناعي نص المستند ثم ينشئ مسودة صفحة جديدة غير منشورة، أو يقترح تحديثاً لصفحة موجودة بانتظار مراجعتك — لن يُنشر أي شيء
+            تلقائياً.
+        </ConfirmDialog>
 
         <ConfirmDialog
             :open="confirmingAction === 'reextract'"

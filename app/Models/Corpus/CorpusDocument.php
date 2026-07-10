@@ -3,11 +3,14 @@
 namespace App\Models\Corpus;
 
 use App\Ai\Corpus\CorpusSourceType;
+use App\Models\Ai\PageContentProposal;
+use App\Models\Page;
 use App\Models\User;
 use Database\Factories\Corpus\CorpusDocumentFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Storage;
 
@@ -31,6 +34,9 @@ use Illuminate\Support\Facades\Storage;
  * @property string $status
  * @property string|null $extracted_markdown
  * @property string|null $error
+ * @property string|null $authoring_status
+ * @property string|null $authoring_error
+ * @property int|null $authored_page_id
  * @property int|null $uploaded_by
  */
 class CorpusDocument extends Model
@@ -45,6 +51,14 @@ class CorpusDocument extends Model
     public const STATUS_READY = 'ready';
 
     public const STATUS_FAILED = 'failed';
+
+    public const AUTHORING_QUEUED = 'queued';
+
+    public const AUTHORING_RUNNING = 'running';
+
+    public const AUTHORING_DONE = 'done';
+
+    public const AUTHORING_FAILED = 'failed';
 
     /** The disk uploads are stored on. */
     public const DISK = 'local';
@@ -62,6 +76,9 @@ class CorpusDocument extends Model
         'status',
         'extracted_markdown',
         'error',
+        'authoring_status',
+        'authoring_error',
+        'authored_page_id',
         'uploaded_by',
     ];
 
@@ -103,6 +120,39 @@ class CorpusDocument extends Model
     {
         return $this->hasOne(CorpusItem::class, 'source_id')
             ->where('source_type', CorpusSourceType::Document);
+    }
+
+    /**
+     * The unpublished draft page the authoring AI created from this document
+     * (NEW-content outcome), trashed included so the panel can still link a
+     * since-trashed draft.
+     *
+     * @return BelongsTo<Page, $this>
+     */
+    public function authoredPage(): BelongsTo
+    {
+        return $this->belongsTo(Page::class, 'authored_page_id')->withTrashed();
+    }
+
+    /**
+     * Content proposals the authoring AI produced from this document
+     * (UPDATE-an-existing-page outcome), newest first.
+     *
+     * @return HasMany<PageContentProposal, $this>
+     */
+    public function contentProposals(): HasMany
+    {
+        return $this->hasMany(PageContentProposal::class)->latest('id');
+    }
+
+    /**
+     * Whether the authoring pipeline may be (re)triggered for this document.
+     */
+    public function canAuthor(): bool
+    {
+        return $this->status === self::STATUS_READY
+            && filled($this->extracted_markdown)
+            && ! in_array($this->authoring_status, [self::AUTHORING_QUEUED, self::AUTHORING_RUNNING], true);
     }
 
     /**

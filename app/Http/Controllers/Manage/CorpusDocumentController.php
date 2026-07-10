@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Ai\Authoring\PageAuthor;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Manage\StoreCorpusDocumentRequest;
 use App\Http\Requests\Manage\UpdateCorpusDocumentRequest;
 use App\Jobs\Ai\ExtractCorpusDocumentJob;
 use App\Jobs\Ai\IngestDocumentJob;
+use App\Models\Ai\PageContentProposal;
 use App\Models\Corpus\CorpusDocument;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
@@ -22,10 +24,10 @@ class CorpusDocumentController extends Controller
      * extraction status and searchable by title. The client polls for
      * freshness while extractions run.
      */
-    public function index(Request $request): Response
+    public function index(Request $request, PageAuthor $author): Response
     {
         $documents = CorpusDocument::query()
-            ->with(['uploader', 'corpusItem'])
+            ->with(['uploader', 'corpusItem', 'authoredPage', 'contentProposals.page'])
             ->when($request->filled('status'), fn (Builder $query) => $query->where('status', $request->string('status')->toString()))
             ->when($request->filled('search'), fn (Builder $query) => $query->where('title', 'like', '%'.$request->string('search')->toString().'%'))
             ->latest('created_at')
@@ -44,6 +46,7 @@ class CorpusDocumentController extends Controller
                 'has_markdown' => filled($document->extracted_markdown),
                 'uploader_name' => $document->uploader?->name,
                 'created_at' => $document->created_at?->toISOString(),
+                ...$this->authoringPayload($document),
             ]);
 
         return Inertia::render('manage/corpus/Index', [
@@ -51,6 +54,10 @@ class CorpusDocumentController extends Controller
             'filters' => [
                 'status' => $request->query('status'),
                 'search' => $request->query('search'),
+            ],
+            'authoring' => [
+                'enabled' => $author->isEnabled(),
+                'disabled_reason' => $author->disabledReason(),
             ],
         ]);
     }
@@ -88,9 +95,9 @@ class CorpusDocumentController extends Controller
      * Show a document's workspace: metadata plus the editable extracted
      * markdown.
      */
-    public function edit(CorpusDocument $document): Response
+    public function edit(CorpusDocument $document, PageAuthor $author): Response
     {
-        $document->load(['uploader', 'corpusItem']);
+        $document->load(['uploader', 'corpusItem', 'authoredPage', 'contentProposals.page']);
 
         return Inertia::render('manage/corpus/Edit', [
             'document' => [
@@ -105,8 +112,39 @@ class CorpusDocumentController extends Controller
                 'extracted_markdown' => $document->extracted_markdown,
                 'uploader_name' => $document->uploader?->name,
                 'created_at' => $document->created_at?->toISOString(),
+                ...$this->authoringPayload($document),
+            ],
+            'authoring' => [
+                'enabled' => $author->isEnabled(),
+                'disabled_reason' => $author->disabledReason(),
             ],
         ]);
+    }
+
+    /**
+     * The authoring slice both screens share: lifecycle state plus links to
+     * the run's outcome (the created draft page or the latest proposal).
+     *
+     * @return array<string, mixed>
+     */
+    private function authoringPayload(CorpusDocument $document): array
+    {
+        /** @var PageContentProposal|null $proposal */
+        $proposal = $document->contentProposals->first();
+
+        return [
+            'authoring_status' => $document->authoring_status,
+            'authoring_error' => $document->authoring_error,
+            'authored_page' => $document->authoredPage === null ? null : [
+                'id' => $document->authoredPage->id,
+                'title' => $document->authoredPage->title,
+            ],
+            'latest_proposal' => $proposal === null ? null : [
+                'id' => $proposal->id,
+                'status' => $proposal->status,
+                'page_title' => $proposal->page?->title,
+            ],
+        ];
     }
 
     /**

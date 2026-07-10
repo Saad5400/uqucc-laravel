@@ -3,7 +3,15 @@ import type { Paginated } from '@/components/manage/activity/types';
 import ConfirmDialog from '@/components/manage/ConfirmDialog.vue';
 import CorpusStatusBadge from '@/components/manage/corpus/CorpusStatusBadge.vue';
 import CorpusUploadDialog from '@/components/manage/corpus/CorpusUploadDialog.vue';
-import { canReingest, extractionStatusLabels, type CorpusDocumentRow, type CorpusFilters } from '@/components/manage/corpus/types';
+import {
+    authoringStatusLabels,
+    canAuthor,
+    canReingest,
+    extractionStatusLabels,
+    type AuthoringGate,
+    type CorpusDocumentRow,
+    type CorpusFilters,
+} from '@/components/manage/corpus/types';
 import EmptyState from '@/components/manage/EmptyState.vue';
 import ManageLayout from '@/components/manage/ManageLayout.vue';
 import PageHeader from '@/components/manage/PageHeader.vue';
@@ -15,7 +23,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { formatFileSize, formatRelativeTime } from '@/lib/formatters';
 import { Head, Link, router, usePoll } from '@inertiajs/vue3';
-import { EllipsisVertical, FileSearch, FileUp, FilterX, Pencil, RefreshCw, Trash2, Upload } from 'lucide-vue-next';
+import { EllipsisVertical, FilePlus2, FileSearch, FileUp, FilterX, Loader2, Pencil, RefreshCw, Sparkles, Trash2, Upload } from 'lucide-vue-next';
 import { computed, onUnmounted, ref, watch } from 'vue';
 
 defineOptions({ layout: ManageLayout });
@@ -23,6 +31,7 @@ defineOptions({ layout: ManageLayout });
 const props = defineProps<{
     documents: Paginated<CorpusDocumentRow>;
     filters: CorpusFilters;
+    authoring: AuthoringGate;
 }>();
 
 /** Extractions run in the background — poll so الحالة moves on its own. */
@@ -93,7 +102,7 @@ const uploading = ref(false);
 /* Row actions (each behind a ConfirmDialog)                           */
 /* ------------------------------------------------------------------ */
 
-type ConfirmableAction = 'reextract' | 'reingest' | 'delete';
+type ConfirmableAction = 'reextract' | 'reingest' | 'delete' | 'author';
 
 const confirmingAction = ref<ConfirmableAction | null>(null);
 const targetDocument = ref<CorpusDocumentRow | null>(null);
@@ -128,6 +137,23 @@ function runConfirmedAction(): void {
     } else {
         router.post(`/manage/corpus/${id}/${confirmingAction.value}`, {}, options);
     }
+}
+
+/** Why the authoring action is unavailable for a row — null when it can run. */
+function authoringDisabledReason(document: CorpusDocumentRow): string | null {
+    if (!props.authoring.enabled) {
+        return props.authoring.disabled_reason;
+    }
+
+    if (document.authoring_status === 'queued' || document.authoring_status === 'running') {
+        return 'يوجد توليد قيد التنفيذ لهذا المستند بالفعل.';
+    }
+
+    if (!canAuthor(document)) {
+        return 'لا يمكن توليد صفحة قبل اكتمال استخراج نص المستند.';
+    }
+
+    return null;
 }
 </script>
 
@@ -184,6 +210,30 @@ function runConfirmedAction(): void {
                         <Badge variant="secondary">{{ document.is_pdf ? 'PDF' : 'صورة' }}</Badge>
                         <CorpusStatusBadge kind="extraction" :status="document.status" :error="document.error" />
                         <CorpusStatusBadge kind="index" :status="document.index_status" />
+                        <Badge
+                            v-if="document.authoring_status && document.authoring_status !== 'done'"
+                            :variant="document.authoring_status === 'failed' ? 'destructive' : 'secondary'"
+                            :title="document.authoring_error ?? undefined"
+                        >
+                            <Loader2 v-if="document.authoring_status !== 'failed'" class="size-3 animate-spin" />
+                            {{ authoringStatusLabels[document.authoring_status] }}
+                        </Badge>
+                        <Link
+                            v-if="document.authored_page"
+                            :href="`/manage/pages/${document.authored_page.id}/edit`"
+                            class="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground transition-colors hover:bg-accent"
+                        >
+                            <FilePlus2 class="size-3" />
+                            تم إنشاء مسودة صفحة
+                        </Link>
+                        <Link
+                            v-if="document.latest_proposal?.status === 'pending'"
+                            :href="`/manage/corpus/proposals/${document.latest_proposal.id}`"
+                            class="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground transition-colors hover:bg-accent"
+                        >
+                            <Sparkles class="size-3" />
+                            اقتراح تحديث بانتظار المراجعة
+                        </Link>
                     </div>
                     <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         <span dir="ltr" class="truncate">{{ document.original_filename }}</span>
@@ -212,6 +262,14 @@ function runConfirmedAction(): void {
                         <DropdownMenuItem v-if="canReingest(document)" @select="confirmAction('reingest', document)">
                             <FileSearch />
                             إعادة الفهرسة
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                            :disabled="authoringDisabledReason(document) !== null"
+                            :title="authoringDisabledReason(document) ?? undefined"
+                            @select="confirmAction('author', document)"
+                        >
+                            <Sparkles />
+                            توليد صفحة من المستند
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem variant="destructive" @select="confirmAction('delete', document)">
@@ -247,6 +305,18 @@ function runConfirmedAction(): void {
             @update:open="(value) => (confirmingAction = value ? 'reingest' : null)"
         >
             ستُعاد تجزئة النص المستخرج وتضمينه في فهرس البحث الذكي دون إعادة الاستخراج.
+        </ConfirmDialog>
+
+        <ConfirmDialog
+            :open="confirmingAction === 'author'"
+            title="توليد صفحة من المستند"
+            confirm-label="توليد"
+            :processing="processing"
+            @confirm="runConfirmedAction"
+            @update:open="(value) => (confirmingAction = value ? 'author' : null)"
+        >
+            سيقرأ الذكاء الاصطناعي نص المستند ثم ينشئ مسودة صفحة جديدة غير منشورة، أو يقترح تحديثاً لصفحة موجودة بانتظار مراجعتك — لن يُنشر أي شيء
+            تلقائياً.
         </ConfirmDialog>
 
         <ConfirmDialog
