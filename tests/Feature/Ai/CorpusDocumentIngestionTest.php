@@ -229,6 +229,7 @@ describe('extraction job', function () {
         'mojibake sprinkled in junk (letters clear the floor but not the ratio)' => [str_repeat('ª', 200).str_repeat('­ ( ) : . ', 400), false],
         'too short despite being real' => ['نص قصير جداً', false],
         'arabic presentation-form glyph soup' => [str_repeat('ﻣﻜﺎﻓﺄﺓ ﺍﻟﺘﻔﻮﻕ ﻟﻠﻄﻼﺏ ﺍﻟﻤﺘﻔﻮﻗﻴﻦ ﻓﻲ ﺍﻟﻜﻠﻴﺔ ', 10), false],
+        'reversed arabic (visual-order dump)' => [str_repeat('ىرقلا مأ ةعماج يف يبلاطلا طابضنلااو كولسلا دعاوق ةداملا ىلع ءانب ةرداصلا تارابتخلااو ةيعماجلا ةساردلا ةحئلا ', 5), false],
         'mostly logical with a stray shaped char' => [str_repeat('مكافأة التفوق للطلاب المتفوقين في الكلية ', 10).'ﻣ', true],
     ]);
 
