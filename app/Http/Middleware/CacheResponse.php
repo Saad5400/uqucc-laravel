@@ -19,7 +19,6 @@ class CacheResponse
      * Routes/patterns to exclude from caching.
      */
     protected array $excludedPaths = [
-        'filament/*',
         'admin/*',
         'login',
         'logout',
@@ -83,7 +82,7 @@ class CacheResponse
         $url = $request->fullUrl();
         $isInertia = $request->header('X-Inertia') ? ':inertia' : '';
 
-        return config('app-cache.keys.response_cache', 'response_cache') . ':' . md5($url . $isInertia);
+        return config('app-cache.keys.response_cache', 'response_cache').':'.md5($url.$isInertia);
     }
 
     /**
@@ -122,6 +121,7 @@ class CacheResponse
         $cookies = $response->headers->getCookies();
         $hasNonSessionCookies = collect($cookies)->contains(function ($cookie) {
             $name = $cookie->getName();
+
             // Allow session and XSRF cookies
             return ! str_contains($name, 'session') && ! str_contains($name, 'XSRF');
         });
@@ -198,12 +198,12 @@ class CacheResponse
         if (config('cache.default') === 'redis') {
             $cachePrefix = config('cache.prefix', '');
             $redis = Cache::getRedis();
-            $pattern = $cachePrefix ? $cachePrefix . ':' . $prefix . ':*' : $prefix . ':*';
+            $pattern = $cachePrefix ? $cachePrefix.':'.$prefix.':*' : $prefix.':*';
 
             $keys = $redis->keys($pattern);
             if (! empty($keys)) {
                 foreach ($keys as $key) {
-                    $cacheKey = $cachePrefix ? str_replace($cachePrefix . ':', '', $key) : $key;
+                    $cacheKey = $cachePrefix ? str_replace($cachePrefix.':', '', $key) : $key;
                     Cache::forget($cacheKey);
                 }
             }
@@ -218,8 +218,8 @@ class CacheResponse
         $prefix = config('app-cache.keys.response_cache', 'response_cache');
 
         // Clear both regular and Inertia versions
-        Cache::forget($prefix . ':' . md5($url));
-        Cache::forget($prefix . ':' . md5($url . ':inertia'));
+        Cache::forget($prefix.':'.md5($url));
+        Cache::forget($prefix.':'.md5($url.':inertia'));
     }
 
     /**

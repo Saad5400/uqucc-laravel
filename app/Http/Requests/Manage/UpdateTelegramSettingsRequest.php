@@ -9,7 +9,7 @@ class UpdateTelegramSettingsRequest extends FormRequest
     /**
      * Determine if the user is authorized to make this request.
      *
-     * Any panel user may manage the Telegram settings (parity with the Filament page).
+     * Any panel user may manage the Telegram settings (parity with the previous admin page).
      */
     public function authorize(): bool
     {

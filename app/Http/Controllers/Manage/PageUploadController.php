@@ -11,15 +11,15 @@ use Illuminate\Support\Facades\Storage;
 class PageUploadController extends Controller
 {
     /**
-     * Store an uploaded file where Filament stored it, so old and new
-     * uploads live side by side:
+     * Store an uploaded file where the original admin panel stored it, so
+     * old and new uploads live side by side:
      *
      * - `editor` (rich-editor image attachments): `public` disk root with a
-     *   random hashed name, like Filament's RichEditor default.
+     *   random hashed name, like the previous rich editor's default.
      * - `quick_response` (Telegram quick-response attachments): `public`
      *   disk, `quick-responses/` directory, original filename preserved
-     *   (Filament's `preserveFilenames()`), deduplicated with a numeric
-     *   suffix instead of overwriting.
+     *   (as before), deduplicated with a numeric suffix instead of
+     *   overwriting.
      */
     public function store(StorePageUploadRequest $request): JsonResponse
     {

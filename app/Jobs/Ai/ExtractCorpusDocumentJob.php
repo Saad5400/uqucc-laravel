@@ -15,14 +15,14 @@ use Throwable;
 
 /**
  * Queued extraction of one uploaded corpus document, dispatched on upload and
- * by the Filament "re-extract" action: extract markdown (text layer or
+ * by the manage panel's "re-extract" action: extract markdown (text layer or
  * vision) → store it on the row → chunk + embed via {@see IngestDocument}.
  *
  * Runs on the dedicated "ai" queue alongside IngestPageJob. NOT auto-retried
  * (tries = 1): a vision extraction is expensive and its failure usually needs
  * a human look (bad scan, disabled AI, missing key), so failure lands on the
  * row as status "failed" + the error message, and the admin retries
- * explicitly from Filament. The exception is reported, not rethrown — the row
+ * explicitly from the panel. The exception is reported, not rethrown — the row
  * is the source of truth for extraction state.
  */
 class ExtractCorpusDocumentJob implements ShouldQueue

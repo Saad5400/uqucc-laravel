@@ -10,8 +10,8 @@ class StorePageUploadRequest extends FormRequest
     /**
      * Determine if the user is authorized to make this request.
      *
-     * Pages are editable by every panel user (parity with the Filament
-     * panel, where page CRUD is gated on panel access only).
+     * Pages are editable by every panel user (parity with the original
+     * admin panel, where page CRUD was gated on panel access only).
      */
     public function authorize(): bool
     {
@@ -21,9 +21,9 @@ class StorePageUploadRequest extends FormRequest
     /**
      * Get the validation rules that apply to the request.
      *
-     * `editor` uploads are the rich-editor image attachments (images only,
-     * like Filament's RichEditor); `quick_response` uploads are the Telegram
-     * quick-response attachments (images and documents).
+     * `editor` uploads are the rich-editor image attachments (images
+     * only); `quick_response` uploads are the Telegram quick-response
+     * attachments (images and documents).
      *
      * @return array<string, array<int, \Illuminate\Validation\Rules\In|string>>
      */

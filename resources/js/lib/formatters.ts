@@ -7,6 +7,23 @@ export function formatNumber(value: number): string {
     return value.toLocaleString('en-US');
 }
 
+const FILE_SIZE_UNITS = ['B', 'KB', 'MB', 'GB'];
+
+/** 1234567 → "1.2 MB" — Latin digits/units, meant for a `dir="ltr"` island. */
+export function formatFileSize(bytes: number): string {
+    let size = bytes;
+    let unitIndex = 0;
+
+    while (size >= 1024 && unitIndex < FILE_SIZE_UNITS.length - 1) {
+        size /= 1024;
+        unitIndex += 1;
+    }
+
+    const rounded = unitIndex === 0 ? String(size) : size.toFixed(1).replace(/\.0$/, '');
+
+    return `${rounded} ${FILE_SIZE_UNITS[unitIndex]}`;
+}
+
 const relativeTimeFormatter = new Intl.RelativeTimeFormat('ar', { numeric: 'auto' });
 
 const TIME_DIVISIONS: { amount: number; unit: Intl.RelativeTimeFormatUnit }[] = [

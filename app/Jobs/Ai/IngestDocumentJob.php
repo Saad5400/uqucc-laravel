@@ -12,7 +12,7 @@ use Illuminate\Queue\SerializesModels;
 
 /**
  * Queued (re-)ingestion of one already-extracted corpus document, dispatched
- * by the Filament "re-ingest" action (e.g. after enabling AI search or
+ * by the manage panel's "re-ingest" action (e.g. after enabling AI search or
  * editing the extracted markdown) — chunk + embed without re-running the
  * extraction step.
  *

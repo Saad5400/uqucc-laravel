@@ -8,6 +8,7 @@ use App\Http\Requests\Manage\StorePageRequest;
 use App\Http\Requests\Manage\UpdatePageRequest;
 use App\Models\Page;
 use App\Models\User;
+use App\Settings\AiSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Storage;
@@ -66,7 +67,7 @@ class PageController extends Controller
 
     /**
      * Create a page from a title (+ optional parent) and open its workspace.
-     * The slug is generated exactly like Filament's PageForm prefilled it:
+     * The slug is generated exactly like the original admin form prefilled it:
      * `'/'.str($title)->slug()` (Latin transliteration); on collision a
      * numeric suffix is appended, same as the Telegram bot's page creation.
      */
@@ -84,7 +85,7 @@ class PageController extends Controller
 
     /**
      * Show the page workspace. The route binding includes trashed pages
-     * (mirrors Filament, which stripped the soft-delete scope) so a trashed
+     * (mirroring the original admin panel, which stripped the soft-delete scope) so a trashed
      * page can still be opened and restored from its workspace.
      */
     public function edit(Page $page): Response
@@ -142,6 +143,9 @@ class PageController extends Controller
                 'url' => Storage::disk('public')->url($path),
                 'name' => basename($path),
             ])->values(),
+            'copilot' => [
+                'enabled' => app(AiSettings::class)->isFeatureEnabled('admin_copilot'),
+            ],
         ]);
     }
 
@@ -259,7 +263,7 @@ class PageController extends Controller
     }
 
     /**
-     * Slug parity with Filament's PageForm (`'/'.str($title)->slug()`), plus
+     * Slug parity with the original admin form (`'/'.str($title)->slug()`), plus
      * the Telegram bot's numeric-suffix collision strategy since the create
      * dialog has no slug field to fix a collision manually. Trashed pages
      * count as collisions because the column has a unique index.
@@ -301,7 +305,7 @@ class PageController extends Controller
      * Depth-first flat list of the live tree for the parent picker.
      *
      * The depth is computed from the tree itself rather than the stored
-     * `level` column, which Filament never maintained on parent changes.
+     * `level` column, which the original admin panel never maintained on parent changes.
      *
      * @param  Collection<int|string, Collection<int, Page>>  $livePagesByParent
      * @return array<int, array{id: int, title: string, level: int}>

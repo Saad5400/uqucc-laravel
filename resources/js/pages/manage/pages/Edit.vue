@@ -32,6 +32,7 @@ const props = defineProps<{
     descendantIds: number[];
     users: UserOption[];
     attachments: AttachmentInfo[];
+    copilot: { enabled: boolean };
 }>();
 
 const inertiaPage = usePage();
@@ -284,7 +285,7 @@ onUnmounted(() => {
             </button>
         </div>
 
-        <PageContentTab v-show="activeTab === 'content'" ref="contentTab" :page="page" />
+        <PageContentTab v-show="activeTab === 'content'" ref="contentTab" :page="page" :copilot-enabled="copilot.enabled" />
         <PageSettingsTab
             v-show="activeTab === 'settings'"
             ref="settingsTab"
@@ -292,7 +293,13 @@ onUnmounted(() => {
             :parent-options="parentOptions"
             :descendant-ids="descendantIds"
         />
-        <PageTelegramTab v-show="activeTab === 'telegram'" ref="telegramTab" :page="page" :attachments="attachments" />
+        <PageTelegramTab
+            v-show="activeTab === 'telegram'"
+            ref="telegramTab"
+            :page="page"
+            :attachments="attachments"
+            :copilot-enabled="copilot.enabled"
+        />
         <PageChildrenTab v-show="activeTab === 'children'" :page="page" :children="children" @add-child="createChildOpen = true" />
         <PageAuthorsTab v-show="activeTab === 'authors'" :page="page" :authors="authors" :users="users" />
     </div>

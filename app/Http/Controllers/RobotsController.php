@@ -11,7 +11,6 @@ class RobotsController extends Controller
         $content = 'User-agent: *
 Allow: /
 Disallow: /admin
-Disallow: /filament
 
 Sitemap: '.url('sitemap.xml');
 

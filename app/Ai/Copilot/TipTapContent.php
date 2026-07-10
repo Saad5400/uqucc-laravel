@@ -13,8 +13,7 @@ use Tiptap\Editor;
  * Reading (toMarkdown) reuses {@see PageContentExtractor} — the exact same
  * flattening the AI corpus ingests, so the model sees pages the way search
  * already does. Writing (toDocument/append) goes markdown → HTML (CommonMark
- * via Str::markdown) → TipTap JSON (ueberdosis/tiptap-php, the converter
- * Filament's RichEditor itself depends on).
+ * via Str::markdown) → TipTap JSON (via ueberdosis/tiptap-php).
  */
 class TipTapContent
 {

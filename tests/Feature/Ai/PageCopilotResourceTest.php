@@ -1,15 +1,14 @@
 <?php
 
 use App\Ai\Copilot\PageCopilotAgent;
-use App\Filament\Resources\Pages\PageResource;
-use App\Filament\Resources\Pages\Pages\EditPage;
 use App\Models\Page;
 use App\Models\User;
 use App\Settings\AiSettings;
 use Database\Seeders\RolesAndPermissionsSeeder;
-use Livewire\Livewire;
+use Inertia\Testing\AssertableInertia as Assert;
 
 beforeEach(function () {
+    $this->withoutVite();
     $this->seed(RolesAndPermissionsSeeder::class);
 
     $this->admin = User::factory()->create();
@@ -41,107 +40,145 @@ function makeCopilotPage(): Page
     ]);
 }
 
-describe('pages resource copilot actions', function () {
-    it('renders the edit page with the copilot actions when the feature is enabled', function () {
+describe('page workspace copilot endpoints', function () {
+    it('shares the copilot as enabled with the page workspace when the feature is on', function () {
         setPageCopilotEnabled(true);
         $page = makeCopilotPage();
 
         $this->actingAs($this->admin)
-            ->get(PageResource::getUrl('edit', ['record' => $page]))
+            ->get("/manage/pages/{$page->id}/edit")
             ->assertSuccessful()
-            ->assertSee('تحسين النص')
-            ->assertSee('مسودة قسم')
-            ->assertSee('توليد وصف SEO');
+            ->assertInertia(fn (Assert $inertia) => $inertia
+                ->component('manage/pages/Edit')
+                ->where('copilot.enabled', true)
+            );
     });
 
-    it('hides the copilot actions entirely when the feature is disabled', function () {
+    it('shares the copilot as disabled (hiding the actions entirely) when the feature is off', function () {
         setPageCopilotEnabled(false);
         $page = makeCopilotPage();
 
         $this->actingAs($this->admin)
-            ->get(PageResource::getUrl('edit', ['record' => $page]))
+            ->get("/manage/pages/{$page->id}/edit")
             ->assertSuccessful()
-            ->assertDontSee('تحسين النص')
-            ->assertDontSee('مسودة قسم')
-            ->assertDontSee('توليد وصف SEO');
+            ->assertInertia(fn (Assert $inertia) => $inertia
+                ->component('manage/pages/Edit')
+                ->where('copilot.enabled', false)
+            );
     });
 
-    it('fills the editor with the improved content without saving', function () {
+    it('returns the improved content without saving it', function () {
         setPageCopilotEnabled(true);
         $page = makeCopilotPage();
 
         PageCopilotAgent::fake(["## محسّن\n\nنص محسّن من المساعد."]);
 
-        $this->actingAs($this->admin);
+        $response = $this->actingAs($this->admin)
+            ->postJson("/manage/pages/{$page->id}/copilot/improve-text", [
+                'content' => $page->html_content,
+                'instruction' => 'اجعله أوضح',
+            ]);
 
-        Livewire::test(EditPage::class, ['record' => $page->getRouteKey()])
-            ->callFormComponentAction('html_content', 'improveText', data: ['instruction' => 'اجعله أوضح'])
-            ->assertNotified('تم تحسين النص')
-            ->assertSet('data.html_content', function ($state): bool {
-                return is_array($state)
-                    && str_contains((string) json_encode($state, JSON_UNESCAPED_UNICODE), 'نص محسّن من المساعد');
-            });
+        $response->assertSuccessful();
+
+        $content = $response->json('content');
+
+        expect($content)->toBeArray()
+            ->and(json_encode($content, JSON_UNESCAPED_UNICODE))->toContain('نص محسّن من المساعد');
 
         expect(json_encode($page->refresh()->html_content, JSON_UNESCAPED_UNICODE))
             ->not->toContain('نص محسّن من المساعد');
     });
 
-    it('appends a drafted section after the existing content', function () {
+    it('rejects improving an empty page with an Arabic message', function () {
+        setPageCopilotEnabled(true);
+        $page = makeCopilotPage();
+
+        $response = $this->actingAs($this->admin)
+            ->postJson("/manage/pages/{$page->id}/copilot/improve-text", ['content' => null])
+            ->assertUnprocessable();
+
+        expect($response->json('message'))->toContain('لا يوجد محتوى لتحسينه');
+    });
+
+    it('returns a drafted section appended after the existing content', function () {
         setPageCopilotEnabled(true);
         $page = makeCopilotPage();
 
         PageCopilotAgent::fake(["## قسم جديد\n\nمحتوى القسم المولد."]);
 
-        $this->actingAs($this->admin);
+        $response = $this->actingAs($this->admin)
+            ->postJson("/manage/pages/{$page->id}/copilot/draft-section", [
+                'content' => $page->html_content,
+                'topic' => 'قسم جديد',
+            ]);
 
-        Livewire::test(EditPage::class, ['record' => $page->getRouteKey()])
-            ->callFormComponentAction('html_content', 'draftSection', data: ['topic' => 'قسم جديد'])
-            ->assertNotified('تمت إضافة مسودة القسم')
-            ->assertSet('data.html_content', function ($state): bool {
-                $json = (string) json_encode($state, JSON_UNESCAPED_UNICODE);
+        $response->assertSuccessful();
 
-                return str_contains($json, 'محتوى الصفحة الأصلي.') && str_contains($json, 'محتوى القسم المولد.');
-            });
+        $json = (string) json_encode($response->json('content'), JSON_UNESCAPED_UNICODE);
+
+        expect($json)->toContain('محتوى الصفحة الأصلي.')
+            ->and($json)->toContain('محتوى القسم المولد.');
     });
 
-    it('fills the quick response message with the generated seo description', function () {
+    it('requires a topic for the drafted section', function () {
+        setPageCopilotEnabled(true);
+        $page = makeCopilotPage();
+
+        $this->actingAs($this->admin)
+            ->postJson("/manage/pages/{$page->id}/copilot/draft-section", ['content' => $page->html_content])
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['topic' => 'حقل موضوع القسم مطلوب.']);
+    });
+
+    it('returns the generated seo description as the quick response message html', function () {
         setPageCopilotEnabled(true);
         $page = makeCopilotPage();
 
         PageCopilotAgent::fake(['{"title": "تخصصات الكلية", "description": "تعرف على تخصصات كلية الحاسبات وشروطها."}']);
 
-        $this->actingAs($this->admin);
+        $this->actingAs($this->admin)
+            ->postJson("/manage/pages/{$page->id}/copilot/seo-meta")
+            ->assertSuccessful()
+            ->assertJson([
+                'title' => 'تخصصات الكلية',
+                'message' => '<p>تعرف على تخصصات كلية الحاسبات وشروطها.</p>',
+            ]);
 
-        Livewire::test(EditPage::class, ['record' => $page->getRouteKey()])
-            ->callFormComponentAction('quick_response_message', 'generateSeoMeta')
-            ->assertNotified('تم توليد وصف SEO')
-            ->assertSet('data.quick_response_message', function ($state): bool {
-                return str_contains((string) json_encode($state, JSON_UNESCAPED_UNICODE), 'تعرف على تخصصات كلية الحاسبات وشروطها.');
-            });
+        expect((string) $page->refresh()->quick_response_message)
+            ->not->toContain('تعرف على تخصصات كلية الحاسبات وشروطها.');
     });
 
-    it('shows an error notification when the generation fails', function () {
+    it('returns an error with the Arabic message when the generation fails', function () {
         setPageCopilotEnabled(true);
         $page = makeCopilotPage();
 
         PageCopilotAgent::fake(['ناتج ليس JSON']);
 
-        $this->actingAs($this->admin);
-
-        Livewire::test(EditPage::class, ['record' => $page->getRouteKey()])
-            ->callFormComponentAction('quick_response_message', 'generateSeoMeta')
-            ->assertNotified('تعذر توليد وصف SEO');
+        $this->actingAs($this->admin)
+            ->postJson("/manage/pages/{$page->id}/copilot/seo-meta")
+            ->assertUnprocessable()
+            ->assertJsonPath('message', 'أعاد النموذج ناتجاً غير صالح لوصف SEO — حاول مرة أخرى.');
     });
 
-    it('does not register the copilot actions at all when the feature is disabled', function () {
+    it('rejects every endpoint with 403 when the feature is disabled', function (string $uri, array $payload) {
         setPageCopilotEnabled(false);
         $page = makeCopilotPage();
 
-        $this->actingAs($this->admin);
+        $this->actingAs($this->admin)
+            ->postJson("/manage/pages/{$page->id}/copilot/{$uri}", $payload)
+            ->assertForbidden()
+            ->assertJsonPath('message', 'مساعد الكتابة الذكي معطل من إعدادات الذكاء الاصطناعي.');
+    })->with([
+        'improve text' => ['improve-text', ['content' => ['type' => 'doc', 'content' => []]]],
+        'draft section' => ['draft-section', ['topic' => 'موضوع']],
+        'seo meta' => ['seo-meta', []],
+    ]);
 
-        Livewire::test(EditPage::class, ['record' => $page->getRouteKey()])
-            ->assertFormComponentActionDoesNotExist('html_content', 'improveText')
-            ->assertFormComponentActionDoesNotExist('html_content', 'draftSection')
-            ->assertFormComponentActionDoesNotExist('quick_response_message', 'generateSeoMeta');
+    it('rejects guests', function () {
+        setPageCopilotEnabled(true);
+        $page = makeCopilotPage();
+
+        $this->postJson("/manage/pages/{$page->id}/copilot/seo-meta")->assertUnauthorized();
     });
 });

@@ -1,12 +1,15 @@
 <script setup lang="ts">
+import ConfirmDialog from '@/components/manage/ConfirmDialog.vue';
 import RichContentEditor from '@/components/manage/editor/RichContentEditor.vue';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useForm, usePage } from '@inertiajs/vue3';
-import { Loader2 } from 'lucide-vue-next';
+import { Globe, Loader2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
+import { toast } from 'vue-sonner';
+import { generatePageSeoMeta } from './copilot';
 import QuickResponseAttachmentsField from './QuickResponseAttachmentsField.vue';
 import QuickResponseButtonsField from './QuickResponseButtonsField.vue';
 import type { AttachmentInfo, PageWorkspace, QuickResponseButtonRow } from './types';
@@ -14,6 +17,8 @@ import type { AttachmentInfo, PageWorkspace, QuickResponseButtonRow } from './ty
 const props = defineProps<{
     page: PageWorkspace;
     attachments: AttachmentInfo[];
+    /** Whether the admin copilot feature is on — the SEO button disappears entirely while it is off. */
+    copilotEnabled: boolean;
 }>();
 
 const form = useForm<{
@@ -57,6 +62,33 @@ function handleMessageUpdate(value: Record<string, unknown> | string | null): vo
 /** The bot treats a missing message as "nothing to say" — persist blank as null. */
 function normalizeMessageForSave(value: string | null): string | null {
     return value === null || value.trim() === '' ? null : value;
+}
+
+/* ------------------------------------------------------------------ */
+/* Copilot: SEO meta → fills the message (the admin still saves)       */
+/* ------------------------------------------------------------------ */
+
+const confirmingSeoMeta = ref(false);
+const generatingSeoMeta = ref(false);
+
+async function generateSeoMeta(): Promise<void> {
+    if (generatingSeoMeta.value) {
+        return;
+    }
+
+    generatingSeoMeta.value = true;
+
+    try {
+        const meta = await generatePageSeoMeta(props.page.id);
+
+        message.value = meta.message;
+        confirmingSeoMeta.value = false;
+        toast.success('تم توليد وصف SEO', { description: `العنوان المقترح: ${meta.title} — راجع الوصف ثم احفظ الصفحة لاعتماده.` });
+    } catch (error) {
+        toast.error('تعذر توليد وصف SEO', { description: error instanceof Error ? error.message : undefined });
+    } finally {
+        generatingSeoMeta.value = false;
+    }
 }
 
 const isDirty = computed(() => form.isDirty || messageIsDirty.value);
@@ -135,7 +167,21 @@ function submit(): void {
                     </div>
 
                     <div v-if="!form.quick_response_auto_extract_message" class="space-y-2">
-                        <Label>نص الرد</Label>
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <Label>نص الرد</Label>
+                            <Button
+                                v-if="copilotEnabled"
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                :disabled="generatingSeoMeta"
+                                @click="confirmingSeoMeta = true"
+                            >
+                                <Loader2 v-if="generatingSeoMeta" class="size-4 animate-spin" />
+                                <Globe v-else class="size-4" />
+                                توليد وصف SEO
+                            </Button>
+                        </div>
                         <RichContentEditor :model-value="message" variant="message" format="html" @update:model-value="handleMessageUpdate" />
                         <p class="text-xs text-muted-foreground">
                             نص قصير يرسله البوت مع الرابط في تيليجرام. التنسيقات المدعومة: عريض، مائل، تسطير، شطب، كود، روابط.
@@ -195,4 +241,14 @@ function submit(): void {
             </form>
         </CardContent>
     </Card>
+
+    <ConfirmDialog
+        v-model:open="confirmingSeoMeta"
+        title="توليد وصف SEO"
+        confirm-label="توليد"
+        :processing="generatingSeoMeta"
+        @confirm="generateSeoMeta"
+    >
+        يولّد المساعد وصفاً موجزاً من محتوى الصفحة ويملأ به هذا الحقل — وهو المصدر الأول لوصف SEO للصفحة — لمراجعته قبل الحفظ.
+    </ConfirmDialog>
 </template>

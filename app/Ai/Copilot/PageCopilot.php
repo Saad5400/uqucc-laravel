@@ -8,8 +8,8 @@ use RuntimeException;
 /**
  * The admin copilot for CMS pages: three helpers, each a SINGLE tool-less
  * text generation through {@see PageCopilotAgent}, in and out of markdown
- * (the Filament layer converts to/from the editor's TipTap JSON via
- * {@see TipTapContent}).
+ * (the manage-panel copilot endpoints convert to/from the editor's TipTap
+ * JSON via {@see TipTapContent}).
  *
  * Gated on the operator-editable admin_copilot feature flag (which honours
  * the master AI kill switch) — a disabled copilot throws

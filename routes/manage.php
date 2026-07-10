@@ -1,14 +1,18 @@
 <?php
 
 use App\Http\Controllers\Manage\ActivityLogController;
+use App\Http\Controllers\Manage\AiSettingsController;
 use App\Http\Controllers\Manage\CacheController;
+use App\Http\Controllers\Manage\CorpusDocumentController;
 use App\Http\Controllers\Manage\DashboardController;
 use App\Http\Controllers\Manage\LoginController;
 use App\Http\Controllers\Manage\PageAuthorsController;
 use App\Http\Controllers\Manage\PageController;
+use App\Http\Controllers\Manage\PageCopilotController;
 use App\Http\Controllers\Manage\PageUploadController;
 use App\Http\Controllers\Manage\PrivateTutorController;
 use App\Http\Controllers\Manage\PrivateTutorCourseController;
+use App\Http\Controllers\Manage\TelegramChatSettingController;
 use App\Http\Controllers\Manage\TelegramSettingsController;
 use App\Http\Controllers\Manage\UserController;
 use Illuminate\Support\Facades\Route;
@@ -33,6 +37,23 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::post('/pages/{page}/restore', [PageController::class, 'restore'])->name('pages.restore')->withTrashed();
         Route::delete('/pages/{page}/force', [PageController::class, 'forceDestroy'])->name('pages.force-destroy')->withTrashed();
         Route::put('/pages/{page}/authors', [PageAuthorsController::class, 'update'])->name('pages.authors.update');
+
+        Route::post('/pages/{page}/copilot/improve-text', [PageCopilotController::class, 'improveText'])->name('pages.copilot.improve-text')->withTrashed();
+        Route::post('/pages/{page}/copilot/draft-section', [PageCopilotController::class, 'draftSection'])->name('pages.copilot.draft-section')->withTrashed();
+        Route::post('/pages/{page}/copilot/seo-meta', [PageCopilotController::class, 'generateSeoMeta'])->name('pages.copilot.seo-meta')->withTrashed();
+
+        Route::get('/corpus', [CorpusDocumentController::class, 'index'])->name('corpus.index');
+        Route::post('/corpus', [CorpusDocumentController::class, 'store'])->name('corpus.store');
+        Route::get('/corpus/{document}/edit', [CorpusDocumentController::class, 'edit'])->name('corpus.edit');
+        Route::put('/corpus/{document}', [CorpusDocumentController::class, 'update'])->name('corpus.update');
+        Route::post('/corpus/{document}/reextract', [CorpusDocumentController::class, 'reextract'])->name('corpus.reextract');
+        Route::post('/corpus/{document}/reingest', [CorpusDocumentController::class, 'reingest'])->name('corpus.reingest');
+        Route::delete('/corpus/{document}', [CorpusDocumentController::class, 'destroy'])->name('corpus.destroy');
+
+        Route::get('/telegram-chats', [TelegramChatSettingController::class, 'index'])->name('telegram-chats.index');
+        Route::put('/telegram-chats/{chat}', [TelegramChatSettingController::class, 'update'])->name('telegram-chats.update');
+        Route::post('/telegram-chats/{chat}/reset-conversation', [TelegramChatSettingController::class, 'resetConversation'])->name('telegram-chats.reset-conversation');
+        Route::delete('/telegram-chats/{chat}', [TelegramChatSettingController::class, 'destroy'])->name('telegram-chats.destroy');
 
         Route::middleware('can:manage-users')->group(function () {
             Route::get('/users', [UserController::class, 'index'])->name('users.index');
@@ -60,5 +81,6 @@ Route::prefix('manage')->name('manage.')->group(function () {
 
         Route::get('/settings', [TelegramSettingsController::class, 'edit'])->name('settings');
         Route::put('/settings/telegram', [TelegramSettingsController::class, 'update'])->name('settings.telegram.update');
+        Route::put('/settings/ai', [AiSettingsController::class, 'update'])->name('settings.ai.update');
     });
 });

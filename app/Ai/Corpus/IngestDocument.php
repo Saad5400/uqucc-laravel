@@ -24,7 +24,7 @@ use Throwable;
  *
  * SAFE NO-OP when AI search is disabled in settings or the embedding driver
  * is unusable — extraction still completes and the markdown is kept, so the
- * admin can re-ingest from Filament once search is switched on. A document
+ * admin can re-ingest from the panel once search is switched on. A document
  * without extracted text is evicted rather than indexed.
  */
 class IngestDocument

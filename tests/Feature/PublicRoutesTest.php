@@ -113,6 +113,14 @@ it('renders the private tutors tool route', function () {
     $this->get('/adwat/alkhosousieen')->assertOk();
 });
 
+it('permanently redirects the old admin panel to /manage', function (string $from) {
+    $this->get($from)->assertMovedPermanently()->assertRedirect(url('/manage'));
+})->with([
+    'panel root' => ['/admin'],
+    'panel login' => ['/admin/login'],
+    'deep resource url' => ['/admin/pages/5/edit'],
+]);
+
 it('serves robots.txt as plain text', function () {
     $response = $this->get('/robots.txt');
 

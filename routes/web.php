@@ -52,6 +52,11 @@ Route::get('/almosaed', App\Http\Controllers\AssistantPageController::class)
     ->middleware(CacheResponse::class)
     ->name('assistant');
 
+// The previous admin panel lived at /admin — permanently redirect bookmarks and
+// bot edit-links to the /manage panel (must come before the catch-all route)
+Route::permanentRedirect('/admin', '/manage');
+Route::permanentRedirect('/admin/{any}', '/manage')->where('any', '.*');
+
 // Catch-all route for content pages (must be last!) - with full response caching
 Route::get('/{slug}', [PageController::class, 'show'])
     ->where('slug', '.*')

@@ -3,12 +3,16 @@ import RichContentEditor from '@/components/manage/editor/RichContentEditor.vue'
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { router, usePage } from '@inertiajs/vue3';
-import { Loader2 } from 'lucide-vue-next';
+import { FilePlus2, Loader2, Sparkles } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
+import CopilotDraftDialog from './CopilotDraftDialog.vue';
+import CopilotImproveDialog from './CopilotImproveDialog.vue';
 import type { PageHtmlContent, PageWorkspace } from './types';
 
 const props = defineProps<{
     page: PageWorkspace;
+    /** Whether the admin copilot feature is on — the buttons disappear entirely while it is off. */
+    copilotEnabled: boolean;
 }>();
 
 /**
@@ -27,6 +31,17 @@ defineExpose({ isDirty, content });
 
 function handleContentUpdate(value: Record<string, unknown> | string | null): void {
     content.value = value as PageHtmlContent;
+}
+
+/* ------------------------------------------------------------------ */
+/* Copilot (fills the editor — the admin still saves explicitly)       */
+/* ------------------------------------------------------------------ */
+
+const improveOpen = ref(false);
+const draftOpen = ref(false);
+
+function applyCopilotContent(value: PageHtmlContent): void {
+    content.value = value;
 }
 
 const processing = ref(false);
@@ -61,6 +76,17 @@ function submit(): void {
 <template>
     <Card>
         <CardContent>
+            <div v-if="copilotEnabled" class="mb-3 flex flex-wrap items-center justify-end gap-2">
+                <Button type="button" variant="outline" size="sm" @click="improveOpen = true">
+                    <Sparkles class="size-4" />
+                    تحسين النص
+                </Button>
+                <Button type="button" variant="outline" size="sm" @click="draftOpen = true">
+                    <FilePlus2 class="size-4" />
+                    مسودة قسم
+                </Button>
+            </div>
+
             <RichContentEditor
                 :model-value="content"
                 variant="full"
@@ -85,4 +111,7 @@ function submit(): void {
             </span>
         </div>
     </Card>
+
+    <CopilotImproveDialog v-model:open="improveOpen" :page-id="page.id" :content="content" @apply="applyCopilotContent" />
+    <CopilotDraftDialog v-model:open="draftOpen" :page-id="page.id" :content="content" @apply="applyCopilotContent" />
 </template>
