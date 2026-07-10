@@ -39,10 +39,6 @@ return [
         'token' => env('TELEGRAM_BOT_TOKEN'),
     ],
 
-    'deepseek' => [
-        'token' => env('DEEPSEEK_TOKEN'),
-    ],
-
     'ocr_space' => [
         'api_key' => env('OCR_SPACE_API_KEY'),
     ],

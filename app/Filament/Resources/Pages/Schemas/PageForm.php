@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Pages\Schemas;
 
 use App\Filament\Forms\Blocks\AlertBlock;
 use App\Filament\Forms\Blocks\CollapsibleBlock;
+use App\Filament\Resources\Pages\Actions\PageCopilotActions;
 use Filament\Forms\Components\FileUpload;
 use Filament\Forms\Components\Repeater;
 use Filament\Forms\Components\RichEditor;
@@ -68,6 +69,7 @@ class PageForm
                                 CollapsibleBlock::class,
                             ])
                             ->activePanel('customBlocks')
+                            ->hintActions([PageCopilotActions::improveText(), PageCopilotActions::draftSection()])
                             ->columnSpanFull(),
                     ]),
 
@@ -143,6 +145,7 @@ class PageForm
                                 ['codeBlock'],
                                 ['undo', 'redo'],
                             ])
+                            ->hintAction(PageCopilotActions::generateSeoMeta())
                             ->columnSpanFull()
                             ->visible(fn (Get $get) => ! $get('quick_response_auto_extract_message')),
 

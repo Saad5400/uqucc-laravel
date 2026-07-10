@@ -17,3 +17,8 @@ Schedule::command('sitemap:generate')
     ->daily()
     ->withoutOverlapping()
     ->runInBackground();
+
+Schedule::command('ai:prune-conversations')
+    ->daily()
+    ->withoutOverlapping()
+    ->runInBackground();

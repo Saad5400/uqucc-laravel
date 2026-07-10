@@ -2,8 +2,14 @@
 
 namespace App\Jobs;
 
+use App\Ai\Chat\AttachmentContext;
+use App\Ai\Chat\ChatAttachmentTextExtractor;
+use App\Ai\Spend\SpendLedger;
+use App\Services\OgImageService;
+use App\Services\QuickResponseService;
 use App\Services\Telegram\ContentParser;
-use App\Services\Telegram\Handlers\DeepSeekChatHandler;
+use App\Services\Telegram\Handlers\AiChatHandler;
+use App\Services\Telegram\Handlers\AiToggleHandler;
 use App\Services\Telegram\Handlers\EditLinkHandler;
 use App\Services\Telegram\Handlers\ExternalSearchHandler;
 use App\Services\Telegram\Handlers\HelpHandler;
@@ -16,9 +22,8 @@ use App\Services\Telegram\Handlers\PrivateForwardHandler;
 use App\Services\Telegram\Handlers\PythonExecutionHandler;
 use App\Services\Telegram\Handlers\UquccListHandler;
 use App\Services\Telegram\Handlers\UquccSearchHandler;
-use App\Services\OgImageService;
-use App\Services\QuickResponseService;
 use App\Services\TipTapContentExtractor;
+use App\Settings\AiSettings;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -112,10 +117,18 @@ class ProcessTelegramUpdate implements ShouldQueue
             new UquccListHandler($telegram),
             new PythonExecutionHandler($telegram),
             new JavaExecutionHandler($telegram),
-            new DeepSeekChatHandler($telegram),
             new InfoHandler($telegram),
             new PrivateForwardHandler($telegram),
             new InviteLinkHandler($telegram),
+            new AiToggleHandler($telegram),
+            // Last on purpose: the assistant only answers messages no other handler owns.
+            new AiChatHandler(
+                $telegram,
+                app(AiSettings::class),
+                app(SpendLedger::class),
+                app(ChatAttachmentTextExtractor::class),
+                app(AttachmentContext::class),
+            ),
         ];
 
         foreach ($handlers as $handler) {
