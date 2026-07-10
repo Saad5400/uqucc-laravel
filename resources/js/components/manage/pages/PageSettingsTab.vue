@@ -7,7 +7,7 @@ import { Switch } from '@/components/ui/switch';
 import { Icon } from '@iconify/vue';
 import { useForm } from '@inertiajs/vue3';
 import { Loader2 } from 'lucide-vue-next';
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import ParentPicker from './ParentPicker.vue';
 import type { PageWorkspace, ParentOption } from './types';
 
@@ -42,7 +42,14 @@ defineExpose({ isDirty });
 
 const excludedParentIds = computed(() => [props.page.id, ...props.descendantIds]);
 
-const urlPreview = computed(() => `${window.location.origin}${form.slug}`);
+/** Read in onMounted so SSR (no `window`) renders just the slug without crashing. */
+const origin = ref('');
+
+onMounted(() => {
+    origin.value = window.location.origin;
+});
+
+const urlPreview = computed(() => `${origin.value}${form.slug}`);
 
 const toggles: { field: 'hidden' | 'hidden_from_bot' | 'smart_search' | 'requires_prefix'; label: string; description: string }[] = [
     { field: 'hidden', label: 'مخفي', description: 'إخفاء الصفحة من الموقع الإلكتروني.' },
