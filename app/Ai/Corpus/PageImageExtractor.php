@@ -144,34 +144,45 @@ class PageImageExtractor
      */
     private function download(string $src, string $urlHash): ?string
     {
+        $temporaryPath = null;
+
         try {
+            $temporaryPath = tempnam(sys_get_temp_dir(), 'corpus-img-');
+
+            if ($temporaryPath === false) {
+                return null;
+            }
+
+            // Stream straight to disk: buffering bodies in memory exhausted
+            // the 128M CLI limit over a long ai:ingest-pages run in prod.
             $response = Http::timeout(15)
                 ->withHeaders(['Accept' => 'image/*'])
                 ->maxRedirects(3)
+                ->sink($temporaryPath)
                 ->get($src);
 
             $contentType = strtolower(strtok((string) $response->header('Content-Type'), ';'));
 
+            clearstatcache(true, $temporaryPath);
+            $size = (int) @filesize($temporaryPath);
+
             if (! $response->successful()
                 || ! str_starts_with($contentType, 'image/')
-                || strlen($response->body()) === 0
-                || strlen($response->body()) > self::MAX_DOWNLOAD_BYTES) {
+                || $size === 0
+                || $size > self::MAX_DOWNLOAD_BYTES) {
                 throw new RuntimeException(sprintf(
                     'Unusable image response (status %d, type "%s", %d bytes).',
                     $response->status(),
                     $contentType,
-                    strlen($response->body()),
+                    $size,
                 ));
-            }
-
-            $temporaryPath = tempnam(sys_get_temp_dir(), 'corpus-img-');
-
-            if ($temporaryPath === false || file_put_contents($temporaryPath, $response->body()) === false) {
-                return null;
             }
 
             return $temporaryPath;
         } catch (Throwable $exception) {
+            if (is_string($temporaryPath)) {
+                @unlink($temporaryPath);
+            }
             report($exception);
 
             CorpusImageExtraction::query()->updateOrCreate(

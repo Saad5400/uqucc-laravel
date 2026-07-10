@@ -23,6 +23,11 @@ class IngestPages extends Command
 
     public function handle(IngestPage $ingest): int
     {
+        // A full inline run touches every page, image download, and vision
+        // response in one process — the default 128M CLI limit was exhausted
+        // in production partway through the site.
+        ini_set('memory_limit', '512M');
+
         if (! $ingest->isEnabled()) {
             $this->warn('AI search ingestion is disabled: enable ai_enabled + search_enabled in AI settings and configure an embedding driver.');
 
