@@ -74,8 +74,8 @@ function submit(): void {
 </script>
 
 <template>
-    <Card>
-        <CardContent>
+    <Card class="gap-0 py-0">
+        <CardContent class="py-4">
             <div v-if="copilotEnabled" class="mb-3 flex flex-wrap items-center justify-end gap-2">
                 <Button type="button" variant="outline" size="sm" @click="improveOpen = true">
                     <Sparkles class="size-4" />
@@ -96,7 +96,7 @@ function submit(): void {
         </CardContent>
 
         <div
-            class="sticky bottom-0 z-10 -mb-6 flex flex-wrap items-center justify-end gap-3 rounded-b-xl border-t border-border bg-card/95 px-6 py-3 backdrop-blur"
+            class="sticky bottom-0 z-10 flex flex-wrap items-center justify-end gap-3 rounded-b-xl border-t border-border bg-card/95 px-6 py-3 backdrop-blur"
         >
             <p v-if="contentError" class="me-auto text-sm text-destructive-foreground">{{ contentError }}</p>
 

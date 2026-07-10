@@ -73,7 +73,7 @@ function submit(): void {
 <template>
     <Card class="max-w-2xl">
         <CardHeader>
-            <CardTitle>إعدادات الذكاء الاصطناعي</CardTitle>
+            <CardTitle class="text-lg">إعدادات الذكاء الاصطناعي</CardTitle>
         </CardHeader>
         <CardContent>
             <form class="space-y-8" @submit.prevent="submit">
@@ -179,13 +179,12 @@ function submit(): void {
                     </div>
                 </section>
 
-                <div class="flex justify-end">
-                    <span :title="!form.isDirty && !form.processing ? 'لا توجد تغييرات لحفظها' : undefined">
-                        <Button type="submit" :disabled="!form.isDirty || form.processing">
-                            <Loader2 v-if="form.processing" class="size-4 animate-spin" />
-                            حفظ إعدادات الذكاء
-                        </Button>
-                    </span>
+                <div class="flex flex-wrap items-center justify-end gap-3">
+                    <p v-if="!form.isDirty && !form.processing" class="text-xs text-muted-foreground">لا توجد تغييرات لحفظها</p>
+                    <Button type="submit" :disabled="!form.isDirty || form.processing">
+                        <Loader2 v-if="form.processing" class="size-4 animate-spin" />
+                        حفظ إعدادات الذكاء
+                    </Button>
                 </div>
             </form>
         </CardContent>

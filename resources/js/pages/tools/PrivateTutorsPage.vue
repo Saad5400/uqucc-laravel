@@ -10,9 +10,25 @@
 
         <div>
             <!-- Tabs -->
-            <div class="mb-4 flex gap-2">
-                <Button :variant="activeTab === 'courses' ? 'default' : 'ghost'" @click="activeTab = 'courses'"> حسب المادة </Button>
-                <Button :variant="activeTab === 'tutors' ? 'default' : 'ghost'" @click="activeTab = 'tutors'"> حسب الخصوصي </Button>
+            <div role="tablist" aria-label="طريقة العرض" class="mb-4 inline-flex items-center gap-1 rounded-lg border bg-muted/50 p-1">
+                <Button
+                    role="tab"
+                    :aria-selected="activeTab === 'courses'"
+                    size="sm"
+                    :variant="activeTab === 'courses' ? 'default' : 'ghost'"
+                    @click="activeTab = 'courses'"
+                >
+                    حسب المادة
+                </Button>
+                <Button
+                    role="tab"
+                    :aria-selected="activeTab === 'tutors'"
+                    size="sm"
+                    :variant="activeTab === 'tutors' ? 'default' : 'ghost'"
+                    @click="activeTab = 'tutors'"
+                >
+                    حسب الخصوصي
+                </Button>
             </div>
 
             <!-- Search Bar -->
@@ -46,9 +62,10 @@
                                             :href="tutor.url"
                                             target="_blank"
                                             rel="noopener noreferrer"
-                                            class="text-primary hover:underline"
+                                            class="inline-flex items-center gap-1 text-primary hover:underline"
                                         >
                                             {{ tutor.name }}
+                                            <ExternalLink class="size-3.5 shrink-0" aria-hidden="true" />
                                         </a>
                                         <span v-else>{{ tutor.name }}</span>
                                     </li>
@@ -73,9 +90,10 @@
                                         :href="tutor.url"
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        class="text-primary hover:underline"
+                                        class="inline-flex items-center gap-1 text-primary hover:underline"
                                     >
                                         {{ tutor.name }}
+                                        <ExternalLink class="size-3.5 shrink-0" aria-hidden="true" />
                                     </a>
                                     <span v-else>{{ tutor.name }}</span>
                                 </CardTitle>
@@ -106,7 +124,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { vAutoAnimate } from '@formkit/auto-animate/vue';
-import { GraduationCap, Search, User } from 'lucide-vue-next';
+import { ExternalLink, GraduationCap, Search, User } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 defineOptions({

@@ -121,7 +121,7 @@ function runConfirmedAction(): void {
 
         <Card>
             <CardHeader>
-                <CardTitle>بيانات المستند</CardTitle>
+                <CardTitle class="text-lg">بيانات المستند</CardTitle>
             </CardHeader>
             <CardContent>
                 <form class="space-y-6" @submit.prevent="submit">
@@ -146,7 +146,7 @@ function runConfirmedAction(): void {
                         <Textarea
                             id="corpus-markdown"
                             v-model="form.extracted_markdown"
-                            dir="rtl"
+                            dir="auto"
                             rows="20"
                             class="min-h-96 font-mono text-sm"
                             :aria-invalid="form.errors.extracted_markdown ? true : undefined"
@@ -159,13 +159,12 @@ function runConfirmedAction(): void {
                         </p>
                     </div>
 
-                    <div class="flex justify-end">
-                        <span :title="!form.isDirty && !form.processing ? 'لا توجد تغييرات لحفظها' : undefined">
-                            <Button type="submit" :disabled="!form.isDirty || form.processing">
-                                <Loader2 v-if="form.processing" class="size-4 animate-spin" />
-                                حفظ المستند
-                            </Button>
-                        </span>
+                    <div class="flex flex-wrap items-center justify-end gap-3">
+                        <p v-if="!form.isDirty && !form.processing" class="text-xs text-muted-foreground">لا توجد تغييرات لحفظها</p>
+                        <Button type="submit" :disabled="!form.isDirty || form.processing">
+                            <Loader2 v-if="form.processing" class="size-4 animate-spin" />
+                            حفظ المستند
+                        </Button>
                     </div>
                 </form>
             </CardContent>

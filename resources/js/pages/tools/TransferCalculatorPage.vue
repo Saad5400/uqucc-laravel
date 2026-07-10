@@ -11,7 +11,9 @@
         <div class="typography">
             <!-- Calculator Card -->
             <Card size="sm" class="!mb-4">
-                <CardHeader size="sm"> </CardHeader>
+                <CardHeader size="sm">
+                    <CardTitle class="text-base">أدخل بياناتك</CardTitle>
+                </CardHeader>
                 <CardContent size="sm">
                     <div class="grid gap-4 md:grid-cols-2">
                         <div>
@@ -21,10 +23,15 @@
                                 v-model="weightedScore"
                                 type="text"
                                 inputmode="decimal"
+                                dir="ltr"
                                 placeholder="مثال: 99"
-                                variant="visible"
-                                class="text-base"
+                                class="text-end text-base tabular-nums"
+                                :aria-invalid="weightedScoreWarning ? true : undefined"
+                                :aria-describedby="weightedScoreWarning ? 'weighted-score-warning' : undefined"
                             />
+                            <p v-if="weightedScoreWarning" id="weighted-score-warning" class="!mt-1.5 text-xs text-destructive">
+                                {{ weightedScoreWarning }}
+                            </p>
                         </div>
                         <div>
                             <Label for="cumulative-gpa" class="!mb-2 block">المعدل التراكمي</Label>
@@ -33,10 +40,15 @@
                                 v-model="cumulativeGpa"
                                 type="text"
                                 inputmode="decimal"
+                                dir="ltr"
                                 placeholder="مثال: 3.7"
-                                variant="visible"
-                                class="text-base"
+                                class="text-end text-base tabular-nums"
+                                :aria-invalid="cumulativeGpaWarning ? true : undefined"
+                                :aria-describedby="cumulativeGpaWarning ? 'cumulative-gpa-warning' : undefined"
                             />
+                            <p v-if="cumulativeGpaWarning" id="cumulative-gpa-warning" class="!mt-1.5 text-xs text-destructive">
+                                {{ cumulativeGpaWarning }}
+                            </p>
                         </div>
                     </div>
                 </CardContent>
@@ -64,7 +76,14 @@
                         </div>
                     </CardContent>
                 </Card>
-                <p v-else class="text-muted-foreground">أدخل النسبة الموزونة والمعدل التراكمي لعرض مركبة التحويل</p>
+                <div v-else class="flex flex-col items-center gap-3 rounded-xl border border-dashed px-6 py-8 text-center">
+                    <ArrowLeftRight class="size-8 text-muted-foreground" aria-hidden="true" />
+                    <p class="!m-0 text-sm text-muted-foreground">
+                        مركبة التحويل هي معيار المفاضلة في التحويل الداخلي: 50% من نسبتك الموزونة + 50% من معدلك التراكمي بعد تحويله إلى نسبة من 100.
+                        أدخل الرقمين وستظهر النتيجة فورًا.
+                    </p>
+                    <Button variant="outline" size="sm" @click="fillExample">جرّب مثالًا: موزونة 95.5 ومعدل 3.8</Button>
+                </div>
             </div>
         </div>
     </DocsLayout>
@@ -75,12 +94,14 @@ import DocsLayout from '@/components/layout/DocsLayout.vue';
 import PageHeader from '@/components/page/PageHeader.vue';
 import RichContentRenderer from '@/components/RichContentRenderer.vue';
 import SeoHead, { type SeoData } from '@/components/SeoHead.vue';
-import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { parseArabicNumber } from '@/lib/calculators/parseArabicNumber';
 import { computeTransferScore } from '@/lib/calculators/transfer';
 import { vAutoAnimate } from '@formkit/auto-animate/vue';
+import { ArrowLeftRight } from 'lucide-vue-next';
 import { computed, onMounted, ref, watch } from 'vue';
 
 defineOptions({
@@ -118,6 +139,30 @@ const parsedCumulativeGpa = computed(() => parseArabicNumber(cumulativeGpa.value
 
 // Calculate transfer score (null while either input is missing)
 const transferScore = computed(() => computeTransferScore(weightedScore.value, cumulativeGpa.value, weightedPercentage.value, gpaPercentage.value));
+
+/** تحذير غير مانع عند تجاوز النسبة الموزونة حدّها الطبيعي (من 100) */
+const weightedScoreWarning = computed(() => {
+    const value = parsedWeightedScore.value;
+    if (weightedScore.value.trim() !== '' && (value <= 0 || value > 100)) {
+        return 'النسبة الموزونة تكون بين 0 و100';
+    }
+    return null;
+});
+
+/** تحذير غير مانع عند تجاوز المعدل التراكمي حدّه الطبيعي (من 4) */
+const cumulativeGpaWarning = computed(() => {
+    const value = parsedCumulativeGpa.value;
+    if (cumulativeGpa.value.trim() !== '' && (value <= 0 || value > 4)) {
+        return 'المعدل التراكمي يكون بين 0 و4';
+    }
+    return null;
+});
+
+/** يملأ الحقلين بقيم مثال ليرى المستخدم شكل النتيجة مباشرة */
+const fillExample = () => {
+    weightedScore.value = '95.5';
+    cumulativeGpa.value = '3.8';
+};
 
 // Load from localStorage
 const loadData = () => {

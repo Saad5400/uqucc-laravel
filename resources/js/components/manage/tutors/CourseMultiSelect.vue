@@ -4,8 +4,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { router } from '@inertiajs/vue3';
 import { Check, Loader2, Plus, X } from 'lucide-vue-next';
-import { computed, nextTick, ref } from 'vue';
-import type { TutorCourse } from './types';
+import { computed, nextTick, ref, watch } from 'vue';
+import { isolateLatinTokens, type TutorCourse } from './types';
 
 const props = defineProps<{
     courses: TutorCourse[];
@@ -36,6 +36,25 @@ function isSelected(id: number): boolean {
 function toggleCourse(id: number): void {
     model.value = isSelected(id) ? model.value.filter((selectedId) => selectedId !== id) : [...model.value, id];
 }
+
+/** Overlay scrollbars hide until interaction — show a bottom fade while more rows exist below. */
+const listElement = ref<HTMLElement | null>(null);
+const canScrollDown = ref(false);
+
+function updateScrollHint(): void {
+    const element = listElement.value;
+
+    canScrollDown.value = element !== null && element.scrollHeight - element.scrollTop - element.clientHeight > 4;
+}
+
+watch(
+    filteredCourses,
+    async () => {
+        await nextTick();
+        updateScrollHint();
+    },
+    { immediate: true },
+);
 
 /**
  * Inline course creation: POST the new course, let the redirect refresh the
@@ -82,10 +101,10 @@ function createCourse(): void {
     <div class="space-y-2">
         <div v-if="selectedCourses.length" class="flex flex-wrap gap-1.5">
             <Badge v-for="course in selectedCourses" :key="course.id" variant="secondary" class="gap-1 pe-1">
-                {{ course.name }}
+                <bdi>{{ isolateLatinTokens(course.name) }}</bdi>
                 <button
                     type="button"
-                    class="rounded-sm opacity-70 transition-opacity hover:opacity-100"
+                    class="-m-1.5 rounded-sm p-1.5 opacity-70 transition-opacity hover:opacity-100"
                     :aria-label="`إزالة المقرر ${course.name}`"
                     @click="toggleCourse(course.id)"
                 >
@@ -96,35 +115,43 @@ function createCourse(): void {
 
         <Input v-model="search" type="text" placeholder="ابحث عن مقرر…" :aria-label="'البحث في المقررات'" />
 
-        <div class="max-h-40 overflow-y-auto rounded-md border border-input">
-            <p v-if="!courses.length && !normalizedSearch" class="p-3 text-sm text-muted-foreground">
-                لا توجد مقررات بعد. اكتب اسماً لإنشاء أول مقرر.
-            </p>
-            <button
-                v-for="course in filteredCourses"
-                :key="course.id"
-                type="button"
-                class="flex w-full items-center gap-2 px-3 py-2 text-start text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
-                @click="toggleCourse(course.id)"
-            >
-                <span class="flex size-4 shrink-0 items-center justify-center">
-                    <Check v-if="isSelected(course.id)" class="size-4 text-primary" />
-                </span>
-                {{ course.name }}
-            </button>
-            <Button
-                v-if="normalizedSearch && !hasExactMatch"
-                type="button"
-                variant="ghost"
-                class="w-full justify-start gap-2 rounded-none px-3 text-primary"
-                :disabled="creating"
-                @click="createCourse"
-            >
-                <Loader2 v-if="creating" class="size-4 animate-spin" />
-                <Plus v-else class="size-4" />
-                إنشاء مقرر «{{ normalizedSearch }}»
-            </Button>
-            <p v-else-if="normalizedSearch && !filteredCourses.length" class="p-3 text-sm text-muted-foreground">لا نتائج مطابقة.</p>
+        <div class="relative">
+            <div ref="listElement" class="max-h-40 overflow-y-auto rounded-md border border-input" @scroll.passive="updateScrollHint">
+                <p v-if="!courses.length && !normalizedSearch" class="p-3 text-sm text-muted-foreground">
+                    لا توجد مقررات بعد. اكتب اسماً لإنشاء أول مقرر.
+                </p>
+                <button
+                    v-for="course in filteredCourses"
+                    :key="course.id"
+                    type="button"
+                    class="flex w-full items-center gap-2 px-3 py-2 text-start text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                    @click="toggleCourse(course.id)"
+                >
+                    <span class="flex size-4 shrink-0 items-center justify-center">
+                        <Check v-if="isSelected(course.id)" class="size-4 text-primary" />
+                    </span>
+                    <bdi>{{ isolateLatinTokens(course.name) }}</bdi>
+                </button>
+                <Button
+                    v-if="normalizedSearch && !hasExactMatch"
+                    type="button"
+                    variant="ghost"
+                    class="w-full justify-start gap-2 rounded-none px-3 text-primary"
+                    :disabled="creating"
+                    @click="createCourse"
+                >
+                    <Loader2 v-if="creating" class="size-4 animate-spin" />
+                    <Plus v-else class="size-4" />
+                    إنشاء مقرر «<bdi>{{ normalizedSearch }}</bdi
+                    >»
+                </Button>
+                <p v-else-if="normalizedSearch && !filteredCourses.length" class="p-3 text-sm text-muted-foreground">لا نتائج مطابقة.</p>
+            </div>
+            <div
+                v-if="canScrollDown"
+                class="pointer-events-none absolute inset-x-px bottom-px h-8 rounded-b-md bg-gradient-to-t from-background to-transparent"
+                aria-hidden="true"
+            />
         </div>
 
         <p v-if="createError" class="text-sm text-destructive-foreground">{{ createError }}</p>

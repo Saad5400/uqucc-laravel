@@ -3,9 +3,10 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { formatFileSize } from '@/lib/formatters';
 import { useForm } from '@inertiajs/vue3';
-import { Loader2 } from 'lucide-vue-next';
-import { watch } from 'vue';
+import { FileUp, Loader2, X } from 'lucide-vue-next';
+import { ref, watch } from 'vue';
 
 const open = defineModel<boolean>('open', { default: false });
 
@@ -14,10 +15,18 @@ const form = useForm<{ title: string; file: File | null }>({
     file: null,
 });
 
+const fileInput = ref<HTMLInputElement | null>(null);
+const dragging = ref(false);
+
 watch(open, (isOpen) => {
     if (isOpen) {
         form.clearErrors();
         form.reset();
+        dragging.value = false;
+
+        if (fileInput.value) {
+            fileInput.value.value = '';
+        }
     }
 });
 
@@ -25,7 +34,31 @@ function handleFileChange(event: Event): void {
     form.file = (event.target as HTMLInputElement).files?.[0] ?? null;
 }
 
+function handleDrop(event: DragEvent): void {
+    dragging.value = false;
+    const file = event.dataTransfer?.files?.[0] ?? null;
+
+    if (file) {
+        form.file = file;
+        form.clearErrors('file');
+    }
+}
+
+function removeFile(): void {
+    form.file = null;
+
+    if (fileInput.value) {
+        fileInput.value.value = '';
+    }
+}
+
 function submit(): void {
+    if (!form.file) {
+        form.setError('file', 'يرجى اختيار ملف.');
+
+        return;
+    }
+
     form.post('/manage/corpus', {
         preserveScroll: true,
         preserveState: true,
@@ -59,17 +92,36 @@ function submit(): void {
                 </div>
                 <div class="space-y-2">
                     <Label for="corpus-upload-file">الملف</Label>
-                    <Input
+                    <input
                         id="corpus-upload-file"
+                        ref="fileInput"
                         type="file"
+                        class="sr-only"
                         accept="application/pdf,image/png,image/jpeg,image/webp"
-                        required
                         :aria-invalid="form.errors.file ? true : undefined"
                         @change="handleFileChange"
                     />
-                    <p class="text-xs text-muted-foreground">
-                        PDF أو صورة (PNG / JPG / WebP) بحجم أقصى 20 ميجابايت. تُستخرج النصوص تلقائياً بعد الرفع.
-                    </p>
+                    <label
+                        v-if="!form.file"
+                        for="corpus-upload-file"
+                        class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed px-4 py-6 text-center transition-colors"
+                        :class="dragging ? 'border-primary bg-primary/5' : 'border-input hover:border-muted-foreground/50 hover:bg-accent/50'"
+                        @dragover.prevent="dragging = true"
+                        @dragleave="dragging = false"
+                        @drop.prevent="handleDrop"
+                    >
+                        <FileUp class="size-6 text-muted-foreground" aria-hidden="true" />
+                        <span class="text-sm font-medium">اختر ملفاً أو أفلته هنا</span>
+                        <span class="text-xs text-muted-foreground"><span dir="ltr">PDF / PNG / JPG / WebP</span> — بحد أقصى 20 ميجابايت</span>
+                    </label>
+                    <div v-else class="flex items-center gap-2 rounded-lg border border-input px-3 py-2.5">
+                        <FileUp class="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <span dir="ltr" class="min-w-0 flex-1 truncate text-start text-sm">{{ form.file.name }}</span>
+                        <span dir="ltr" class="shrink-0 text-xs text-muted-foreground tabular-nums">{{ formatFileSize(form.file.size) }}</span>
+                        <Button type="button" variant="ghost" size="icon-sm" class="-me-1 shrink-0" aria-label="إزالة الملف" @click="removeFile">
+                            <X />
+                        </Button>
+                    </div>
                     <p v-if="form.errors.file" class="text-sm text-destructive-foreground">{{ form.errors.file }}</p>
                 </div>
                 <DialogFooter>

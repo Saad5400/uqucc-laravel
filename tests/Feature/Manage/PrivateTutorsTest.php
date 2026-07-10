@@ -100,6 +100,36 @@ describe('create', function () {
             ->and($tutor->order)->toBe(2);
     });
 
+    it('creates a tutor with attached courses', function () {
+        [$first, $second] = PrivateTutorCourseFactory::new()->count(2)->create();
+
+        $this->actingAs($this->admin)
+            ->post('/manage/tutors', ['name' => 'خصوصي بمقررات', 'course_ids' => [$first->id, $second->id]])
+            ->assertSessionHasNoErrors();
+
+        $tutor = PrivateTutor::query()->where('name', 'خصوصي بمقررات')->first();
+        expect($tutor)->not->toBeNull()
+            ->and($tutor->courses->pluck('id')->sort()->values()->all())
+            ->toBe(collect([$first->id, $second->id])->sort()->values()->all());
+    });
+
+    it('creates a tutor without courses when an empty list is sent', function () {
+        $this->actingAs($this->admin)
+            ->post('/manage/tutors', ['name' => 'بلا مقررات', 'course_ids' => []])
+            ->assertSessionHasNoErrors();
+
+        expect(PrivateTutor::query()->where('name', 'بلا مقررات')->first()->courses)->toBeEmpty();
+    });
+
+    it('rejects course ids that do not exist on create', function () {
+        $response = $this->actingAs($this->admin)
+            ->post('/manage/tutors', ['name' => 'خصوصي', 'course_ids' => [999]]);
+
+        $response->assertSessionHasErrors(['course_ids.0' => 'أحد المقررات المحددة غير موجود.']);
+
+        expect(PrivateTutor::query()->where('name', 'خصوصي')->exists())->toBeFalse();
+    });
+
     it('creates a tutor without a url', function () {
         $this->actingAs($this->admin)
             ->post('/manage/tutors', ['name' => 'بدون رابط', 'url' => null])

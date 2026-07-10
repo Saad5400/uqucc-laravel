@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import EmptyState from '@/components/manage/EmptyState.vue';
 import { Button } from '@/components/ui/button';
+import { formatDateTime, formatRelativeTime } from '@/lib/formatters';
 import { router } from '@inertiajs/vue3';
 import { ArchiveRestore, Loader2, Trash2 } from 'lucide-vue-next';
 import { ref } from 'vue';
@@ -12,6 +13,11 @@ defineProps<{
 }>();
 
 const restoringId = ref<number | null>(null);
+
+/** `deleted_at` arrives as "Y-m-d H:i:s"; normalize for `Date` parsing across engines. */
+function toIso(dateTime: string): string {
+    return dateTime.replace(' ', 'T');
+}
 
 function restore(page: TrashedPageRow): void {
     restoringId.value = page.id;
@@ -50,7 +56,7 @@ function confirmForceDelete(page: TrashedPageRow): void {
                     </div>
                     <p class="text-xs text-muted-foreground">
                         <template v-if="page.parent_title">ضمن «{{ page.parent_title }}» · </template>
-                        حُذفت في {{ page.deleted_at }}
+                        حُذفت <span :title="formatDateTime(toIso(page.deleted_at))">{{ formatRelativeTime(toIso(page.deleted_at)) }}</span>
                     </p>
                 </div>
                 <div class="flex items-center gap-1">

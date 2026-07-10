@@ -269,7 +269,7 @@ onUnmounted(() => {
             </div>
         </div>
 
-        <div role="tablist" aria-label="أقسام الصفحة" class="flex w-fit max-w-full gap-1 overflow-x-auto rounded-lg bg-muted p-1">
+        <div role="tablist" aria-label="أقسام الصفحة" class="flex w-fit max-w-full flex-wrap gap-1 rounded-lg bg-muted p-1">
             <button
                 v-for="tab in tabs"
                 :key="tab.name"
@@ -281,11 +281,13 @@ onUnmounted(() => {
                 @click="setTab(tab.name)"
             >
                 {{ tab.label }}
-                <span v-if="tab.count !== undefined" class="text-xs text-muted-foreground">({{ tab.count }})</span>
+                <span v-if="tab.count" class="text-xs text-muted-foreground">({{ tab.count }})</span>
             </button>
         </div>
 
-        <PageContentTab v-show="activeTab === 'content'" ref="contentTab" :page="page" :copilot-enabled="copilot.enabled" />
+        <div v-show="activeTab === 'content'">
+            <PageContentTab ref="contentTab" :page="page" :copilot-enabled="copilot.enabled" />
+        </div>
         <PageSettingsTab
             v-show="activeTab === 'settings'"
             ref="settingsTab"
@@ -293,13 +295,9 @@ onUnmounted(() => {
             :parent-options="parentOptions"
             :descendant-ids="descendantIds"
         />
-        <PageTelegramTab
-            v-show="activeTab === 'telegram'"
-            ref="telegramTab"
-            :page="page"
-            :attachments="attachments"
-            :copilot-enabled="copilot.enabled"
-        />
+        <div v-show="activeTab === 'telegram'">
+            <PageTelegramTab ref="telegramTab" :page="page" :attachments="attachments" :copilot-enabled="copilot.enabled" />
+        </div>
         <PageChildrenTab v-show="activeTab === 'children'" :page="page" :children="children" @add-child="createChildOpen = true" />
         <PageAuthorsTab v-show="activeTab === 'authors'" :page="page" :authors="authors" :users="users" />
     </div>

@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Deferred, Head, router, usePoll } from '@inertiajs/vue3';
-import { FileText, Plus, Trash2 } from 'lucide-vue-next';
+import { FileText, Plus, Trash2, X } from 'lucide-vue-next';
 import { computed, provide, ref } from 'vue';
 
 defineOptions({ layout: ManageLayout });
@@ -203,7 +203,24 @@ const showTrash = ref(false);
 
     <div class="space-y-4">
         <div v-if="pages.length" class="flex flex-wrap items-center gap-2">
-            <Input v-model="search" type="search" placeholder="ابحث بالعنوان أو الرابط…" class="max-w-xs" aria-label="البحث في الصفحات" />
+            <div class="relative w-full max-w-xs">
+                <Input
+                    v-model="search"
+                    type="search"
+                    placeholder="ابحث بالعنوان أو الرابط…"
+                    class="search-input pe-8"
+                    aria-label="البحث في الصفحات"
+                />
+                <button
+                    v-if="search"
+                    type="button"
+                    aria-label="مسح البحث"
+                    class="absolute end-2 top-1/2 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                    @click="search = ''"
+                >
+                    <X class="size-4" />
+                </button>
+            </div>
             <div role="group" aria-label="تصفية الصفحات" class="flex w-fit gap-1 rounded-lg bg-muted p-1">
                 <button
                     v-for="chip in filterChips"
@@ -217,7 +234,7 @@ const showTrash = ref(false);
                     {{ chip.label }}
                 </button>
             </div>
-            <p v-if="isFiltering" class="text-xs text-muted-foreground">الترتيب بالسحب معطّل أثناء التصفية.</p>
+            <p v-if="isFiltering" class="text-xs text-muted-foreground">أثناء التصفية تُعرض النتائج موسّعة، والترتيب والطي معطّلان.</p>
         </div>
 
         <EmptyState
@@ -266,3 +283,11 @@ const showTrash = ref(false);
         </template>
     </ConfirmDialog>
 </template>
+
+<style scoped>
+/* Hide the WebKit-blue native clear button; the themed X button replaces it. */
+.search-input::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    appearance: none;
+}
+</style>

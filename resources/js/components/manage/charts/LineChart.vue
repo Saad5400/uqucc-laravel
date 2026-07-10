@@ -6,6 +6,7 @@
  * otherwise the latest point is emphasized.
  */
 import { formatNumber } from '@/lib/formatters';
+import { useElementSize } from '@vueuse/core';
 import { computed, ref } from 'vue';
 
 export interface LineChartPoint {
@@ -60,6 +61,17 @@ const yTicks = computed(() => [0, Math.round(maxValue.value / 2), maxValue.value
 const hoverIndex = ref<number | null>(null);
 const svgEl = ref<SVGSVGElement | null>(null);
 
+/**
+ * Text inside the SVG is sized in viewBox units, so when the chart renders
+ * narrower than its 600-unit viewBox (mobile) the labels shrink below
+ * legibility. Scale font sizes by the inverse render ratio to keep them at a
+ * constant on-screen size regardless of container width.
+ */
+const { width: renderedWidth } = useElementSize(svgEl);
+const fontScale = computed(() => (renderedWidth.value > 0 ? Math.min(2.4, Math.max(1, WIDTH / renderedWidth.value)) : 1));
+const tickFontSize = computed(() => 11 * fontScale.value);
+const readoutFontSize = computed(() => 12 * fontScale.value);
+
 const activeIndex = computed(() => hoverIndex.value ?? (props.points.length ? props.points.length - 1 : null));
 const activePoint = computed(() => (activeIndex.value === null ? null : props.points[activeIndex.value]));
 
@@ -78,10 +90,17 @@ function onPointerMove(event: PointerEvent): void {
 </script>
 
 <template>
+    <!--
+        direction is pinned to rtl on the SVG itself: SVG text-anchor semantics
+        follow CSS direction, so under rtl "start" anchors the text's RIGHT edge
+        at x and "end" anchors its LEFT edge. Anchors below are chosen by the
+        intended visual edge; Arabic labels also keep correct bidi ordering.
+    -->
     <svg
         ref="svgEl"
         :viewBox="`0 0 ${WIDTH} ${HEIGHT}`"
         class="w-full"
+        style="direction: rtl"
         role="img"
         :aria-label="label"
         @pointermove="onPointerMove"
@@ -89,7 +108,8 @@ function onPointerMove(event: PointerEvent): void {
     >
         <g v-for="tick in yTicks" :key="tick">
             <line :x1="X_END" :x2="X_START" :y1="yAt(tick)" :y2="yAt(tick)" class="stroke-border" stroke-width="1" stroke-dasharray="3 4" />
-            <text :x="X_START + 8" :y="yAt(tick) + 4" class="fill-muted-foreground text-[11px] tabular-nums" text-anchor="start">
+            <!-- Right edge at the canvas edge, flowing left into the y-label gutter. -->
+            <text :x="WIDTH - 2" :y="yAt(tick) + 4" class="fill-muted-foreground tabular-nums" :font-size="tickFontSize" text-anchor="start">
                 {{ formatNumber(tick) }}
             </text>
         </g>
@@ -98,8 +118,12 @@ function onPointerMove(event: PointerEvent): void {
             <path :d="areaPath" :fill="color" fill-opacity="0.12" />
             <path :d="linePath" fill="none" :stroke="color" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />
 
-            <text :x="xAt(0)" :y="HEIGHT - 8" class="fill-muted-foreground text-[11px]" text-anchor="end">{{ points[0].label }}</text>
-            <text :x="xAt(points.length - 1)" :y="HEIGHT - 8" class="fill-muted-foreground text-[11px]" text-anchor="start">
+            <!-- Oldest date (right side): right edge at its point, flowing left onto the canvas. -->
+            <text :x="xAt(0)" :y="HEIGHT - 8" class="fill-muted-foreground" :font-size="tickFontSize" text-anchor="start">
+                {{ points[0].label }}
+            </text>
+            <!-- Newest date (left side): left edge at its point, flowing right onto the canvas. -->
+            <text :x="xAt(points.length - 1)" :y="HEIGHT - 8" class="fill-muted-foreground" :font-size="tickFontSize" text-anchor="end">
                 {{ points[points.length - 1].label }}
             </text>
 
@@ -114,11 +138,14 @@ function onPointerMove(event: PointerEvent): void {
                     stroke-width="1"
                 />
                 <circle :cx="xAt(activeIndex)" :cy="yAt(activePoint.value)" r="4" :fill="color" class="stroke-background" stroke-width="2" />
-                <text :x="X_END" :y="14" class="fill-foreground text-[12px] font-medium" text-anchor="start">
+                <!-- Active-point readout: left edge pinned at the inline end of the plot. -->
+                <text :x="X_END" :y="readoutFontSize + 2" class="fill-foreground font-medium" :font-size="readoutFontSize" text-anchor="end">
                     {{ activePoint.label }} — {{ formatNumber(activePoint.value) }}
                 </text>
             </g>
         </template>
-        <text v-else :x="WIDTH / 2" :y="HEIGHT / 2" class="fill-muted-foreground text-[12px]" text-anchor="middle">لا توجد بيانات بعد</text>
+        <text v-else :x="WIDTH / 2" :y="HEIGHT / 2" class="fill-muted-foreground" :font-size="readoutFontSize" text-anchor="middle">
+            لا توجد بيانات بعد
+        </text>
     </svg>
 </template>

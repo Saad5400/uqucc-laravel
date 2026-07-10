@@ -1,16 +1,17 @@
 <script setup lang="ts">
 import ConfirmDialog from '@/components/manage/ConfirmDialog.vue';
 import EmptyState from '@/components/manage/EmptyState.vue';
-import { Badge } from '@/components/ui/badge';
+import { Badge, badgeVariants } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { useSortableList } from '@/composables/useSortableList';
+import { cn } from '@/lib/utils';
 import { router } from '@inertiajs/vue3';
 import { ArrowDown, ArrowUp, EllipsisVertical, ExternalLink, GraduationCap, GripVertical, Pencil, Plus, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import TutorFormDialog from './TutorFormDialog.vue';
-import type { TutorCourse, TutorRow } from './types';
+import { isolateLatinTokens, type TutorCourse, type TutorRow } from './types';
 
 const props = defineProps<{
     tutors: TutorRow[];
@@ -53,6 +54,35 @@ const filteredTutors = computed(() => {
 
 function displayUrl(url: string): string {
     return url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+}
+
+/** Long course-chip stacks make the mobile list kilometers tall — cap them per row, expandable. */
+const VISIBLE_COURSE_LIMIT = 3;
+
+const expandedCourseRows = ref(new Set<number>());
+
+function isRowExpanded(tutor: TutorRow): boolean {
+    return expandedCourseRows.value.has(tutor.id);
+}
+
+function visibleCourses(tutor: TutorRow): TutorCourse[] {
+    return isRowExpanded(tutor) ? tutor.courses : tutor.courses.slice(0, VISIBLE_COURSE_LIMIT);
+}
+
+function hiddenCourseCount(tutor: TutorRow): number {
+    return isRowExpanded(tutor) ? 0 : Math.max(tutor.courses.length - VISIBLE_COURSE_LIMIT, 0);
+}
+
+function toggleCourseRow(tutor: TutorRow): void {
+    const expanded = new Set(expandedCourseRows.value);
+
+    if (expanded.has(tutor.id)) {
+        expanded.delete(tutor.id);
+    } else {
+        expanded.add(tutor.id);
+    }
+
+    expandedCourseRows.value = expanded;
 }
 
 const formDialogOpen = ref(false);
@@ -136,7 +166,9 @@ function deleteTutor(): void {
                 @dragend="endDrag($event)"
                 @drop.prevent
             >
-                <GripVertical v-if="!isFiltering" class="size-4 shrink-0 cursor-grab text-muted-foreground" aria-hidden="true" />
+                <span v-if="!isFiltering" class="-m-2 flex size-10 shrink-0 cursor-grab items-center justify-center" aria-hidden="true">
+                    <GripVertical class="size-4 text-muted-foreground" />
+                </span>
                 <div class="min-w-0 flex-1 space-y-1">
                     <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
                         <span class="font-medium">{{ tutor.name }}</span>
@@ -153,13 +185,42 @@ function deleteTutor(): void {
                             <span class="truncate">{{ displayUrl(tutor.url) }}</span>
                         </a>
                     </div>
-                    <div v-if="tutor.courses.length" class="flex flex-wrap gap-1">
-                        <Badge v-for="course in tutor.courses" :key="course.id" variant="secondary">{{ course.name }}</Badge>
+                    <div v-if="tutor.courses.length" class="flex flex-wrap items-center gap-1">
+                        <Badge v-for="course in visibleCourses(tutor)" :key="course.id" variant="secondary">
+                            <bdi>{{ isolateLatinTokens(course.name) }}</bdi>
+                        </Badge>
+                        <button
+                            v-if="hiddenCourseCount(tutor) > 0"
+                            type="button"
+                            :class="
+                                cn(
+                                    badgeVariants({ variant: 'outline' }),
+                                    'cursor-pointer text-muted-foreground tabular-nums transition-colors hover:bg-accent hover:text-accent-foreground',
+                                )
+                            "
+                            :aria-label="`عرض ${hiddenCourseCount(tutor)} من المقررات الإضافية`"
+                            @click="toggleCourseRow(tutor)"
+                        >
+                            <span dir="ltr">+{{ hiddenCourseCount(tutor) }}</span>
+                        </button>
+                        <button
+                            v-else-if="tutor.courses.length > VISIBLE_COURSE_LIMIT"
+                            type="button"
+                            :class="
+                                cn(
+                                    badgeVariants({ variant: 'outline' }),
+                                    'cursor-pointer text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground',
+                                )
+                            "
+                            @click="toggleCourseRow(tutor)"
+                        >
+                            عرض أقل
+                        </button>
                     </div>
                 </div>
                 <DropdownMenu>
                     <DropdownMenuTrigger as-child>
-                        <Button variant="ghost" size="icon-sm" :aria-label="`إجراءات ${tutor.name}`">
+                        <Button variant="ghost" size="icon" :aria-label="`إجراءات ${tutor.name}`">
                             <EllipsisVertical />
                         </Button>
                     </DropdownMenuTrigger>

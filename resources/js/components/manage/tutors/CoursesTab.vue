@@ -10,7 +10,7 @@ import { router } from '@inertiajs/vue3';
 import { ArrowDown, ArrowUp, BookOpen, EllipsisVertical, GripVertical, Pencil, Plus, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import CourseFormDialog from './CourseFormDialog.vue';
-import type { CourseRow } from './types';
+import { isolateLatinTokens, type CourseRow } from './types';
 
 const props = defineProps<{
     courses: CourseRow[];
@@ -131,16 +131,20 @@ function deleteCourse(): void {
                 @dragend="endDrag($event)"
                 @drop.prevent
             >
-                <GripVertical v-if="!isFiltering" class="size-4 shrink-0 cursor-grab text-muted-foreground" aria-hidden="true" />
+                <span v-if="!isFiltering" class="-m-2 flex size-10 shrink-0 cursor-grab items-center justify-center" aria-hidden="true">
+                    <GripVertical class="size-4 text-muted-foreground" />
+                </span>
                 <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1">
-                    <span class="font-medium">{{ course.name }}</span>
+                    <span class="font-medium"
+                        ><bdi>{{ isolateLatinTokens(course.name) }}</bdi></span
+                    >
                     <Badge variant="outline">
                         {{ course.tutors_count > 0 ? `${course.tutors_count} من الخصوصيين` : 'غير مرتبط' }}
                     </Badge>
                 </div>
                 <DropdownMenu>
                     <DropdownMenuTrigger as-child>
-                        <Button variant="ghost" size="icon-sm" :aria-label="`إجراءات ${course.name}`">
+                        <Button variant="ghost" size="icon" :aria-label="`إجراءات ${course.name}`">
                             <EllipsisVertical />
                         </Button>
                     </DropdownMenuTrigger>
@@ -178,7 +182,8 @@ function deleteCourse(): void {
             @confirm="deleteCourse"
         >
             <template v-if="deletingCourse">
-                سيتم حذف المقرر «{{ deletingCourse.name }}» نهائياً.
+                سيتم حذف المقرر «<bdi>{{ isolateLatinTokens(deletingCourse.name) }}</bdi
+                >» نهائياً.
                 {{
                     deletingCourse.tutors_count > 0
                         ? `المقرر مرتبط بـ ${deletingCourse.tutors_count} من الخصوصيين وسيتم فصله عنهم دون حذفهم.`

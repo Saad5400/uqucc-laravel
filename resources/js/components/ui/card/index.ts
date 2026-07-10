@@ -30,8 +30,8 @@ export const cardHeaderVariants = cva(
     variants: {
       size: {
         sm: "gap-y-1 px-6 pt-6",
-        md: "gap-y-1.5 p-6",
-        lg: "gap-y-2 p-8",
+        md: "gap-y-1.5 px-6",
+        lg: "gap-y-2 px-8",
       },
     },
     defaultVariants: {
@@ -46,8 +46,8 @@ export const cardContentVariants = cva(
     variants: {
       size: {
         sm: "px-6 pb-6",
-        md: "p-6",
-        lg: "p-8",
+        md: "px-6",
+        lg: "px-8",
       },
     },
     defaultVariants: {

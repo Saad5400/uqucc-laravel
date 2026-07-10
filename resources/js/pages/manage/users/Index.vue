@@ -125,13 +125,13 @@ function deleteUser(): void {
                         <Badge v-for="role in user.roles" :key="role" :variant="role === 'admin' ? 'default' : 'secondary'">
                             {{ roleLabels[role] ?? role }}
                         </Badge>
-                        <Badge v-if="!user.verified" variant="outline" class="text-muted-foreground">
-                            <MailWarning />
-                            غير موثّق
-                        </Badge>
                     </div>
                     <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                         <span dir="ltr" class="truncate">{{ user.email }}</span>
+                        <span v-if="!user.verified" class="inline-flex items-center gap-1">
+                            <MailWarning class="size-3 shrink-0" />
+                            غير موثّق
+                        </span>
                         <span class="inline-flex items-center gap-1">
                             <FileText class="size-3 shrink-0" />
                             {{ formatPagesCount(user.pages_count) }}
@@ -145,7 +145,7 @@ function deleteUser(): void {
                 </div>
                 <DropdownMenu>
                     <DropdownMenuTrigger as-child>
-                        <Button variant="ghost" size="icon-sm" :aria-label="`إجراءات ${user.name}`">
+                        <Button variant="ghost" size="icon" :aria-label="`إجراءات ${user.name}`">
                             <EllipsisVertical />
                         </Button>
                     </DropdownMenuTrigger>
@@ -155,12 +155,13 @@ function deleteUser(): void {
                             تعديل
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
-                        <div :title="isSelf(user) ? 'لا يمكنك حذف حسابك' : undefined">
-                            <DropdownMenuItem variant="destructive" :disabled="isSelf(user)" @select="confirmDelete(user)">
-                                <Trash2 />
+                        <DropdownMenuItem variant="destructive" :disabled="isSelf(user)" @select="confirmDelete(user)">
+                            <Trash2 />
+                            <span class="flex flex-col items-start">
                                 حذف
-                            </DropdownMenuItem>
-                        </div>
+                                <span v-if="isSelf(user)" class="text-xs text-muted-foreground">لا يمكنك حذف حسابك</span>
+                            </span>
+                        </DropdownMenuItem>
                     </DropdownMenuContent>
                 </DropdownMenu>
             </li>

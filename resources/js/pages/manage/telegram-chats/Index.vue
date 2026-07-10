@@ -183,7 +183,7 @@ function runConfirmedAction(): void {
                     />
                     <DropdownMenu>
                         <DropdownMenuTrigger as-child>
-                            <Button variant="ghost" size="icon-sm" :aria-label="`إجراءات ${chatLabel(chat)}`">
+                            <Button variant="ghost" size="icon" :aria-label="`إجراءات ${chatLabel(chat)}`">
                                 <EllipsisVertical />
                             </Button>
                         </DropdownMenuTrigger>

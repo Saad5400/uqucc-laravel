@@ -5,19 +5,24 @@ namespace App\Ai\Corpus;
 use App\Ai\Spend\SpendLedger;
 use App\Models\Corpus\CorpusImageExtraction;
 use App\Settings\AiSettings;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\Files\Image;
+use RuntimeException;
 use Throwable;
 
 /**
  * Resolves the text content of one page-embedded image for corpus ingestion,
  * backed by the permanent {@see CorpusImageExtraction} cache.
  *
- * Only locally-stored images are ever OCRed: /storage/... URLs (relative or
- * absolute on our own host) map to the `public` disk and are hashed by FILE
- * bytes, so a re-upload with new content re-OCRs while a plain page re-save
- * hits the cache. External-host images are never fetched — they are recorded
- * as "skipped" (keyed by URL hash) and contribute only their alt text.
+ * Locally-stored images (/storage/... URLs, relative or absolute on our own
+ * host) map to the `public` disk and are hashed by FILE bytes, so a re-upload
+ * with new content re-OCRs while a plain page re-save hits the cache.
+ * External http(s) images are DOWNLOADED for OCR (size/type-guarded, only at
+ * the moment a paid extraction is actually possible) and cached permanently
+ * by URL hash — page content overwhelmingly embeds immutable GitHub/imgur
+ * links, so one fetch per URL is the right trade. Anything else (data: URIs,
+ * malformed sources) is recorded as "skipped" and contributes only alt text.
  *
  * The vision call happens ONLY when $ocr is true (ingestion), the master
  * ai_enabled switch is on, the OpenRouter key is set, and the daily budget
@@ -29,6 +34,9 @@ class PageImageExtractor
 {
     /** The public-disk URL prefix page images are served under. */
     private const STORAGE_URL_PREFIX = '/storage/';
+
+    /** Refuse to download external images larger than this (bytes). */
+    private const MAX_DOWNLOAD_BYTES = 10 * 1024 * 1024;
 
     public function __construct(
         private readonly AiSettings $settings,
@@ -59,9 +67,7 @@ class PageImageExtractor
         $absolutePath = $this->localPathFor($src);
 
         if ($absolutePath === null) {
-            $this->rememberSkipped($src);
-
-            return null;
+            return $this->resolveExternal($src, $ocr);
         }
 
         $hash = hash_file('sha256', $absolutePath);
@@ -83,6 +89,97 @@ class PageImageExtractor
         }
 
         return $this->transcribe($absolutePath, $src, $hash);
+    }
+
+    /**
+     * An external image, cached by URL hash. The download happens only when a
+     * paid extraction can actually follow (ingestion + vision on + budget), so
+     * a disabled installation never generates outbound traffic; a previously
+     * "skipped" row (the pre-fetching behavior) upgrades on the next ingest.
+     */
+    private function resolveExternal(string $src, bool $ocr): ?string
+    {
+        if (! in_array(strtolower((string) parse_url($src, PHP_URL_SCHEME)), ['http', 'https'], true)) {
+            $this->rememberSkipped($src);
+
+            return null;
+        }
+
+        $urlHash = hash('sha256', $src);
+        $cached = CorpusImageExtraction::query()->where('content_hash', $urlHash)->first();
+
+        if ($cached?->status === CorpusImageExtraction::STATUS_EXTRACTED) {
+            $text = trim((string) $cached->extracted_text);
+
+            return $text !== '' ? $text : null;
+        }
+
+        if (! $ocr || ! $this->visionIsAvailable() || ! $this->ledger->hasBudgetRemaining()) {
+            return null;
+        }
+
+        $temporaryPath = $this->download($src, $urlHash);
+
+        if ($temporaryPath === null) {
+            return null;
+        }
+
+        try {
+            return $this->transcribe($temporaryPath, $src, $urlHash);
+        } finally {
+            @unlink($temporaryPath);
+        }
+    }
+
+    /**
+     * Fetch an external image into a temp file, or null (with a "failed"
+     * cache row, retried next ingest) when it is unreachable, not an image,
+     * or over the size cap.
+     */
+    private function download(string $src, string $urlHash): ?string
+    {
+        try {
+            $response = Http::timeout(15)
+                ->withHeaders(['Accept' => 'image/*'])
+                ->maxRedirects(3)
+                ->get($src);
+
+            $contentType = strtolower(strtok((string) $response->header('Content-Type'), ';'));
+
+            if (! $response->successful()
+                || ! str_starts_with($contentType, 'image/')
+                || strlen($response->body()) === 0
+                || strlen($response->body()) > self::MAX_DOWNLOAD_BYTES) {
+                throw new RuntimeException(sprintf(
+                    'Unusable image response (status %d, type "%s", %d bytes).',
+                    $response->status(),
+                    $contentType,
+                    strlen($response->body()),
+                ));
+            }
+
+            $temporaryPath = tempnam(sys_get_temp_dir(), 'corpus-img-');
+
+            if ($temporaryPath === false || file_put_contents($temporaryPath, $response->body()) === false) {
+                return null;
+            }
+
+            return $temporaryPath;
+        } catch (Throwable $exception) {
+            report($exception);
+
+            CorpusImageExtraction::query()->updateOrCreate(
+                ['content_hash' => $urlHash],
+                [
+                    'source_url' => $src,
+                    'extracted_text' => null,
+                    'model' => null,
+                    'status' => CorpusImageExtraction::STATUS_FAILED,
+                ],
+            );
+
+            return null;
+        }
     }
 
     /**
@@ -172,9 +269,10 @@ class PageImageExtractor
     }
 
     /**
-     * Record an external or unresolvable image as permanently skipped, keyed
-     * by its URL hash (there are no file bytes to hash). Idempotent, and it
-     * never downgrades a row that somehow holds an extraction.
+     * Record a non-fetchable image source (data: URI, malformed URL) as
+     * permanently skipped, keyed by its URL hash (there are no file bytes to
+     * hash). Idempotent, and it never downgrades a row that somehow holds an
+     * extraction.
      */
     private function rememberSkipped(string $src): void
     {

@@ -36,36 +36,51 @@ const props = defineProps<{
     topCommands?: { command: string; uses: number }[];
 }>();
 
+/**
+ * Bot command names can be Arabic words (دليل، بحث…) or Latin machine text
+ * (/start). Only genuinely Latin values get the LTR + mono island treatment;
+ * Arabic names must stay in the RTL flow so contextual joining is preserved.
+ */
+function isLatinMachineText(value: string): boolean {
+    return /^[\x20-\x7E]+$/.test(value);
+}
+
 const tiles = computed(() => [
     {
         label: 'إجمالي الصفحات',
         value: formatNumber(props.stats.totalPages),
         sub: `منها ${formatNumber(props.stats.rootPages)} صفحات رئيسية`,
+        ltrValue: true,
     },
     {
         label: 'المساهمون',
         value: formatNumber(props.stats.contributors),
         sub: 'مستخدمون منسوبون إلى صفحات',
+        ltrValue: true,
     },
     {
         label: 'المشاهدات',
         value: formatNumber(props.stats.views30d),
-        sub: 'خلال آخر ٣٠ يومًا',
+        sub: 'خلال آخر 30 يومًا',
+        ltrValue: true,
     },
     {
         label: 'الزوار الفريدون',
         value: formatNumber(props.stats.uniqueVisitors30d),
-        sub: 'حسب عنوان IP، آخر ٣٠ يومًا',
+        sub: 'آخر 30 يومًا، حسب عنوان IP',
+        ltrValue: true,
     },
     {
         label: 'استخدام البوت',
         value: formatNumber(props.stats.botUses30d),
-        sub: 'خلال آخر ٣٠ يومًا',
+        sub: 'خلال آخر 30 يومًا',
+        ltrValue: true,
     },
     {
         label: 'الأمر الأكثر استخدامًا',
         value: props.stats.topCommand?.name ?? '—',
         sub: props.stats.topCommand ? `${formatNumber(props.stats.topCommand.uses)} مرة` : 'لا توجد بيانات بعد',
+        ltrValue: props.stats.topCommand ? isLatinMachineText(props.stats.topCommand.name) : false,
     },
 ]);
 
@@ -110,29 +125,31 @@ function clearCache(): void {
         <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
             <div v-for="tile in tiles" :key="tile.label" class="rounded-lg border border-border bg-card p-4">
                 <p class="text-sm text-muted-foreground">{{ tile.label }}</p>
-                <p class="mt-1 truncate text-2xl font-bold tabular-nums" dir="ltr" :title="tile.value">{{ tile.value }}</p>
-                <p class="mt-1 truncate text-xs text-muted-foreground">{{ tile.sub }}</p>
+                <p class="mt-1 truncate text-2xl font-bold tabular-nums" :dir="tile.ltrValue ? 'ltr' : undefined" :title="tile.value">
+                    {{ tile.value }}
+                </p>
+                <p class="mt-1 text-xs text-muted-foreground">{{ tile.sub }}</p>
             </div>
         </div>
 
         <div class="grid gap-4 lg:grid-cols-2">
             <section class="rounded-lg border border-border bg-card p-4">
-                <h2 class="mb-3 font-semibold">مشاهدات الصفحات خلال آخر ٣٠ يومًا</h2>
+                <h2 class="mb-3 font-semibold">مشاهدات الصفحات خلال آخر 30 يومًا</h2>
                 <Deferred data="viewsChart">
                     <template #fallback>
                         <Skeleton class="h-48 w-full" />
                     </template>
-                    <LineChart :points="toChartPoints(viewsChart)" color="var(--chart-2)" label="مشاهدات الصفحات خلال آخر ٣٠ يومًا" />
+                    <LineChart :points="toChartPoints(viewsChart)" color="var(--chart-2)" label="مشاهدات الصفحات خلال آخر 30 يومًا" />
                 </Deferred>
             </section>
 
             <section class="rounded-lg border border-border bg-card p-4">
-                <h2 class="mb-3 font-semibold">استخدام أوامر البوت خلال آخر ٣٠ يومًا</h2>
+                <h2 class="mb-3 font-semibold">استخدام أوامر البوت خلال آخر 30 يومًا</h2>
                 <Deferred data="commandsChart">
                     <template #fallback>
                         <Skeleton class="h-48 w-full" />
                     </template>
-                    <LineChart :points="toChartPoints(commandsChart)" color="var(--chart-1)" label="استخدام أوامر البوت خلال آخر ٣٠ يومًا" />
+                    <LineChart :points="toChartPoints(commandsChart)" color="var(--chart-1)" label="استخدام أوامر البوت خلال آخر 30 يومًا" />
                 </Deferred>
             </section>
         </div>
@@ -190,7 +207,13 @@ function clearCache(): void {
                     </template>
                     <ul v-if="topCommands?.length" class="divide-y divide-border">
                         <li v-for="command in topCommands" :key="command.command" class="flex items-center justify-between gap-3 py-2">
-                            <span class="min-w-0 truncate font-mono text-sm" dir="ltr">{{ command.command }}</span>
+                            <span
+                                class="min-w-0 truncate text-sm"
+                                :class="{ 'font-mono': isLatinMachineText(command.command) }"
+                                :dir="isLatinMachineText(command.command) ? 'ltr' : undefined"
+                            >
+                                {{ command.command }}
+                            </span>
                             <span class="shrink-0 text-xs text-muted-foreground tabular-nums" dir="ltr">{{ formatNumber(command.uses) }}</span>
                         </li>
                     </ul>

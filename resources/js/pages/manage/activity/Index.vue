@@ -2,6 +2,7 @@
 import ChangesDiff from '@/components/manage/activity/ChangesDiff.vue';
 import EventBadge from '@/components/manage/activity/EventBadge.vue';
 import {
+    eventLabels,
     subjectTypeLabel,
     type ActivityFilterOptions,
     type ActivityFilters,
@@ -49,7 +50,9 @@ function visit(filters: ActivityFilters, page?: number): void {
 
     router.get('/manage/activity', query, {
         preserveState: true,
-        preserveScroll: true,
+        // Filter controls sit at the top, so keep the scroll for filter changes;
+        // page changes must land the reader at the top of the new page's list.
+        preserveScroll: page === undefined,
         replace: true,
         only: ['activities', 'filters'],
     });
@@ -76,14 +79,29 @@ function toggleRow(activity: ActivityRow): void {
     expandedId.value = expandedId.value === activity.id ? null : activity.id;
 }
 
-function subjectLabel(activity: ActivityRow): string | null {
-    if (!activity.subject_type) {
-        return null;
+/** "default" is spatie's implicit log name — developer jargon, hidden from readers. */
+function displayLogName(logName: string | null): string | null {
+    return logName === null || logName === 'default' ? null : logName;
+}
+
+/**
+ * Extra machine context for the subline beyond the causer name: a meaningful
+ * log name, plus the description only when it says more than the event badge
+ * already does (spatie's default descriptions just repeat the event).
+ */
+function rowMeta(activity: ActivityRow): string[] {
+    const parts: string[] = [];
+    const logName = displayLogName(activity.log_name);
+
+    if (logName) {
+        parts.push(logName);
     }
 
-    const type = subjectTypeLabel(activity.subject_type);
+    if (activity.description && activity.description !== activity.event) {
+        parts.push(activity.description);
+    }
 
-    return activity.subject_title ? `${type}: ${activity.subject_title}` : `${type} #${activity.subject_id ?? '؟'}`;
+    return parts;
 }
 </script>
 
@@ -99,7 +117,9 @@ function subjectLabel(activity: ActivityRow): string | null {
                 </SelectTrigger>
                 <SelectContent>
                     <SelectItem :value="ALL">كل السجلات</SelectItem>
-                    <SelectItem v-for="name in filterOptions.logNames" :key="name" :value="name">{{ name }}</SelectItem>
+                    <SelectItem v-for="name in filterOptions.logNames" :key="name" :value="name">
+                        {{ name === 'default' ? 'السجل الافتراضي' : name }}
+                    </SelectItem>
                 </SelectContent>
             </Select>
 
@@ -110,7 +130,7 @@ function subjectLabel(activity: ActivityRow): string | null {
                 <SelectContent>
                     <SelectItem :value="ALL">كل الأحداث</SelectItem>
                     <SelectItem v-for="event in filterOptions.events" :key="event" :value="event">
-                        {{ event }}
+                        {{ eventLabels[event] ?? event }}
                     </SelectItem>
                 </SelectContent>
             </Select>
@@ -140,25 +160,43 @@ function subjectLabel(activity: ActivityRow): string | null {
             description="ستظهر هنا التغييرات على الصفحات والمستخدمين فور حدوثها."
         />
 
-        <p v-else-if="!activities.data.length" class="py-8 text-center text-sm text-muted-foreground">لا نتائج مطابقة للتصفية الحالية.</p>
+        <EmptyState
+            v-else-if="!activities.data.length"
+            :icon="FilterX"
+            title="لا نتائج مطابقة"
+            description="لا يوجد نشاط يطابق التصفية الحالية. جرّب توسيعها أو إعادة تعيينها."
+        >
+            <Button variant="outline" @click="resetFilters">
+                <FilterX class="size-4" />
+                إعادة تعيين التصفية
+            </Button>
+        </EmptyState>
 
         <ul v-else class="overflow-hidden rounded-lg border border-border">
             <li v-for="activity in activities.data" :key="activity.id" class="border-b border-border last:border-b-0">
                 <button
                     type="button"
-                    class="flex w-full flex-wrap items-center gap-x-3 gap-y-1 p-3 text-start hover:bg-muted/50"
+                    class="flex w-full flex-wrap items-center gap-x-3 gap-y-1 p-3 text-start hover:bg-accent"
                     :aria-expanded="expandedId === activity.id"
                     @click="toggleRow(activity)"
                 >
                     <EventBadge :event="activity.event" />
                     <span class="min-w-0 flex-1">
+                        <!-- User-generated names are bidi-isolated with <bdi> so emoji/Latin prefixes don't scramble the RTL line. -->
                         <span class="block truncate text-sm font-medium">
-                            {{ subjectLabel(activity) ?? activity.description }}
+                            <template v-if="activity.subject_type && activity.subject_title">
+                                {{ subjectTypeLabel(activity.subject_type) }}: <bdi>{{ activity.subject_title }}</bdi>
+                            </template>
+                            <template v-else-if="activity.subject_type">
+                                {{ subjectTypeLabel(activity.subject_type) }} <span dir="ltr">#{{ activity.subject_id ?? '؟' }}</span>
+                            </template>
+                            <template v-else>{{ activity.description }}</template>
                         </span>
-                        <span class="block truncate text-xs text-muted-foreground">
-                            <template v-if="activity.causer_name">{{ activity.causer_name }} · </template>
-                            <template v-if="activity.log_name">{{ activity.log_name }} · </template>
-                            {{ activity.description }}
+                        <span v-if="activity.causer_name || rowMeta(activity).length" class="block truncate text-xs text-muted-foreground">
+                            <bdi v-if="activity.causer_name">{{ activity.causer_name }}</bdi>
+                            <template v-for="(part, index) in rowMeta(activity)" :key="part">
+                                <template v-if="activity.causer_name || index > 0"> · </template>{{ part }}
+                            </template>
                         </span>
                     </span>
                     <span v-if="activity.created_at" class="shrink-0 text-xs text-muted-foreground" :title="formatDateTime(activity.created_at)">

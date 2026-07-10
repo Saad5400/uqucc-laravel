@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -19,7 +20,7 @@ import {
     useSidebar,
 } from '@/components/ui/sidebar';
 import { Link, usePage } from '@inertiajs/vue3';
-import { ChevronsUpDown, Globe, LogOut } from 'lucide-vue-next';
+import { ChevronsUpDown, Globe, LogOut, X } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { isNavItemActive, visibleNavItems } from './nav';
 
@@ -47,21 +48,29 @@ const navItems = computed(() => visibleNavItems(user.value?.permissions ?? []));
 </script>
 
 <template>
-    <Sidebar side="right" variant="floating">
+    <Sidebar side="right" variant="floating" collapsible="icon">
         <SidebarHeader>
-            <Link href="/manage" class="flex items-center gap-2 p-2">
-                <img alt="الشعار" class="size-6" src="/favicon.svg" />
-                <span class="font-semibold">لوحة الإدارة</span>
-            </Link>
+            <div class="flex items-center justify-between gap-1">
+                <Link
+                    href="/manage"
+                    class="flex min-w-0 items-center gap-2 p-2 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:p-1"
+                >
+                    <img alt="الشعار" class="size-6 shrink-0" src="/favicon.svg" />
+                    <span class="truncate font-semibold group-data-[collapsible=icon]:hidden">لوحة الإدارة</span>
+                </Link>
+                <Button v-if="sidebar.isMobile.value" variant="ghost" size="icon" aria-label="إغلاق القائمة" @click="sidebar.setOpenMobile(false)">
+                    <X />
+                </Button>
+            </div>
         </SidebarHeader>
         <SidebarContent style="scrollbar-gutter: stable">
             <SidebarGroup>
                 <SidebarMenu>
                     <SidebarMenuItem v-for="item in navItems" :key="item.href">
-                        <SidebarMenuButton class="text-start" as-child :is-active="isNavItemActive(item, page.url)">
+                        <SidebarMenuButton class="text-start" as-child :is-active="isNavItemActive(item, page.url)" :tooltip="item.title">
                             <Link :href="item.href" @click="sidebar.setOpenMobile(false)">
-                                <component :is="item.icon" class="!size-5" />
-                                {{ item.title }}
+                                <component :is="item.icon" class="!size-5 group-data-[collapsible=icon]:!size-4" />
+                                <span class="truncate">{{ item.title }}</span>
                             </Link>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -86,7 +95,7 @@ const navItems = computed(() => visibleNavItems(user.value?.permissions ?? []));
                                 <ChevronsUpDown class="ms-auto size-4" />
                             </SidebarMenuButton>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent side="top" align="start" class="w-(--reka-dropdown-menu-trigger-width)">
+                        <DropdownMenuContent side="top" align="start" class="w-(--reka-dropdown-menu-trigger-width) min-w-56">
                             <DropdownMenuLabel class="font-normal">
                                 <div class="flex flex-col">
                                     <span class="text-sm font-medium">{{ user.name }}</span>

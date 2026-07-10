@@ -162,18 +162,18 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <Button variant="outline" aria-label="البحث الذكي" class="gap-2 text-muted-foreground" @click="openPalette">
+    <Button variant="outline" aria-label="البحث الذكي" class="gap-2 border-primary/30 bg-primary/5 hover:bg-primary/10" @click="openPalette">
         <Sparkles class="size-4 text-amber-500" />
-        <span class="hidden md:inline">بحث ذكي</span>
+        <span class="hidden lg:inline">بحث ذكي</span>
         <kbd
-            class="pointer-events-none hidden items-center gap-1 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground md:inline-flex"
+            class="pointer-events-none hidden items-center gap-1 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground lg:inline-flex"
         >
             Ctrl K
         </kbd>
     </Button>
 
     <Dialog v-model:open="isOpen">
-        <DialogContent dir="rtl" class="top-24 max-w-xl translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-xl" :show-close-button="false">
+        <DialogContent dir="rtl" class="top-24 translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-xl" :show-close-button="false">
             <DialogTitle class="sr-only">البحث الذكي</DialogTitle>
             <DialogDescription class="sr-only">ابحث في محتوى الدليل بالذكاء الاصطناعي</DialogDescription>
 
@@ -182,7 +182,7 @@ onBeforeUnmount(() => {
                 <input
                     ref="searchInput"
                     v-model="query"
-                    type="search"
+                    type="text"
                     dir="rtl"
                     autocomplete="off"
                     placeholder="ابحث في الدليل..."
@@ -213,7 +213,7 @@ onBeforeUnmount(() => {
                                     :class="index === activeIndex ? 'opacity-100' : 'opacity-0'"
                                 />
                             </div>
-                            <p v-if="result.heading" class="text-[11px] text-muted-foreground/80">
+                            <p v-if="result.heading && result.heading !== result.title" class="text-[11px] text-muted-foreground/80">
                                 {{ result.heading }}
                             </p>
                             <p class="line-clamp-2 text-xs text-muted-foreground">{{ result.snippet }}</p>

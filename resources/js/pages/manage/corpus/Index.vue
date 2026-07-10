@@ -194,7 +194,7 @@ function runConfirmedAction(): void {
                 </div>
                 <DropdownMenu>
                     <DropdownMenuTrigger as-child>
-                        <Button variant="ghost" size="icon-sm" :aria-label="`إجراءات ${document.title}`">
+                        <Button variant="ghost" size="icon" :aria-label="`إجراءات ${document.title}`">
                             <EllipsisVertical />
                         </Button>
                     </DropdownMenuTrigger>

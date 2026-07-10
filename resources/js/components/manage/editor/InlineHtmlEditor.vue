@@ -40,7 +40,7 @@ const editor = useEditor({
     editorProps: {
         attributes: {
             dir: 'rtl',
-            class: 'typography min-h-16 rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
+            class: 'typography min-h-16 max-w-full overflow-x-auto rounded-md border border-input bg-muted/50 px-3 py-2 text-sm focus:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
             ...(props.ariaLabel ? { 'aria-label': props.ariaLabel } : {}),
         },
     },

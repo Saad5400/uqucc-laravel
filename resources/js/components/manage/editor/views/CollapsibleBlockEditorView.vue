@@ -34,15 +34,15 @@ function updateConfig(patch: Record<string, unknown>): void {
 
 <template>
     <NodeViewWrapper class="my-4" dir="rtl">
-        <div class="rounded-lg border shadow-xs" :class="selected && 'ring-[3px] ring-ring/50'">
-            <div class="flex items-center gap-2 rounded-t-lg border-b bg-secondary/60 px-3 py-2">
+        <div class="rounded-lg border bg-card shadow-xs" :class="selected && 'ring-[3px] ring-ring/50'">
+            <div class="flex items-center gap-2 rounded-t-lg border-b px-3 py-2">
                 <ChevronsUpDown class="size-4 shrink-0 text-muted-foreground" />
                 <span class="shrink-0 text-xs font-medium text-muted-foreground">قسم قابل للطي</span>
                 <Input
                     :model-value="question"
                     placeholder="العنوان (السؤال)"
                     aria-label="عنوان القسم القابل للطي"
-                    class="h-7 bg-background text-sm"
+                    class="h-7 text-sm"
                     @update:model-value="updateConfig({ question: String($event) })"
                 />
                 <button
@@ -55,7 +55,7 @@ function updateConfig(patch: Record<string, unknown>): void {
                     <Trash2 class="size-4" />
                 </button>
             </div>
-            <div class="rounded-b-lg bg-secondary/20 p-3 ps-6">
+            <div class="rounded-b-lg p-3 ps-6">
                 <InlineHtmlEditor :model-value="answer" aria-label="محتوى القسم القابل للطي" @update:model-value="updateConfig({ answer: $event })" />
             </div>
         </div>

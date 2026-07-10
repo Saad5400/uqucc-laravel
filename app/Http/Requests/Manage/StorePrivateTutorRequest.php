@@ -26,6 +26,8 @@ class StorePrivateTutorRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'url' => ['nullable', 'string', 'url', 'max:255'],
+            'course_ids' => ['sometimes', 'array'],
+            'course_ids.*' => ['integer', 'exists:private_tutor_courses,id'],
         ];
     }
 
@@ -43,6 +45,9 @@ class StorePrivateTutorRequest extends FormRequest
             'url.string' => 'يجب أن يكون الرابط نصاً.',
             'url.url' => 'يجب إدخال رابط صالح يبدأ بـ https:// أو http://.',
             'url.max' => 'يجب ألا يتجاوز الرابط ٢٥٥ حرفاً.',
+            'course_ids.array' => 'قائمة المقررات غير صالحة.',
+            'course_ids.*.integer' => 'معرّف المقرر غير صالح.',
+            'course_ids.*.exists' => 'أحد المقررات المحددة غير موجود.',
         ];
     }
 }

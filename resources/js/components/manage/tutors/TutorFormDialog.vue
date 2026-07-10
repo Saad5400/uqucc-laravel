@@ -48,7 +48,7 @@ function submit(): void {
             options,
         );
     } else {
-        form.transform((data) => ({ name: data.name, url: data.url.trim() === '' ? null : data.url.trim() })).post('/manage/tutors', options);
+        form.transform((data) => ({ ...data, url: data.url.trim() === '' ? null : data.url.trim() })).post('/manage/tutors', options);
     }
 }
 </script>
@@ -59,7 +59,7 @@ function submit(): void {
             <DialogHeader>
                 <DialogTitle>{{ isEditing ? 'تعديل الخصوصي' : 'إضافة خصوصي' }}</DialogTitle>
                 <DialogDescription>
-                    {{ isEditing ? 'عدّل بيانات الخصوصي والمقررات المرتبطة به.' : 'أدخل اسم الخصوصي ورابطه (اختياري).' }}
+                    {{ isEditing ? 'عدّل بيانات الخصوصي والمقررات المرتبطة به.' : 'أدخل اسم الخصوصي ورابطه ومقرراته (اختياريان).' }}
                 </DialogDescription>
             </DialogHeader>
             <form class="space-y-4" @submit.prevent="submit">
@@ -81,7 +81,7 @@ function submit(): void {
                     />
                     <p v-if="form.errors.url" class="text-sm text-destructive-foreground">{{ form.errors.url }}</p>
                 </div>
-                <div v-if="isEditing" class="space-y-2">
+                <div class="space-y-2">
                     <Label>المقررات</Label>
                     <CourseMultiSelect v-model="form.course_ids" :courses="courses" />
                     <p v-if="form.errors.course_ids" class="text-sm text-destructive-foreground">{{ form.errors.course_ids }}</p>

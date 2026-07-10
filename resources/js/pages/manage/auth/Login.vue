@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Head, useForm } from '@inertiajs/vue3';
@@ -87,7 +88,7 @@ function submit(): void {
                         <p v-if="form.errors.password" class="text-sm text-destructive-foreground">{{ form.errors.password }}</p>
                     </div>
                     <label class="flex items-center gap-2 text-sm select-none">
-                        <input v-model="form.remember" type="checkbox" name="remember" class="size-4 accent-primary" />
+                        <Checkbox v-model="form.remember" name="remember" />
                         تذكرني
                     </label>
                     <Button type="submit" class="w-full" :disabled="form.processing">

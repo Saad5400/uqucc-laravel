@@ -395,8 +395,8 @@ function toggleTextAlign(alignment: Alignment): void {
             <Button type="button" variant="secondary" @click="convertLegacyHtml">التحويل إلى المحرر الجديد</Button>
         </div>
 
-        <div v-else class="relative rounded-md border bg-background">
-            <div class="sticky top-0 z-10 flex flex-wrap items-center gap-0.5 rounded-t-md border-b bg-background/95 p-1 backdrop-blur">
+        <div v-else class="relative rounded-md border border-input">
+            <div class="sticky top-0 z-10 flex flex-wrap items-center gap-0.5 rounded-t-md border-b border-input bg-card/95 p-1 backdrop-blur">
                 <ToolbarButton :icon="Undo2" title="تراجع" :disabled="!editor?.can().undo()" @click="editor?.chain().focus().undo().run()" />
                 <ToolbarButton :icon="Redo2" title="إعادة" :disabled="!editor?.can().redo()" @click="editor?.chain().focus().redo().run()" />
 
@@ -609,9 +609,21 @@ function toggleTextAlign(alignment: Alignment): void {
 
             <p v-if="uploadError" class="border-b p-2 text-xs text-destructive">{{ uploadError }}</p>
 
-            <EditorContent :editor="editor" />
+            <EditorContent :editor="editor" class="editor-content-well overflow-x-auto" />
 
             <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFileInputChange" />
         </div>
     </div>
 </template>
+
+<style scoped>
+/* Wide content (tables, long lists) must scroll inside the well, never widen the page. */
+.editor-content-well :deep(.ProseMirror) {
+    max-width: 100%;
+}
+
+.editor-content-well :deep(.ProseMirror .tableWrapper) {
+    max-width: 100%;
+    overflow-x: auto;
+}
+</style>

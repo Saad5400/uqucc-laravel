@@ -12,8 +12,7 @@
             <!-- Information Alerts -->
             <Alert>
                 <AlertDescription>
-                    <b>كل نشاط منفصل</b>، مثلا تقدر تغيب 10% في <code>نشاط 1</code> و10% في <code>نشاط 2</code> بدون حرمان، نفس الشيء مع النشاط النظري
-                    والعملي.
+                    <b>كل نشاط منفصل</b>، مثلا تقدر تغيب 10% في <b>نشاط 1</b> و10% في <b>نشاط 2</b> بدون حرمان، نفس الشيء مع النشاط النظري والعملي.
                 </AlertDescription>
             </Alert>
             <Alert>
@@ -27,7 +26,15 @@
                 <div class="my-4 grid grid-cols-1 !space-y-0 gap-x-2 !gap-y-0 md:grid-cols-2 lg:grid-cols-3">
                     <div class="!mb-2 space-y-1">
                         <Label for="lecturesPerWeek">عدد الساعات في الأسبوع:</Label>
-                        <Input class="mt-2 mb-0" id="lecturesPerWeek" type="text" inputmode="numeric" v-model="lecsPerWk" placeholder="من 1 إلى 4" />
+                        <Input
+                            class="mt-2 mb-0 text-end tabular-nums"
+                            id="lecturesPerWeek"
+                            type="text"
+                            inputmode="numeric"
+                            dir="ltr"
+                            v-model="lecsPerWk"
+                            placeholder="من 1 إلى 4"
+                        />
                         <span class="pointer-events-none text-xs text-muted-foreground">
                             {{ formatLecturesPerWeek(lecsPerWk) }}
                         </span>
@@ -35,54 +42,76 @@
 
                     <div class="space-y-1">
                         <Label for="currentNoExcusedAbsences">ساعات الغياب الحالية بدون عذر:</Label>
-                        <Input id="currentNoExcusedAbsences" type="text" inputmode="numeric" v-model="unexcCnt" />
+                        <Input
+                            id="currentNoExcusedAbsences"
+                            type="text"
+                            inputmode="numeric"
+                            dir="ltr"
+                            class="text-end tabular-nums"
+                            v-model="unexcCnt"
+                            :aria-invalid="absenceOverflowWarning ? true : undefined"
+                            :aria-describedby="absenceOverflowWarning ? 'absence-overflow-warning' : undefined"
+                        />
                     </div>
 
                     <div class="my-0 space-y-1">
                         <Label for="currentExcusedAbsences">ساعات الغياب الحالية بعذر:</Label>
-                        <Input id="currentExcusedAbsences" type="text" inputmode="numeric" v-model="excCnt" />
+                        <Input
+                            id="currentExcusedAbsences"
+                            type="text"
+                            inputmode="numeric"
+                            dir="ltr"
+                            class="text-end tabular-nums"
+                            v-model="excCnt"
+                            :aria-invalid="absenceOverflowWarning ? true : undefined"
+                            :aria-describedby="absenceOverflowWarning ? 'absence-overflow-warning' : undefined"
+                        />
                     </div>
                 </div>
+
+                <p v-if="absenceOverflowWarning" id="absence-overflow-warning" class="!mb-2 text-xs text-destructive">
+                    {{ absenceOverflowWarning }}
+                </p>
 
                 <!-- Results Cards -->
                 <p v-if="!hasValidInput" class="text-muted-foreground">أدخل عدد الساعات في الأسبوع لعرض نتائج الحرمان</p>
                 <div v-else class="grid grid-cols-2 gap-2 !space-y-0 lg:grid-cols-4">
                     <!-- غياب بدون عذر -->
                     <Card size="sm">
-                        <CardHeader size="sm">
-                            <CardTitle>تقدر تغيب بدون عذر</CardTitle>
+                        <CardHeader size="sm" class="px-4 pt-3">
+                            <CardTitle class="text-sm font-medium text-muted-foreground">تقدر تغيب بدون عذر</CardTitle>
                         </CardHeader>
-                        <CardContent size="sm" class="text-end text-2xl font-bold tabular-nums">
+                        <CardContent size="sm" class="px-4 pb-3 text-end text-xl font-bold tabular-nums sm:text-2xl">
                             {{ isDeprived ? 'محروم' : formatHours(unexcLeft) }}
                         </CardContent>
                     </Card>
 
                     <!-- غياب بعذر -->
                     <Card size="sm">
-                        <CardHeader size="sm">
-                            <CardTitle>تقدر تغيب بعذر</CardTitle>
+                        <CardHeader size="sm" class="px-4 pt-3">
+                            <CardTitle class="text-sm font-medium text-muted-foreground">تقدر تغيب بعذر</CardTitle>
                         </CardHeader>
-                        <CardContent size="sm" class="text-end text-2xl font-bold tabular-nums">
+                        <CardContent size="sm" class="px-4 pb-3 text-end text-xl font-bold tabular-nums sm:text-2xl">
                             {{ isDeprived ? 'محروم' : formatHours(absLeft) }}
                         </CardContent>
                     </Card>
 
                     <!-- نسبة الغياب الحالية -->
                     <Card size="sm">
-                        <CardHeader size="sm">
-                            <CardTitle>نسبة الغياب الحالية</CardTitle>
+                        <CardHeader size="sm" class="px-4 pt-3">
+                            <CardTitle class="text-sm font-medium text-muted-foreground">نسبة الغياب الحالية</CardTitle>
                         </CardHeader>
-                        <CardContent size="sm" class="text-end text-2xl font-bold">
-                            <span dir="ltr" class="inline-block tabular-nums">{{ `${currentAbsRate}%` }}</span>
+                        <CardContent size="sm" class="px-4 pb-3 text-end text-xl font-bold sm:text-2xl">
+                            <span dir="ltr" class="inline-block tabular-nums">{{ `${displayedAbsRate}%` }}</span>
                         </CardContent>
                     </Card>
 
                     <!-- نسبة الغياب للساعة الواحدة -->
                     <Card class="m-0" size="sm">
-                        <CardHeader size="sm">
-                            <CardTitle>نسبة الغياب للساعة الواحدة</CardTitle>
+                        <CardHeader size="sm" class="px-4 pt-3">
+                            <CardTitle class="text-sm font-medium text-muted-foreground">نسبة الغياب للساعة الواحدة</CardTitle>
                         </CardHeader>
-                        <CardContent size="sm" class="text-end text-2xl font-bold">
+                        <CardContent size="sm" class="px-4 pb-3 text-end text-xl font-bold sm:text-2xl">
                             <span dir="ltr" class="inline-block tabular-nums">{{ lecWeight ? `${lecWeight}%` : '' }}</span>
                         </CardContent>
                     </Card>
@@ -148,8 +177,23 @@ const absLeft = computed(() => stats.value.absenceLeft);
 
 const currentAbsRate = computed(() => stats.value.currentAbsenceRate);
 
+/** النسبة المعروضة مقيّدة عند 100% — أكثر من ذلك يعني إدخالًا خاطئًا وحالة الحرمان تظهر في البطاقات الأخرى */
+const displayedAbsRate = computed(() => Math.min(currentAbsRate.value, 100));
+
 /** هل الطالب محروم؟ */
 const isDeprived = computed(() => stats.value.isDeprived);
+
+/** تحذير غير مانع عندما تتجاوز ساعات الغياب المدخلة إجمالي ساعات الفصل */
+const absenceOverflowWarning = computed(() => {
+    if (!hasValidInput.value) {
+        return null;
+    }
+    const totalAbsences = parseArabicNumber(unexcCnt.value) + parseArabicNumber(excCnt.value);
+    if (totalAbsences > stats.value.totalHours) {
+        return `ساعات الغياب المدخلة (${totalAbsences}) أكثر من إجمالي ساعات الفصل (${stats.value.totalHours})، تأكد من الأرقام`;
+    }
+    return null;
+});
 
 function formatLecturesPerWeek(lecturesPerWeek: string | number) {
     switch (lecturesPerWeek) {
@@ -181,8 +225,10 @@ function formatHours(hours: number | undefined) {
         return 'ساعة واحدة';
     } else if (hours === 2) {
         return 'ساعتين';
-    } else {
+    } else if (hours <= 10) {
         return `${hours} ساعات`;
+    } else {
+        return `${hours} ساعة`;
     }
 }
 </script>

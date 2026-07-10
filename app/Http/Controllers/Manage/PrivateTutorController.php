@@ -48,11 +48,15 @@ class PrivateTutorController extends Controller
     }
 
     /**
-     * Create a new tutor.
+     * Create a new tutor and attach its courses.
      */
     public function store(StorePrivateTutorRequest $request): RedirectResponse
     {
-        PrivateTutor::create($request->safe()->only(['name', 'url']));
+        $tutor = PrivateTutor::create($request->safe()->only(['name', 'url']));
+
+        if ($request->has('course_ids')) {
+            $tutor->courses()->sync($request->validated('course_ids', []));
+        }
 
         return back();
     }

@@ -48,7 +48,7 @@ function submit(): void {
     <div class="space-y-6">
         <Card class="max-w-2xl">
             <CardHeader>
-                <CardTitle>إعدادات تيليجرام</CardTitle>
+                <CardTitle class="text-lg">إعدادات تيليجرام</CardTitle>
             </CardHeader>
             <CardContent>
                 <form class="space-y-6" @submit.prevent="submit">
@@ -57,9 +57,9 @@ function submit(): void {
                         <TagsInput id="allowed-chat-ids" v-model="form.allowed_chat_ids" :aria-invalid="chatIdsError ? true : undefined">
                             <TagsInputItem v-for="chatId in form.allowed_chat_ids" :key="chatId" :value="chatId" dir="ltr">
                                 <TagsInputItemText />
-                                <TagsInputItemDelete :aria-label="`إزالة ${chatId}`" />
+                                <TagsInputItemDelete class="-m-1.5 p-1.5" :aria-label="`إزالة ${chatId}`" />
                             </TagsInputItem>
-                            <TagsInputInput placeholder="أضف معرّف محادثة…" dir="ltr" class="text-start" inputmode="numeric" />
+                            <TagsInputInput placeholder="أضف معرّف محادثة…" dir="auto" class="text-start" inputmode="numeric" />
                         </TagsInput>
                         <p class="text-xs text-muted-foreground">
                             معرّفات المحادثات (Chat IDs) المسموح لها باستخدام أوامر إدارة الصفحات. اتركها فارغة للسماح لجميع المحادثات. معرّفات
@@ -77,13 +77,12 @@ function submit(): void {
                     </div>
                     <p v-if="form.errors.auto_delete_messages" class="text-sm text-destructive-foreground">{{ form.errors.auto_delete_messages }}</p>
 
-                    <div class="flex justify-end">
-                        <span :title="!form.isDirty && !form.processing ? 'لا توجد تغييرات لحفظها' : undefined">
-                            <Button type="submit" :disabled="!form.isDirty || form.processing">
-                                <Loader2 v-if="form.processing" class="size-4 animate-spin" />
-                                حفظ الإعدادات
-                            </Button>
-                        </span>
+                    <div class="flex flex-wrap items-center justify-end gap-3">
+                        <p v-if="!form.isDirty && !form.processing" class="text-xs text-muted-foreground">لا توجد تغييرات لحفظها</p>
+                        <Button type="submit" :disabled="!form.isDirty || form.processing">
+                            <Loader2 v-if="form.processing" class="size-4 animate-spin" />
+                            حفظ الإعدادات
+                        </Button>
                     </div>
                 </form>
             </CardContent>

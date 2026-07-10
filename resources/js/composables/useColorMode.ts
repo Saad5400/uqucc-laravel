@@ -1,5 +1,5 @@
-import { computed } from 'vue';
 import { useDark, useToggle } from '@vueuse/core';
+import { computed } from 'vue';
 
 export function useColorMode() {
     const isDark = useDark({

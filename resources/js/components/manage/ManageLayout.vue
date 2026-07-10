@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { Breadcrumb, BreadcrumbItem, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
 import { Button } from '@/components/ui/button';
 import { SidebarProvider, SidebarTrigger } from '@/components/ui/sidebar';
 import { useColorMode } from '@/composables/useColorMode';
-import { usePage } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
 import { Moon, Sun } from 'lucide-vue-next';
 import { computed, watch } from 'vue';
 import { toast, Toaster } from 'vue-sonner';
@@ -18,8 +18,12 @@ interface ManageFlash {
 
 const page = usePage();
 const { isDark } = useColorMode();
+const toasterTheme = computed(() => (isDark.value ? 'dark' : 'light'));
 
 const activeNavItem = computed(() => manageNavItems.find((item) => isNavItemActive(item, page.url)));
+
+/** The dashboard is the breadcrumb root itself, so it gets no second crumb. */
+const sectionNavItem = computed(() => (activeNavItem.value && activeNavItem.value.href !== '/manage' ? activeNavItem.value : null));
 
 /**
  * Toast bridge: the backend flashes success/error messages into the shared
@@ -43,22 +47,29 @@ watch(
 </script>
 
 <template>
-    <SidebarProvider :default-open="true">
+    <SidebarProvider :default-open="true" style="--sidebar-width: 16rem">
         <ManageSidebar />
-        <div class="max-w-[calc(100dvw)] flex-1 space-y-4 p-2 md:max-w-[calc(100dvw-var(--sidebar-width))]">
-            <header class="flex !h-14 w-full items-center justify-between gap-2 rounded-lg border border-sidebar-border bg-sidebar p-2 shadow-sm">
+        <div class="min-w-0 flex-1 space-y-4 p-2">
+            <header
+                class="sticky top-2 z-20 flex !h-14 w-full items-center justify-between gap-2 rounded-lg border border-sidebar-border bg-sidebar p-2 shadow-sm"
+            >
                 <div class="flex min-w-0 items-center gap-1">
-                    <Button aria-label="فتح القائمة" as-child variant="ghost" size="icon" class="md:hidden">
+                    <Button aria-label="طي القائمة الجانبية أو فتحها" as-child variant="ghost" size="icon">
                         <SidebarTrigger />
                     </Button>
                     <slot name="breadcrumbs">
                         <Breadcrumb class="ms-2">
                             <BreadcrumbList>
-                                <BreadcrumbItem>لوحة الإدارة</BreadcrumbItem>
-                                <template v-if="activeNavItem">
+                                <BreadcrumbItem>
+                                    <BreadcrumbPage v-if="!sectionNavItem">لوحة الإدارة</BreadcrumbPage>
+                                    <BreadcrumbLink v-else as-child>
+                                        <Link href="/manage">لوحة الإدارة</Link>
+                                    </BreadcrumbLink>
+                                </BreadcrumbItem>
+                                <template v-if="sectionNavItem">
                                     <BreadcrumbSeparator />
                                     <BreadcrumbItem>
-                                        <BreadcrumbPage>{{ activeNavItem.title }}</BreadcrumbPage>
+                                        <BreadcrumbPage>{{ sectionNavItem.title }}</BreadcrumbPage>
                                     </BreadcrumbItem>
                                 </template>
                             </BreadcrumbList>
@@ -75,7 +86,7 @@ watch(
             <main class="w-full rounded-lg border border-sidebar-border bg-sidebar p-4 shadow-sm">
                 <slot />
             </main>
-            <Toaster />
+            <Toaster :theme="toasterTheme" dir="rtl" position="bottom-left" />
         </div>
     </SidebarProvider>
 </template>

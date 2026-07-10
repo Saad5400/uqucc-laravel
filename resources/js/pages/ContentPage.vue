@@ -1,17 +1,11 @@
 <script setup lang="ts">
-import { Link, usePage } from '@inertiajs/vue3';
-import { Icon } from '@iconify/vue';
 import DocsLayout from '@/components/layout/DocsLayout.vue';
-import SeoHead, { type SeoData } from '@/components/SeoHead.vue';
-import {
-    Breadcrumb,
-    BreadcrumbList,
-    BreadcrumbItem,
-    BreadcrumbLink,
-    BreadcrumbSeparator,
-} from '@/components/ui/breadcrumb';
-import Button from '@/components/ui/button/Button.vue';
 import RichContentRenderer from '@/components/RichContentRenderer.vue';
+import SeoHead, { type SeoData } from '@/components/SeoHead.vue';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '@/components/ui/breadcrumb';
+import Button from '@/components/ui/button/Button.vue';
+import { Icon } from '@iconify/vue';
+import { Link, usePage } from '@inertiajs/vue3';
 
 defineOptions({
     layout: DocsLayout,
@@ -82,8 +76,9 @@ usePage().props.title = props.page.title;
                                 {{ breadcrumb.title }}
                             </Link>
                         </BreadcrumbLink>
+                        <BreadcrumbPage v-else>{{ breadcrumb.title }}</BreadcrumbPage>
                     </BreadcrumbItem>
-                    <BreadcrumbSeparator v-if="index < breadcrumbs.length - 2" />
+                    <BreadcrumbSeparator v-if="index < breadcrumbs.length - 1" />
                 </template>
             </BreadcrumbList>
         </Breadcrumb>
@@ -91,43 +86,31 @@ usePage().props.title = props.page.title;
         <!-- Page title -->
         <div class="flex items-center gap-3">
             <Icon v-if="page.icon" :icon="page.icon" class="!size-8" />
-            <h1 class="text-3xl font-semibold m-0">{{ page.title }}</h1>
+            <h1 class="m-0 text-3xl font-semibold">{{ page.title }}</h1>
         </div>
 
         <!-- Page Content -->
-        <div class="typography">
-            <!-- Main content -->
-            <RichContentRenderer v-if="hasContent" :content="page.html_content" />
-
-            <!-- Page heading if no content -->
-            <h1 v-else class="flex items-center gap-2">
-                <i v-if="page.icon" :class="page.icon" class="!size-8" />
-                {{ breadcrumbs[breadcrumbs.length - 1]?.title }}
-            </h1>
-
-            <!-- Catalog section (always show at end if page has children) -->
-            <template v-if="page.catalog.length > 0">
-                <div class="grid grid-cols-[repeat(auto-fill,minmax(min(20rem,80dvw),1fr))] gap-4">
-                    <Button
-                        v-for="child in page.catalog"
-                        :key="child.id"
-                        as-child
-                        variant="secondary"
-                        class="p-8 text-2xl whitespace-normal size-full flex justify-start text-start"
-                    >
-                        <Link :href="child.slug" class="flex items-center gap-2 w-full no-underline text-current">
-                            <Icon v-if="child.icon" :icon="child.icon" class="!size-8 me-1" />
-                            {{ child.title }}
-                        </Link>
-                    </Button>
-                </div>
-            </template>
+        <div v-if="hasContent" class="typography">
+            <RichContentRenderer :content="page.html_content" />
         </div>
 
+        <!-- Catalog section (always show at end if page has children) -->
+        <nav v-if="page.catalog.length > 0" aria-label="الصفحات الفرعية" class="grid grid-cols-[repeat(auto-fill,minmax(min(15rem,100%),1fr))] gap-3">
+            <Link
+                v-for="child in page.catalog"
+                :key="child.id"
+                :href="child.slug"
+                class="flex min-h-14 items-center gap-3 rounded-lg border border-border bg-card p-4 text-card-foreground no-underline shadow-sm transition-colors hover:border-primary/50 hover:bg-accent"
+            >
+                <Icon v-if="child.icon" :icon="child.icon" class="!size-5 shrink-0 text-primary" />
+                <span class="min-w-0 text-base leading-snug font-medium">{{ child.title }}</span>
+            </Link>
+        </nav>
+
         <!-- Authors/Contributors -->
-        <div v-if="page.users.length > 0" class="mt-8 flex gap-2 items-center text-sm text-muted-foreground">
+        <div v-if="page.users.length > 0" class="mt-8 flex items-center gap-2 text-sm text-muted-foreground">
             <span>المساهمون:</span>
-            <div class="flex gap-2 flex-wrap">
+            <div class="flex flex-wrap gap-2">
                 <a
                     v-for="user in page.users"
                     :key="user.id"

@@ -4,6 +4,8 @@ import SeoHead, { type SeoData } from '@/components/SeoHead.vue';
 import DocsLayout from '@/components/layout/DocsLayout.vue';
 import PageHeader from '@/components/page/PageHeader.vue';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { renderMarkdown } from '@/lib/markdown';
 import { send as sendChat, show as showConversation } from '@/routes/ai/chat';
 import { store as storeAttachment } from '@/routes/ai/chat/attachments';
@@ -76,7 +78,17 @@ const conversationId = ref<string | null>(null);
 
 const messagesContainer = useTemplateRef<HTMLDivElement>('messagesContainer');
 const fileInput = useTemplateRef<HTMLInputElement>('fileInput');
-const draftInput = useTemplateRef<HTMLTextAreaElement>('draftInput');
+const draftInput = useTemplateRef<InstanceType<typeof Textarea>>('draftInput');
+
+/** Touch/coarse-pointer detection drives Enter behavior, autofocus, and the keyboard hint. */
+const isCoarsePointer = ref(false);
+
+const examplePrompts = [
+    'كيف أحسب معدلي التراكمي؟',
+    'ما شروط الحرمان من دخول الاختبار النهائي؟',
+    'ما مسارات التخصص المتاحة في الكلية؟',
+    'احسب معدلي من صورة سجلي الأكاديمي المرفقة',
+];
 
 let nextLocalId = 1;
 let nextClientId = 1;
@@ -332,7 +344,21 @@ const startNewConversation = (): void => {
     errorBanner.value = null;
 };
 
+const focusComposer = (): void => {
+    (draftInput.value?.$el as HTMLTextAreaElement | undefined)?.focus();
+};
+
+const useExamplePrompt = (prompt: string): void => {
+    draft.value = prompt;
+    focusComposer();
+};
+
 const openFilePicker = (): void => {
+    if (attachments.value.length >= MAX_ATTACHMENTS) {
+        errorBanner.value = `يمكن إرفاق ${MAX_ATTACHMENTS} ملفات كحد أقصى في الرسالة الواحدة.`;
+        return;
+    }
+
     fileInput.value?.click();
 };
 
@@ -418,8 +444,9 @@ const removeAttachment = (clientId: number): void => {
     attachments.value = attachments.value.filter((attachment) => attachment.clientId !== clientId);
 };
 
+/** Desktop: Enter sends, Shift+Enter breaks the line. Touch keyboards keep Enter as a newline — the send button sends. */
 const onComposerKeydown = (event: KeyboardEvent): void => {
-    if (event.key === 'Enter' && !event.shiftKey) {
+    if (event.key === 'Enter' && !event.shiftKey && !isCoarsePointer.value) {
         event.preventDefault();
         void sendMessage();
     }
@@ -428,8 +455,12 @@ const onComposerKeydown = (event: KeyboardEvent): void => {
 const citationUrl = (citation: Citation): string => showPage.url({ slug: citation.slug.replace(/^\/+/, '') }) || '/';
 
 onMounted(() => {
+    isCoarsePointer.value = window.matchMedia('(pointer: coarse)').matches;
     void rehydrateConversation();
-    draftInput.value?.focus();
+
+    if (!isCoarsePointer.value) {
+        focusComposer();
+    }
 });
 
 onBeforeUnmount(() => abortController?.abort());
@@ -444,21 +475,27 @@ onBeforeUnmount(() => abortController?.abort());
             <RichContentRenderer :content="page.html_content" />
         </div>
 
-        <div class="flex flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm" style="min-height: 60dvh">
+        <div class="flex h-[calc(100dvh-11.375rem)] min-h-96 flex-col">
             <!-- Conversation header -->
-            <div class="flex items-center justify-between gap-2 border-b border-border px-4 py-2">
-                <div class="flex items-center gap-2 text-sm text-muted-foreground">
-                    <Sparkles class="size-4 text-amber-500" />
+            <div class="flex items-center justify-between gap-2 border-b border-border/60 pb-2">
+                <div class="flex items-center gap-2 text-xs text-muted-foreground">
+                    <Sparkles class="size-3.5 shrink-0 text-amber-500" />
                     إجاباته مبنية على محتوى الدليل — وقد يخطئ، فتحقق من المصادر.
                 </div>
-                <Button v-if="messages.length > 0" variant="ghost" size="sm" class="gap-1.5 text-muted-foreground" @click="startNewConversation">
+                <Button
+                    v-if="messages.length > 0"
+                    variant="ghost"
+                    size="sm"
+                    class="shrink-0 gap-1.5 text-muted-foreground"
+                    @click="startNewConversation"
+                >
                     <RotateCcw class="size-3.5" />
                     محادثة جديدة
                 </Button>
             </div>
 
             <!-- Messages -->
-            <div ref="messagesContainer" class="flex-1 space-y-4 overflow-y-auto p-4" aria-live="polite">
+            <div ref="messagesContainer" class="min-h-0 flex-1 space-y-4 overflow-y-auto py-4" aria-live="polite">
                 <div v-if="isRehydrating" class="flex flex-col gap-3" aria-hidden="true">
                     <div class="h-10 w-2/3 animate-pulse self-start rounded-2xl bg-muted" />
                     <div class="h-16 w-3/4 animate-pulse self-end rounded-2xl bg-muted/70" />
@@ -466,26 +503,38 @@ onBeforeUnmount(() => abortController?.abort());
 
                 <div
                     v-else-if="messages.length === 0 && !assistantDisabled"
-                    class="flex h-full flex-col items-center justify-center gap-3 py-12 text-center"
+                    class="flex h-full flex-col items-center justify-center gap-3 px-2 py-8 text-center"
                 >
                     <Sparkles class="size-8 text-amber-500" />
                     <p class="font-medium">اسأل عن أي شيء يخص كلية الحاسبات</p>
                     <p class="max-w-md text-sm text-muted-foreground">
                         اللوائح، الحرمان، التخصصات، حساب المعدل… ويمكنك إرفاق صورة سجلك الأكاديمي وطلب حساب معدلك.
                     </p>
+
+                    <div class="mt-3 grid w-full max-w-xl gap-2 sm:grid-cols-2">
+                        <button
+                            v-for="prompt in examplePrompts"
+                            :key="prompt"
+                            type="button"
+                            class="min-h-11 rounded-lg border border-border/70 bg-muted/40 px-3 py-2 text-start text-sm text-foreground/80 transition hover:border-border hover:bg-muted hover:text-foreground"
+                            @click="useExamplePrompt(prompt)"
+                        >
+                            {{ prompt }}
+                        </button>
+                    </div>
                 </div>
 
                 <template v-for="message in messages" :key="message.id">
                     <!-- User bubble -->
                     <div v-if="message.role === 'user'" class="flex justify-end">
-                        <div class="max-w-[85%] rounded-2xl rounded-tl-sm bg-primary px-4 py-2.5 text-sm whitespace-pre-wrap text-primary-foreground">
+                        <div class="max-w-[85%] rounded-2xl rounded-se-sm bg-primary px-4 py-2.5 text-sm whitespace-pre-wrap text-primary-foreground">
                             {{ message.content }}
                         </div>
                     </div>
 
                     <!-- Assistant bubble -->
                     <div v-else class="flex justify-start">
-                        <div class="max-w-[85%] rounded-2xl rounded-tr-sm bg-muted px-4 py-2.5">
+                        <div class="max-w-[85%] rounded-2xl rounded-ss-sm bg-muted px-4 py-2.5">
                             <div
                                 v-if="message.streaming && message.content === ''"
                                 class="flex items-center gap-1 py-1"
@@ -504,7 +553,7 @@ onBeforeUnmount(() => abortController?.abort());
                                     v-for="(citation, index) in message.citations"
                                     :key="`${citation.slug}-${index}`"
                                     :href="citationUrl(citation)"
-                                    class="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-muted-foreground transition hover:bg-accent hover:text-accent-foreground"
+                                    class="inline-flex max-w-full items-center gap-1 rounded-full border border-border bg-card px-2.5 py-1 text-xs text-muted-foreground transition hover:border-foreground/25 hover:text-foreground"
                                 >
                                     <BookOpenText class="size-3 shrink-0" />
                                     <span class="truncate">{{ citation.title }}{{ citation.heading ? ` — ${citation.heading}` : '' }}</span>
@@ -515,23 +564,22 @@ onBeforeUnmount(() => abortController?.abort());
                 </template>
             </div>
 
-            <!-- Error banner -->
-            <div v-if="errorBanner && !assistantDisabled" class="border-t border-border bg-destructive/10 px-4 py-2 text-sm text-destructive">
-                {{ errorBanner }}
-            </div>
-
             <!-- Disabled state -->
-            <div v-if="assistantDisabled" class="border-t border-border px-4 py-8 text-center text-sm text-muted-foreground">
+            <div v-if="assistantDisabled" class="border-t border-border/60 py-8 text-center text-sm text-muted-foreground">
                 {{ disabledMessage }}
             </div>
 
             <!-- Daily quota state -->
-            <div v-else-if="dailyQuotaHit" class="border-t border-border px-4 py-8 text-center text-sm text-muted-foreground">
+            <div v-else-if="dailyQuotaHit" class="border-t border-border/60 py-8 text-center text-sm text-muted-foreground">
                 وصلت إلى الحد اليومي لرسائل المساعد لهذه الجلسة. عد غداً وسيسعدنا مساعدتك.
             </div>
 
             <!-- Composer -->
-            <div v-else class="border-t border-border p-3">
+            <div v-else class="border-t border-border/60 pt-3">
+                <div v-if="errorBanner" class="mb-2 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                    {{ errorBanner }}
+                </div>
+
                 <div v-if="attachments.length > 0" class="mb-2 flex flex-wrap gap-1.5">
                     <span
                         v-for="attachment in attachments"
@@ -551,7 +599,7 @@ onBeforeUnmount(() => abortController?.abort());
                         <span v-else class="text-[10px]">{{ attachment.error }}</span>
                         <button
                             type="button"
-                            class="rounded-full p-0.5 transition hover:bg-background/60"
+                            class="rounded-full p-0.5 transition hover:bg-foreground/10"
                             :aria-label="`إزالة المرفق ${attachment.name}`"
                             @click="removeAttachment(attachment.clientId)"
                         >
@@ -569,17 +617,23 @@ onBeforeUnmount(() => abortController?.abort());
                         accept="application/pdf,image/jpeg,image/png,image/webp"
                         @change="onFilesSelected"
                     />
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        aria-label="إرفاق ملف (PDF أو صورة، حتى ١٠ ميجابايت)"
-                        :disabled="isStreaming || attachments.length >= MAX_ATTACHMENTS"
-                        @click="openFilePicker"
-                    >
-                        <Paperclip class="size-4" />
-                    </Button>
+                    <Tooltip>
+                        <TooltipTrigger as-child>
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                class="size-11 shrink-0 text-muted-foreground hover:text-foreground md:size-9"
+                                aria-label="إرفاق ملف"
+                                :disabled="isStreaming"
+                                @click="openFilePicker"
+                            >
+                                <Paperclip class="size-4" />
+                            </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>إرفاق PDF أو صورة — حتى ٥ ملفات، ١٠ ميجابايت للملف</TooltipContent>
+                    </Tooltip>
 
-                    <textarea
+                    <Textarea
                         ref="draftInput"
                         v-model="draft"
                         dir="rtl"
@@ -587,20 +641,43 @@ onBeforeUnmount(() => abortController?.abort());
                         :maxlength="MAX_MESSAGE_LENGTH"
                         placeholder="اكتب سؤالك هنا…"
                         aria-label="نص الرسالة"
-                        class="max-h-40 min-h-10 flex-1 resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
+                        class="max-h-40 min-h-11 flex-1 resize-none md:min-h-9"
                         :disabled="isStreaming"
                         @keydown="onComposerKeydown"
                     />
 
-                    <Button v-if="isStreaming" variant="outline" size="icon" aria-label="إيقاف التوليد" @click="stopStreaming">
+                    <Button
+                        v-if="isStreaming"
+                        variant="outline"
+                        size="icon"
+                        class="size-11 shrink-0 md:size-9"
+                        aria-label="إيقاف التوليد"
+                        @click="stopStreaming"
+                    >
                         <CircleStop class="size-4 text-destructive" />
                     </Button>
-                    <Button v-else size="icon" aria-label="إرسال الرسالة" :disabled="draft.trim() === ''" @click="sendMessage">
+                    <Button
+                        v-else
+                        size="icon"
+                        class="size-11 shrink-0 md:size-9"
+                        aria-label="إرسال الرسالة"
+                        :disabled="draft.trim() === ''"
+                        :title="draft.trim() === '' ? 'اكتب رسالة أولاً' : undefined"
+                        @click="sendMessage"
+                    >
                         <SendHorizontal class="size-4 -scale-x-100" />
                     </Button>
                 </div>
 
-                <p class="mt-1.5 text-[11px] text-muted-foreground">Enter للإرسال، Shift+Enter لسطر جديد — حتى ٢٠٠٠ حرف.</p>
+                <div
+                    v-if="!isCoarsePointer || draft.length >= MAX_MESSAGE_LENGTH - 200"
+                    class="mt-1.5 flex min-h-4 items-center justify-between gap-2 text-xs text-muted-foreground"
+                >
+                    <p v-if="!isCoarsePointer">Enter للإرسال — Shift+Enter لسطر جديد.</p>
+                    <p v-if="draft.length >= MAX_MESSAGE_LENGTH - 200" class="ms-auto" dir="ltr">
+                        <span class="tabular-nums">{{ draft.length }} / {{ MAX_MESSAGE_LENGTH }}</span>
+                    </p>
+                </div>
             </div>
         </div>
     </DocsLayout>
@@ -642,9 +719,10 @@ onBeforeUnmount(() => abortController?.abort());
 
 .assistant-markdown :deep(code) {
     border-radius: 0.25rem;
-    background: var(--background);
+    background: color-mix(in oklab, var(--foreground) 8%, transparent);
     padding: 0.125rem 0.375rem;
     font-size: 0.8125em;
+    font-variant-numeric: tabular-nums;
     direction: ltr;
     unicode-bidi: embed;
 }
@@ -653,10 +731,10 @@ onBeforeUnmount(() => abortController?.abort());
     margin-block: 0.5rem;
     overflow-x: auto;
     border-radius: 0.5rem;
-    background: var(--background);
+    background: color-mix(in oklab, var(--foreground) 6%, transparent);
     padding: 0.75rem;
     direction: ltr;
-    text-align: left;
+    text-align: start;
 }
 
 .assistant-markdown :deep(pre code) {

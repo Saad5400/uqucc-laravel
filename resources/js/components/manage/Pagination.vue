@@ -21,7 +21,7 @@ const emit = defineEmits<{
 
 <template>
     <div v-if="pages > 1" class="flex flex-wrap items-center justify-between gap-3">
-        <p class="text-sm text-muted-foreground">
+        <p class="text-sm text-muted-foreground tabular-nums">
             صفحة {{ formatNumber(page) }} من {{ formatNumber(pages) }}
             <template v-if="total !== undefined"> — {{ formatNumber(total) }} سجل</template>
         </p>
