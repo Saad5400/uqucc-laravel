@@ -21,7 +21,7 @@ import {
 import { Link, usePage } from '@inertiajs/vue3';
 import { ChevronsUpDown, Globe, LogOut } from 'lucide-vue-next';
 import { computed } from 'vue';
-import { isNavItemActive, manageNavItems } from './nav';
+import { isNavItemActive, visibleNavItems } from './nav';
 
 interface ManageUser {
     id: number;
@@ -42,6 +42,8 @@ const roleLabels: Record<string, string> = {
 };
 
 const userRoles = computed(() => (user.value?.roles ?? []).map((role) => roleLabels[role] ?? role).join('، '));
+
+const navItems = computed(() => visibleNavItems(user.value?.permissions ?? []));
 </script>
 
 <template>
@@ -55,7 +57,7 @@ const userRoles = computed(() => (user.value?.roles ?? []).map((role) => roleLab
         <SidebarContent style="scrollbar-gutter: stable">
             <SidebarGroup>
                 <SidebarMenu>
-                    <SidebarMenuItem v-for="item in manageNavItems" :key="item.href">
+                    <SidebarMenuItem v-for="item in navItems" :key="item.href">
                         <SidebarMenuButton class="text-start" as-child :is-active="isNavItemActive(item, page.url)">
                             <Link :href="item.href" @click="sidebar.setOpenMobile(false)">
                                 <component :is="item.icon" class="!size-5" />
