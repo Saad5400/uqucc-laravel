@@ -2,14 +2,13 @@
 
 namespace App\Http\Controllers;
 
-use App\Filament\Resources\Pages\PageResource;
 use App\Models\Page;
 use App\Support\Seo;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
-use Illuminate\Support\Facades\Storage;
 
 class PageController extends Controller
 {
@@ -86,7 +85,8 @@ class PageController extends Controller
     private function getPageCacheKey(string $slug): string
     {
         $normalizedSlug = str_replace('/', '_', trim($slug, '/')) ?: 'home';
-        return config('app-cache.keys.page', 'page') . ':' . $normalizedSlug;
+
+        return config('app-cache.keys.page', 'page').':'.$normalizedSlug;
     }
 
     /**
@@ -133,7 +133,7 @@ class PageController extends Controller
                     'icon' => $child->icon,
                 ])->toArray(),
                 'can_edit' => $canEdit,
-                'edit_url' => $canEdit ? PageResource::getUrl('edit', ['record' => $page]) : null,
+                'edit_url' => $canEdit ? route('manage.pages.edit', $page) : null,
                 'catalog' => $this->getCachedCatalogPages($page),
                 'quick_response' => [
                     'enabled' => $page->quick_response_enabled,
@@ -165,7 +165,7 @@ class PageController extends Controller
     private function getCachedBreadcrumbs(Page $page): array
     {
         $version = $page->updated_at ? $page->updated_at->timestamp : '0';
-        $cacheKey = config('app-cache.keys.page_breadcrumbs', 'page_breadcrumbs') . ':' . $page->id . ':' . $version;
+        $cacheKey = config('app-cache.keys.page_breadcrumbs', 'page_breadcrumbs').':'.$page->id.':'.$version;
 
         return Cache::remember(
             $cacheKey,
@@ -202,7 +202,7 @@ class PageController extends Controller
     private function getCachedCatalogPages(Page $page): array
     {
         $version = $page->updated_at ? $page->updated_at->timestamp : '0';
-        $cacheKey = config('app-cache.keys.catalog_pages', 'catalog_pages') . ':' . $page->id . ':' . $version;
+        $cacheKey = config('app-cache.keys.catalog_pages', 'catalog_pages').':'.$page->id.':'.$version;
 
         return Cache::remember(
             $cacheKey,

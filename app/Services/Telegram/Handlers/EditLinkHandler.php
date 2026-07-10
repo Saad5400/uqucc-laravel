@@ -68,7 +68,7 @@ class EditLinkHandler extends BaseHandler
      */
     protected function sendEditLink(Message $message, Page $page): void
     {
-        $editUrl = url('/admin/pages/'.$page->id.'/edit');
+        $editUrl = route('manage.pages.edit', $page);
 
         // Build the raw format content
         $rawContent = $this->buildRawContentFormat($page);

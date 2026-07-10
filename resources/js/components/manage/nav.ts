@@ -14,7 +14,7 @@ export const manageNavItems: ManageNavItem[] = [
     { title: 'الصفحات', href: '/manage/pages', icon: FileText },
     { title: 'المستخدمون', href: '/manage/users', icon: Users, permission: 'manage-users' },
     { title: 'الخصوصيون', href: '/manage/tutors', icon: GraduationCap, permission: 'manage-private-tutors' },
-    { title: 'سجل النشاط', href: '/manage/activity', icon: Activity },
+    { title: 'سجل النشاط', href: '/manage/activity', icon: Activity, permission: 'view-activity-logs' },
     { title: 'الإعدادات', href: '/manage/settings', icon: Settings },
 ];
 

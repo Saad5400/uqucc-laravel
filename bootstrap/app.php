@@ -29,6 +29,17 @@ return Application::configure(basePath: dirname(__DIR__))
             'manage.access' => EnsureUserCanManage::class,
         ]);
 
+        /*
+         * TipTap documents (html_content, quick_response_message) must
+         * round-trip byte-identically: trimming nested text nodes would eat
+         * meaningful spaces (e.g. the trailing space before a bold span).
+         * Title/slug on this endpoint are trimmed client-side / regex-validated.
+         * (Path check, not routeIs(): this global middleware runs pre-routing.)
+         */
+        $middleware->trimStrings(except: [
+            fn (Request $request) => $request->isMethod('PUT') && $request->is('manage/pages/*'),
+        ]);
+
         $middleware->redirectGuestsTo(fn (Request $request) => route('manage.login'));
 
         // Trust all proxies to get real client IP from X-Forwarded-For headers

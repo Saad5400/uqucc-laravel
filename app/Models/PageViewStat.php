@@ -2,11 +2,15 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PageViewStat extends Model
 {
+    /** @use HasFactory<\Database\Factories\PageViewStatFactory> */
+    use HasFactory;
+
     protected $fillable = [
         'page_id',
         'user_id',

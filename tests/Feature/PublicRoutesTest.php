@@ -1,6 +1,8 @@
 <?php
 
+use App\Models\User;
 use Database\Factories\PageFactory;
+use Database\Seeders\RolesAndPermissionsSeeder;
 use Inertia\Testing\AssertableInertia as Assert;
 
 it('renders the welcome page when no homepage exists', function () {
@@ -120,6 +122,35 @@ it('serves robots.txt as plain text', function () {
         ->toContain('User-agent: *')
         ->toContain('Disallow: /admin')
         ->toContain('Sitemap: ');
+});
+
+it('shares the manage edit url with users who can edit content', function () {
+    $this->seed(RolesAndPermissionsSeeder::class);
+
+    $page = PageFactory::new()->create(['slug' => '/altkhssat', 'title' => 'التخصصات']);
+
+    $editor = User::factory()->create();
+    $editor->assignRole('editor');
+
+    $this->actingAs($editor)->get('/altkhssat')->assertInertia(fn (Assert $assert) => $assert
+        ->where('page.can_edit', true)
+        ->where('page.edit_url', route('manage.pages.edit', $page))
+    );
+
+    expect(route('manage.pages.edit', $page))->toContain("/manage/pages/{$page->id}/edit");
+
+    // Pins the bot's EditLinkHandler swap: route() must yield the same
+    // absolute-URL shape url('/manage/pages/{id}/edit') produced.
+    expect(route('manage.pages.edit', $page))->toBe(url("/manage/pages/{$page->id}/edit"));
+});
+
+it('hides the edit url from guests', function () {
+    PageFactory::new()->create(['slug' => '/altkhssat', 'title' => 'التخصصات']);
+
+    $this->get('/altkhssat')->assertInertia(fn (Assert $assert) => $assert
+        ->where('page.can_edit', false)
+        ->where('page.edit_url', null)
+    );
 });
 
 it('serves cached responses to guests on repeated visits', function () {
