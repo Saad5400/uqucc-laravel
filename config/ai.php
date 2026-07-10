@@ -97,6 +97,7 @@ return [
     'vision' => [
         'model' => env('AI_VISION_MODEL', 'google/gemini-2.5-flash'),
         'timeout' => (int) env('AI_VISION_TIMEOUT', 45),
+        'document_timeout' => (int) env('AI_VISION_DOCUMENT_TIMEOUT', 180),
         'max_tokens' => (int) env('AI_VISION_MAX_TOKENS', 2500),
     ],
 
