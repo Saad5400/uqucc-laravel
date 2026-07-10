@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Http\Middleware\CacheResponse;
 use App\Services\OgImageService;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -18,7 +19,9 @@ use Spatie\EloquentSortable\SortableTrait;
 
 class Page extends Model implements Sortable
 {
-    use LogsActivity, SoftDeletes;
+    /** @use HasFactory<\Database\Factories\PageFactory> */
+    use HasFactory, LogsActivity, SoftDeletes;
+
     use SortableTrait;
 
     protected static function booted(): void

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureUserCanManage;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\TrackPageViews;
 use Illuminate\Foundation\Application;
@@ -10,7 +11,10 @@ use Illuminate\Http\Request;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
-        web: __DIR__.'/../routes/web.php',
+        web: [
+            __DIR__.'/../routes/manage.php',
+            __DIR__.'/../routes/web.php',
+        ],
         commands: __DIR__.'/../routes/console.php',
         health: '/up',
     )
@@ -20,6 +24,12 @@ return Application::configure(basePath: dirname(__DIR__))
             AddLinkHeadersForPreloadedAssets::class,
             TrackPageViews::class,
         ]);
+
+        $middleware->alias([
+            'manage.access' => EnsureUserCanManage::class,
+        ]);
+
+        $middleware->redirectGuestsTo(fn (Request $request) => route('manage.login'));
 
         // Trust all proxies to get real client IP from X-Forwarded-For headers
         $middleware->trustProxies(
