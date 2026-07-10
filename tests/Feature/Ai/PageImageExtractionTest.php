@@ -8,6 +8,7 @@ use App\Models\Corpus\CorpusItem;
 use App\Models\Page;
 use App\Settings\AiSettings;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function () {
@@ -153,20 +154,91 @@ describe('page image extraction', function () {
         DocumentExtractionAgent::assertNeverPrompted();
     });
 
-    it('marks external-host images skipped and keeps only their alt text', function () {
+    it('downloads and OCRs an external image, caching the transcription by URL hash', function () {
         config()->set('ai.providers.openrouter.key', 'test-key');
-        DocumentExtractionAgent::fake(['يجب ألا يُستدعى النموذج.']);
+        DocumentExtractionAgent::fake(['خطوات التسجيل في الدورة']);
 
         $src = 'https://i.imgur.com/abc123.png';
+        Http::fake([$src => Http::response(
+            (string) UploadedFile::fake()->image('abc123.png')->getContent(),
+            headers: ['Content-Type' => 'image/png'],
+        )]);
+
         $page = makeImagePage($src, alt: 'شعار الكلية');
 
-        expect(ingestedText($page))->toContain('[صورة: شعار الكلية]');
+        expect(ingestedText($page))->toContain('[محتوى صورة: شعار الكلية]')
+            ->toContain('خطوات التسجيل في الدورة');
 
         $extraction = CorpusImageExtraction::query()->sole();
 
-        expect($extraction->status)->toBe(CorpusImageExtraction::STATUS_SKIPPED)
+        expect($extraction->status)->toBe(CorpusImageExtraction::STATUS_EXTRACTED)
             ->and($extraction->content_hash)->toBe(hash('sha256', $src))
             ->and($extraction->source_url)->toBe($src);
+
+        expect(AiUsage::query()->where('feature', 'ingest')->count())->toBe(1);
+    });
+
+    it('never re-downloads an external image once its transcription is cached', function () {
+        config()->set('ai.providers.openrouter.key', 'test-key');
+        DocumentExtractionAgent::fake(['نص الصورة الخارجية']);
+
+        $src = 'https://i.imgur.com/cached.png';
+        Http::fake([$src => Http::response(
+            (string) UploadedFile::fake()->image('cached.png')->getContent(),
+            headers: ['Content-Type' => 'image/png'],
+        )]);
+
+        $page = makeImagePage($src, alt: 'ملصق');
+
+        $content = $page->html_content;
+        $content['content'][0]['content'][0]['text'] = 'مقدمة معدلة';
+        $page->update(['html_content' => $content]);
+
+        Http::assertSentCount(1);
+        expect(AiUsage::query()->where('feature', 'ingest')->count())->toBe(1);
+    });
+
+    it('marks an unreachable external image failed and keeps only alt text', function () {
+        config()->set('ai.providers.openrouter.key', 'test-key');
+        DocumentExtractionAgent::fake(['يجب ألا يُستدعى النموذج.']);
+        Http::fake(['*' => Http::response('not found', 404)]);
+
+        $src = 'https://i.imgur.com/gone.png';
+        $page = makeImagePage($src, alt: 'شعار');
+
+        expect(ingestedText($page))->toContain('[صورة: شعار]')
+            ->not->toContain('محتوى صورة');
+
+        expect(CorpusImageExtraction::query()->sole()->status)->toBe(CorpusImageExtraction::STATUS_FAILED);
+
+        DocumentExtractionAgent::assertNeverPrompted();
+    });
+
+    it('does not fetch external images at all when vision is unavailable', function () {
+        config()->set('ai.providers.openrouter.key', '');
+        DocumentExtractionAgent::fake(['يجب ألا يُستدعى النموذج.']);
+        Http::fake();
+
+        $page = makeImagePage('https://i.imgur.com/later.png', alt: 'شعار الكلية');
+
+        expect(ingestedText($page))->toContain('[صورة: شعار الكلية]');
+
+        Http::assertNothingSent();
+        expect(CorpusImageExtraction::query()->count())->toBe(0);
+
+        DocumentExtractionAgent::assertNeverPrompted();
+    });
+
+    it('marks non-fetchable image sources skipped', function () {
+        config()->set('ai.providers.openrouter.key', 'test-key');
+        DocumentExtractionAgent::fake(['يجب ألا يُستدعى النموذج.']);
+
+        $src = 'data:image/png;base64,iVBORw0KGgo=';
+        $page = makeImagePage($src, alt: 'مضمنة');
+
+        expect(ingestedText($page))->toContain('[صورة: مضمنة]');
+
+        expect(CorpusImageExtraction::query()->sole()->status)->toBe(CorpusImageExtraction::STATUS_SKIPPED);
 
         DocumentExtractionAgent::assertNeverPrompted();
     });
@@ -207,7 +279,11 @@ describe('page image extraction', function () {
 
     it('extracts img tags embedded in customBlock config html', function () {
         config()->set('ai.providers.openrouter.key', 'test-key');
-        DocumentExtractionAgent::fake(['يجب ألا يُستدعى النموذج.']);
+        DocumentExtractionAgent::fake(['نص جدول المفاضلة']);
+        Http::fake(['*' => Http::response(
+            (string) UploadedFile::fake()->image('x.png')->getContent(),
+            headers: ['Content-Type' => 'image/png'],
+        )]);
 
         $page = Page::factory()->create([
             'title' => 'التحويل',
@@ -228,11 +304,10 @@ describe('page image extraction', function () {
             ],
         ]);
 
-        expect(ingestedText($page))->toContain('[صورة: جدول المفاضلة]');
+        expect(ingestedText($page))->toContain('[محتوى صورة: جدول المفاضلة]')
+            ->toContain('نص جدول المفاضلة');
 
-        expect(CorpusImageExtraction::query()->sole()->status)->toBe(CorpusImageExtraction::STATUS_SKIPPED);
-
-        DocumentExtractionAgent::assertNeverPrompted();
+        expect(CorpusImageExtraction::query()->sole()->status)->toBe(CorpusImageExtraction::STATUS_EXTRACTED);
     });
 
     it('drops images with neither alt text nor extractable content silently', function () {
