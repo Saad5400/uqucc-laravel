@@ -4,6 +4,7 @@ use App\Http\Controllers\Manage\LoginController;
 use App\Http\Controllers\Manage\PrivateTutorController;
 use App\Http\Controllers\Manage\PrivateTutorCourseController;
 use App\Http\Controllers\Manage\TelegramSettingsController;
+use App\Http\Controllers\Manage\UserController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -15,6 +16,13 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 
         Route::get('/', fn () => Inertia::render('manage/Dashboard'))->name('dashboard');
+
+        Route::middleware('can:manage-users')->group(function () {
+            Route::get('/users', [UserController::class, 'index'])->name('users.index');
+            Route::post('/users', [UserController::class, 'store'])->name('users.store');
+            Route::put('/users/{user}', [UserController::class, 'update'])->name('users.update');
+            Route::delete('/users/{user}', [UserController::class, 'destroy'])->name('users.destroy');
+        });
 
         Route::middleware('can:manage-private-tutors')->group(function () {
             Route::get('/tutors', [PrivateTutorController::class, 'index'])->name('tutors.index');
