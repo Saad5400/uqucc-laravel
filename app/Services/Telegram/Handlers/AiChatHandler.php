@@ -9,6 +9,7 @@ use App\Ai\Chat\SessionOwner;
 use App\Ai\Spend\SpendLedger;
 use App\Models\Ai\ChatAttachment;
 use App\Models\TelegramChatSetting;
+use App\Services\Telegram\TelegramStreamingProgress;
 use App\Services\TelegramMarkdownService;
 use App\Settings\AiSettings;
 use App\Support\LocalFile;
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\Models\Conversation;
+use Laravel\Ai\Streaming\Events\Error as ErrorEvent;
 use Telegram\Bot\Api;
 use Telegram\Bot\Objects\Document;
 use Telegram\Bot\Objects\Message;
@@ -212,9 +214,12 @@ class AiChatHandler extends BaseHandler
     }
 
     /**
-     * Run the turn against the shared assistant, continuing the chat's stored
-     * conversation, and edit the placeholder with the reply. Spend is
-     * captured from the gateway's Context costs exactly like the web chat.
+     * Run the turn against the shared assistant as a live stream, continuing
+     * the chat's stored conversation. While the model works, the placeholder
+     * message is edited with throttled plain-text progress (reasoning tail,
+     * tool activity, the growing answer); the final formatted reply then
+     * replaces it. Spend is captured from the gateway's Context costs exactly
+     * like the web chat.
      */
     protected function runAssistantTurn(Message $message, TelegramChatSetting $chatSettings, string $prompt, int $placeholderMessageId): void
     {
@@ -231,9 +236,29 @@ class AiChatHandler extends BaseHandler
             : $agent->forUser($owner);
 
         try {
-            $response = $agent->prompt($prompt);
+            $response = $agent->stream($prompt);
+
+            $progress = new TelegramStreamingProgress($this->telegram, $chatId, $placeholderMessageId);
+
+            $failed = false;
+
+            foreach ($response as $event) {
+                if ($event instanceof ErrorEvent) {
+                    $failed = true;
+
+                    continue;
+                }
+
+                $progress->note($event);
+            }
 
             $this->recordSpend($response->usage ?? null);
+
+            if ($failed) {
+                $this->editMessage($chatId, $placeholderMessageId, 'حدث خطأ أثناء توليد الرد. حاول مرة أخرى.');
+
+                return;
+            }
 
             $chatSettings->update(['conversation_id' => $response->conversationId ?? $conversationId]);
 

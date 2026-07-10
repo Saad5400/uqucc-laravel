@@ -151,6 +151,33 @@ it('delivers the reply as telegram html with markdown converted', function () {
         ->and($reply['text'])->toContain('(المصدر: https://uqucc.sb.sa/adwat/almkafa)');
 });
 
+it('streams plain-text progress edits before the final formatted reply', function () {
+    StudentAssistant::fake([
+        new \Laravel\Ai\Responses\Data\ToolCall('tc_1', 'search_content', ['query' => 'مكافأة الامتياز']),
+        'مكافأة الامتياز ألف ريال.',
+    ]);
+
+    activatedChat();
+
+    $api = new FakeTelegramApi;
+
+    aiChatHandler($api)->handle(aiChatMessage());
+
+    expect(count($api->editedMessages))->toBeGreaterThanOrEqual(2);
+
+    $progress = $api->editedMessages[0];
+
+    // Progress snapshots are plain text — never rejectable as invalid markup.
+    expect($progress)->not->toHaveKey('parse_mode')
+        ->and($progress['text'])->toContain('🔎 يبحث');
+
+    $final = end($api->editedMessages);
+
+    expect($final['parse_mode'])->toBe('HTML')
+        ->and($final['text'])->toContain('مكافأة الامتياز ألف ريال')
+        ->and($final['text'])->not->toContain('▌');
+});
+
 it('stays silent in an activated private chat when the message does not address the bot', function () {
     StudentAssistant::fake(['يجب ألا يظهر هذا الرد.']);
 
@@ -388,9 +415,11 @@ it('chunks replies longer than the telegram message limit', function () {
 
     aiChatHandler($api)->handle(aiChatMessage());
 
-    // Placeholder + at least one follow-up chunk; the edit carries chunk one.
+    // Placeholder + at least one follow-up chunk; the final edit carries
+    // chunk one (earlier edits are streaming progress snapshots).
     expect(count($api->sentMessages))->toBeGreaterThanOrEqual(2)
-        ->and($api->editedMessages)->toHaveCount(1);
+        ->and(count($api->editedMessages))->toBeGreaterThanOrEqual(1)
+        ->and(end($api->editedMessages)['parse_mode'] ?? null)->toBe('HTML');
 
     foreach ($api->allTexts() as $text) {
         expect(mb_strlen($text))->toBeLessThanOrEqual(4096);
