@@ -1,4 +1,4 @@
-import { Activity, Bot, FileText, FileUp, GraduationCap, LayoutDashboard, Settings, Users } from 'lucide-vue-next';
+import { Activity, Bot, FileText, FileUp, GraduationCap, LayoutDashboard, Settings, Sparkles, Users } from 'lucide-vue-next';
 import type { FunctionalComponent } from 'vue';
 
 export interface ManageNavItem {
@@ -14,6 +14,7 @@ export const manageNavItems: ManageNavItem[] = [
     { title: 'الصفحات', href: '/manage/pages', icon: FileText },
     { title: 'المستخدمون', href: '/manage/users', icon: Users, permission: 'manage-users' },
     { title: 'الخصوصيون', href: '/manage/tutors', icon: GraduationCap, permission: 'manage-private-tutors' },
+    { title: 'المساعد الإداري', href: '/manage/assistant', icon: Sparkles },
     { title: 'مستندات الذكاء الاصطناعي', href: '/manage/corpus', icon: FileUp },
     { title: 'ذكاء بوت التليجرام', href: '/manage/telegram-chats', icon: Bot },
     { title: 'سجل النشاط', href: '/manage/activity', icon: Activity, permission: 'view-activity-logs' },

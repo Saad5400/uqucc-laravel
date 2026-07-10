@@ -29,6 +29,7 @@ class TelegramSettingsController extends Controller
                 'assistant_enabled' => $aiSettings->assistant_enabled,
                 'telegram_ai_enabled' => $aiSettings->telegram_ai_enabled,
                 'admin_copilot_enabled' => $aiSettings->admin_copilot_enabled,
+                'admin_assistant_enabled' => $aiSettings->admin_assistant_enabled,
                 'chat_model' => $aiSettings->chat_model,
                 'vision_model' => $aiSettings->vision_model,
                 'embedding_model' => $aiSettings->embedding_model,

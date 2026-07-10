@@ -20,6 +20,7 @@ class AiSettingsController extends Controller
         $settings->assistant_enabled = $request->boolean('assistant_enabled');
         $settings->telegram_ai_enabled = $request->boolean('telegram_ai_enabled');
         $settings->admin_copilot_enabled = $request->boolean('admin_copilot_enabled');
+        $settings->admin_assistant_enabled = $request->boolean('admin_assistant_enabled');
         $settings->chat_model = $request->validated('chat_model');
         $settings->vision_model = $request->validated('vision_model');
         $settings->embedding_model = $request->validated('embedding_model');

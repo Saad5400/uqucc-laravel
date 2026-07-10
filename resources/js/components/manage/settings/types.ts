@@ -5,6 +5,7 @@ export interface AiSettingsValues {
     assistant_enabled: boolean;
     telegram_ai_enabled: boolean;
     admin_copilot_enabled: boolean;
+    admin_assistant_enabled: boolean;
     chat_model: string;
     vision_model: string;
     embedding_model: string;

@@ -75,6 +75,7 @@ describe('manage settings AI card', function () {
             'assistant_enabled' => false,
             'telegram_ai_enabled' => false,
             'admin_copilot_enabled' => true,
+            'admin_assistant_enabled' => false,
             'chat_model' => 'deepseek/deepseek-v4-flash',
             'vision_model' => 'google/gemini-2.5-flash',
             'embedding_model' => 'openai/text-embedding-3-small',

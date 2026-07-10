@@ -13,7 +13,7 @@ const props = defineProps<{
 }>();
 
 interface FeatureToggle {
-    field: 'ai_enabled' | 'search_enabled' | 'assistant_enabled' | 'telegram_ai_enabled' | 'admin_copilot_enabled';
+    field: 'ai_enabled' | 'search_enabled' | 'assistant_enabled' | 'telegram_ai_enabled' | 'admin_copilot_enabled' | 'admin_assistant_enabled';
     label: string;
     helper: string;
 }
@@ -28,6 +28,11 @@ const featureToggles: FeatureToggle[] = [
     { field: 'assistant_enabled', label: 'المساعد الذكي', helper: 'تفعيل المساعد الذكي للزوار.' },
     { field: 'telegram_ai_enabled', label: 'ذكاء بوت التليجرام', helper: 'تفعيل الردود الذكية في بوت التليجرام.' },
     { field: 'admin_copilot_enabled', label: 'مساعد لوحة الإدارة', helper: 'تفعيل المساعد الذكي داخل لوحة الإدارة.' },
+    {
+        field: 'admin_assistant_enabled',
+        label: 'المساعد الإداري',
+        helper: 'تفعيل المساعد الإداري الذي ينظّم الصفحات ويضبط الإعدادات — كل تغيير يقترحه يتطلب تأكيداً منك قبل تنفيذه.',
+    },
 ];
 
 interface ModelField {
@@ -47,6 +52,7 @@ const form = useForm({
     assistant_enabled: props.ai.assistant_enabled,
     telegram_ai_enabled: props.ai.telegram_ai_enabled,
     admin_copilot_enabled: props.ai.admin_copilot_enabled,
+    admin_assistant_enabled: props.ai.admin_assistant_enabled,
     chat_model: props.ai.chat_model,
     vision_model: props.ai.vision_model,
     embedding_model: props.ai.embedding_model,

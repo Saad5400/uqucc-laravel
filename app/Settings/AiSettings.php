@@ -16,6 +16,8 @@ class AiSettings extends Settings
 
     public bool $admin_copilot_enabled;
 
+    public bool $admin_assistant_enabled;
+
     public string $chat_model;
 
     public string $vision_model;
@@ -47,6 +49,7 @@ class AiSettings extends Settings
             'assistant' => $this->assistant_enabled,
             'telegram' => $this->telegram_ai_enabled,
             'admin_copilot' => $this->admin_copilot_enabled,
+            'admin_assistant' => $this->admin_assistant_enabled,
             default => false,
         };
     }

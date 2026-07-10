@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Manage\ActivityLogController;
+use App\Http\Controllers\Manage\AdminAssistantController;
 use App\Http\Controllers\Manage\AiSettingsController;
 use App\Http\Controllers\Manage\CacheController;
 use App\Http\Controllers\Manage\CorpusDocumentController;
@@ -41,6 +42,12 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::post('/pages/{page}/copilot/improve-text', [PageCopilotController::class, 'improveText'])->name('pages.copilot.improve-text')->withTrashed();
         Route::post('/pages/{page}/copilot/draft-section', [PageCopilotController::class, 'draftSection'])->name('pages.copilot.draft-section')->withTrashed();
         Route::post('/pages/{page}/copilot/seo-meta', [PageCopilotController::class, 'generateSeoMeta'])->name('pages.copilot.seo-meta')->withTrashed();
+
+        Route::get('/assistant', [AdminAssistantController::class, 'index'])->name('assistant.index');
+        Route::post('/assistant/chat', [AdminAssistantController::class, 'send'])->middleware('throttle:15,1')->name('assistant.send');
+        Route::get('/assistant/chat/{conversation}', [AdminAssistantController::class, 'show'])->name('assistant.show');
+        Route::post('/assistant/proposals/{proposal}/confirm', [AdminAssistantController::class, 'confirm'])->name('assistant.proposals.confirm');
+        Route::post('/assistant/proposals/{proposal}/reject', [AdminAssistantController::class, 'reject'])->name('assistant.proposals.reject');
 
         Route::get('/corpus', [CorpusDocumentController::class, 'index'])->name('corpus.index');
         Route::post('/corpus', [CorpusDocumentController::class, 'store'])->name('corpus.store');
