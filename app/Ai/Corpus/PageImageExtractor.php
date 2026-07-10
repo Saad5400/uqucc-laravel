@@ -10,6 +10,7 @@ use App\Support\LocalFile;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Sleep;
 use Laravel\Ai\Files\Image;
@@ -198,7 +199,14 @@ class PageImageExtractor
             if (is_string($temporaryPath)) {
                 @unlink($temporaryPath);
             }
-            report($exception);
+
+            // A warning, not report(): an unreachable/rate-limited external
+            // image is routine and self-healing (cached as failed, retried on
+            // a later ingest) — it must not page the error notifier.
+            Log::warning('Corpus image download failed', [
+                'url' => $src,
+                'reason' => $exception->getMessage(),
+            ]);
 
             CorpusImageExtraction::query()->updateOrCreate(
                 ['content_hash' => $urlHash],
