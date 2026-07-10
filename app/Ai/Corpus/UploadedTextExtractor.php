@@ -28,11 +28,31 @@ use Throwable;
 class UploadedTextExtractor
 {
     /**
-     * A PDF text layer shorter than this (in non-whitespace characters) is
-     * treated as a scan artifact — page numbers or stray glyphs — and the
-     * document is routed to the vision model instead.
+     * A PDF text layer with fewer LETTERS AND DIGITS than this is treated as
+     * unusable — page numbers, stray punctuation, or a font with broken
+     * ToUnicode maps that extracts as whitespace/soft-hyphen soup — and the
+     * document is routed to the vision model instead. Counting only \p{L}\p{N}
+     * matters: a 14-page Arabic PDF with no usable maps yields tens of
+     * thousands of junk characters and zero letters.
      */
     public const MIN_TEXT_LAYER_CHARS = 120;
+
+    /**
+     * Letters and digits must make up at least this fraction of the layer's
+     * non-whitespace characters. A real document's text is mostly letters;
+     * broken ToUnicode maps instead produce punctuation/soft-hyphen soup
+     * sprinkled with mojibake letters (a real 14-page Arabic PDF measured
+     * 5.5%) that clears the absolute floor but reads as rubbish.
+     */
+    public const MIN_MEANINGFUL_RATIO = 0.5;
+
+    /**
+     * When more than this fraction of a text layer's Arabic characters are
+     * presentation-form glyphs (U+FB50–U+FDFF, U+FE70–U+FEFF), the extractor
+     * dumped shaped glyphs rather than logical text — unreadable for search
+     * and for the model — so the document is routed to the vision model.
+     */
+    public const MAX_PRESENTATION_FORM_RATIO = 0.2;
 
     public function __construct(private readonly DocumentVisionExtractor $vision) {}
 
@@ -107,10 +127,33 @@ class UploadedTextExtractor
         return trim($collapsed);
     }
 
-    private function isUsableTextLayer(string $text): bool
+    /**
+     * Whether an extracted PDF text layer is real, logical-order content —
+     * enough letters/digits, and not Arabic presentation-form glyph soup.
+     */
+    public function isUsableTextLayer(string $text): bool
     {
-        $compact = (string) preg_replace('/\s+/u', '', $text);
+        preg_match_all('/[\p{L}\p{N}]/u', $text, $meaningful);
+        $meaningfulCount = count($meaningful[0]);
 
-        return mb_strlen($compact) >= self::MIN_TEXT_LAYER_CHARS;
+        if ($meaningfulCount < self::MIN_TEXT_LAYER_CHARS) {
+            return false;
+        }
+
+        $nonWhitespace = mb_strlen((string) preg_replace('/\s+/u', '', $text));
+
+        if ($meaningfulCount / max(1, $nonWhitespace) < self::MIN_MEANINGFUL_RATIO) {
+            return false;
+        }
+
+        preg_match_all('/[\x{FB50}-\x{FDFF}\x{FE70}-\x{FEFF}]/u', $text, $shaped);
+
+        if ($shaped[0] === []) {
+            return true;
+        }
+
+        preg_match_all('/[\x{0600}-\x{06FF}\x{FB50}-\x{FDFF}\x{FE70}-\x{FEFF}]/u', $text, $arabic);
+
+        return count($shaped[0]) / max(1, count($arabic[0])) <= self::MAX_PRESENTATION_FORM_RATIO;
     }
 }

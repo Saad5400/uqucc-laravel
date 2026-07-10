@@ -46,7 +46,7 @@ class DocumentVisionExtractor
             [$this->attachment($document, $file->path)],
             provider: (string) config('ai.default', 'openrouter'),
             model: $this->model(),
-            timeout: (int) config('ai.vision.timeout', 45),
+            timeout: (int) config('ai.vision.document_timeout', 180),
         );
 
         return trim((string) $response->text);

@@ -200,6 +200,38 @@ describe('extraction job', function () {
         expect(documentCorpusItem($document)?->chunks()->exists())->toBeTrue();
     });
 
+    it('falls back to the vision model for a PDF whose text layer is punctuation soup with no letters', function () {
+        enableDocumentAiSearch();
+        enableDocumentVision();
+        DocumentExtractionAgent::fake(["## الدليل الإرشادي\n\nالمحتوى الحقيقي للمستند المنسوخ بالرؤية."]);
+
+        $document = makeCorpusDocument('junk-layer.pdf', 'application/pdf');
+
+        ExtractCorpusDocumentJob::dispatch($document->id);
+
+        $document->refresh();
+
+        expect($document->status)->toBe(CorpusDocument::STATUS_READY)
+            ->and($document->extracted_markdown)->toContain('الدليل الإرشادي')
+            ->and($document->extracted_markdown)->not->toContain('- - : ;');
+
+        DocumentExtractionAgent::assertPrompted(
+            fn ($prompt): bool => str_contains($prompt->prompt, 'junk-layer.pdf')
+        );
+    });
+
+    it('judges text-layer usability on letters, order, and shaping', function (string $layer, bool $usable) {
+        expect(app(\App\Ai\Corpus\UploadedTextExtractor::class)->isUsableTextLayer($layer))->toBe($usable);
+    })->with([
+        'long logical arabic' => [str_repeat('يجب على الطالب إكمال جميع المتطلبات الدراسية قبل التخرج. ', 5), true],
+        'long english' => [str_repeat('Students must complete all required credit hours. ', 5), true],
+        'punctuation soup, no letters' => [str_repeat('- - : ; , . ( ) ­ ', 40), false],
+        'mojibake sprinkled in junk (letters clear the floor but not the ratio)' => [str_repeat('ª', 200).str_repeat('­ ( ) : . ', 400), false],
+        'too short despite being real' => ['نص قصير جداً', false],
+        'arabic presentation-form glyph soup' => [str_repeat('ﻣﻜﺎﻓﺄﺓ ﺍﻟﺘﻔﻮﻕ ﻟﻠﻄﻼﺏ ﺍﻟﻤﺘﻔﻮﻗﻴﻦ ﻓﻲ ﺍﻟﻜﻠﻴﺔ ', 10), false],
+        'mostly logical with a stray shaped char' => [str_repeat('مكافأة التفوق للطلاب المتفوقين في الكلية ', 10).'ﻣ', true],
+    ]);
+
     it('extracts an image upload via the vision model', function () {
         enableDocumentAiSearch();
         enableDocumentVision();
