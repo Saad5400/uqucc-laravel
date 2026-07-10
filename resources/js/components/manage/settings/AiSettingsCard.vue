@@ -26,7 +26,11 @@ const featureToggles: FeatureToggle[] = [
     },
     { field: 'search_enabled', label: 'البحث الذكي', helper: 'تفعيل البحث المعزز بالذكاء الاصطناعي في الموقع.' },
     { field: 'assistant_enabled', label: 'المساعد الذكي', helper: 'تفعيل المساعد الذكي للزوار.' },
-    { field: 'telegram_ai_enabled', label: 'ذكاء بوت التليجرام', helper: 'تفعيل الردود الذكية في بوت التليجرام.' },
+    {
+        field: 'telegram_ai_enabled',
+        label: 'ذكاء بوت التليجرام',
+        helper: 'التشغيل العام لمساعد التليجرام. لا يرد إلا في المحادثات المفعّلة بأمر ‎/ai_on، وفقط عند مناداته: رسالة تبدأ بـ«سيك»، أو منشن، أو رد على رسالته.',
+    },
     { field: 'admin_copilot_enabled', label: 'مساعد لوحة الإدارة', helper: 'تفعيل المساعد الذكي داخل لوحة الإدارة.' },
     {
         field: 'admin_assistant_enabled',

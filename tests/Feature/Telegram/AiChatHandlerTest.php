@@ -46,7 +46,7 @@ function aiChatMessage(array $overrides = []): Message
         'message_id' => 20,
         'from' => ['id' => 501, 'is_bot' => false, 'first_name' => 'سعد'],
         'chat' => ['id' => 900123, 'type' => 'private', 'first_name' => 'سعد'],
-        'text' => 'كم مكافأة الامتياز؟',
+        'text' => 'سيك كم مكافأة الامتياز؟',
     ], $overrides));
 }
 
@@ -129,6 +129,52 @@ it('replies in an activated private chat and stores the conversation for the cha
     expect($usage->feature)->toBe('telegram');
 });
 
+it('stays silent in an activated private chat when the message does not address the bot', function () {
+    StudentAssistant::fake(['يجب ألا يظهر هذا الرد.']);
+
+    activatedChat();
+
+    $api = new FakeTelegramApi;
+
+    aiChatHandler($api)->handle(aiChatMessage(['text' => 'كم مكافأة الامتياز؟']));
+
+    StudentAssistant::assertNeverPrompted();
+
+    expect($api->sentMessages)->toBe([]);
+});
+
+it('strips the سيك prefix from the prompt', function () {
+    StudentAssistant::fake(['مكافأة الامتياز ألف ريال.']);
+
+    activatedChat();
+
+    $api = new FakeTelegramApi;
+
+    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك كم مكافأة الامتياز؟']));
+
+    StudentAssistant::assertPrompted(fn ($prompt) => $prompt->prompt === 'كم مكافأة الامتياز؟');
+});
+
+it('answers a private follow-up that replies to one of the bot messages', function () {
+    StudentAssistant::fake(['رد المتابعة.']);
+
+    activatedChat();
+
+    $api = new FakeTelegramApi;
+
+    aiChatHandler($api)->handle(aiChatMessage([
+        'text' => 'وكم لمرتبة الشرف؟',
+        'reply_to_message' => [
+            'message_id' => 5,
+            'from' => ['id' => 42, 'is_bot' => true, 'username' => 'UquccTestBot'],
+            'chat' => ['id' => 900123, 'type' => 'private'],
+            'text' => 'مكافأة الامتياز ألف ريال.',
+        ],
+    ]));
+
+    StudentAssistant::assertPrompted(fn ($prompt) => $prompt->prompt === 'وكم لمرتبة الشرف؟');
+});
+
 it('continues the same conversation across turns and starts fresh after a reset', function () {
     StudentAssistant::fake(fn () => 'رد.');
 
@@ -136,8 +182,8 @@ it('continues the same conversation across turns and starts fresh after a reset'
 
     $api = new FakeTelegramApi;
 
-    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سؤال أول']));
-    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سؤال ثانٍ']));
+    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك سؤال أول']));
+    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك سؤال ثانٍ']));
 
     $conversationId = $chatSettings->refresh()->conversation_id;
 
@@ -147,7 +193,7 @@ it('continues the same conversation across turns and starts fresh after a reset'
     // /ai_new clears the stored id; the next turn starts a new thread.
     $chatSettings->update(['conversation_id' => null]);
 
-    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سؤال ثالث']));
+    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك سؤال ثالث']));
 
     expect(Conversation::query()->count())->toBe(2)
         ->and($chatSettings->refresh()->conversation_id)->not->toBe($conversationId);
@@ -174,7 +220,7 @@ it('ignores group messages that do not address the bot', function () {
 
     $api = new FakeTelegramApi;
 
-    aiChatHandler($api)->handle(groupAiChatMessage());
+    aiChatHandler($api)->handle(groupAiChatMessage(['text' => 'كم مكافأة الامتياز؟']));
 
     StudentAssistant::assertNeverPrompted();
 
@@ -258,13 +304,13 @@ it('enforces the per-chat daily quota with a single arabic notice', function () 
 
     $api = new FakeTelegramApi;
 
-    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سؤال 1']));
-    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سؤال 2']));
+    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك سؤال 1']));
+    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك سؤال 2']));
 
     expect(AiUsage::query()->where('feature', 'telegram')->count())->toBe(2);
 
-    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سؤال 3']));
-    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سؤال 4']));
+    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك سؤال 3']));
+    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك سؤال 4']));
 
     $notices = array_filter($api->allTexts(), fn (string $text) => str_contains($text, 'حدها اليومي'));
 
@@ -287,11 +333,11 @@ it('enforces the burst limit per chat with a single notice', function () {
     $api = new FakeTelegramApi;
 
     foreach (range(1, 5) as $i) {
-        aiChatHandler($api)->handle(aiChatMessage(['text' => "سؤال {$i}"]));
+        aiChatHandler($api)->handle(aiChatMessage(['text' => "سيك سؤال {$i}"]));
     }
 
-    aiChatHandler($api)->handle(aiChatMessage(['text' => 'السادسة']));
-    aiChatHandler($api)->handle(aiChatMessage(['text' => 'السابعة']));
+    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك السادسة']));
+    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك السابعة']));
 
     $notices = array_filter($api->allTexts(), fn (string $text) => str_contains($text, 'انتظر دقيقة'));
 
@@ -348,7 +394,7 @@ it('extracts a captioned photo and injects the text as turn context', function (
 
     aiChatHandler($api)->handle(aiChatMessage([
         'text' => null,
-        'caption' => 'كم معدلي؟',
+        'caption' => 'سيك كم معدلي؟',
         'photo' => [
             ['file_id' => 'small', 'width' => 90, 'height' => 90],
             ['file_id' => 'large', 'width' => 800, 'height' => 800],
@@ -386,7 +432,7 @@ it('tells the chat when the attachment cannot be read', function () {
 
     aiChatHandler($api)->handle(aiChatMessage([
         'text' => null,
-        'caption' => 'اقرأ الملف',
+        'caption' => 'سيك اقرأ الملف',
         'photo' => [['file_id' => 'p1', 'width' => 100, 'height' => 100]],
     ]));
 
@@ -405,7 +451,7 @@ it('ignores captioned documents with unsupported mimes', function () {
 
     aiChatHandler($api)->handle(aiChatMessage([
         'text' => null,
-        'caption' => 'اقرأ الملف',
+        'caption' => 'سيك اقرأ الملف',
         'document' => ['file_id' => 'd1', 'file_name' => 'doc.docx', 'mime_type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
     ]));
 

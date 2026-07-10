@@ -29,9 +29,10 @@ use Throwable;
  *
  * Layered gates, in order: AiSettings telegram feature toggle → the chat's
  * own activation row ({@see TelegramChatSetting}, default OFF — /ai_on) →
- * group addressing (mention or reply-to-bot, so the bot never answers every
- * group message) → per-CHAT rate limits (burst + operator daily quota) →
- * the daily spend budget via the {@see SpendLedger}.
+ * explicit addressing in EVERY chat type (the «سيك …» ask prefix, a reply to
+ * one of the bot's messages, or an @mention — the bot never answers plain
+ * chatter, private or group) → per-CHAT rate limits (burst + operator daily
+ * quota) → the daily spend budget via the {@see SpendLedger}.
  *
  * Conversation continuity is per chat: the laravel/ai conversation id lives
  * on the chat's settings row and /ai_new resets it. Photos and PDF documents
@@ -53,8 +54,11 @@ class AiChatHandler extends BaseHandler
     /** Cache key for the bot's username (avoids a getMe call per message). */
     protected const BOT_USERNAME_CACHE_KEY = 'telegram_bot_username';
 
-    /** The legacy DeepSeekChatHandler command, kept as an explicit ask. */
-    protected const LEGACY_ASK_PATTERN = '/^اسال سيك\s+(.+)$/us';
+    /**
+     * The explicit ask prefix: «سيك سؤالك…», with the legacy DeepSeekChatHandler
+     * forms «اسال سيك …» / «اسأل سيك …» still honoured.
+     */
+    protected const ASK_PATTERN = '/^(?:(?:اسال|اسأل)\s+)?سيك\s+(.+)$/us';
 
     /**
      * Prefixes and exact phrases owned by the other handlers — the assistant
@@ -115,7 +119,7 @@ class AiChatHandler extends BaseHandler
             return;
         }
 
-        if ($this->isGroupChat($message) && ! $this->isAddressedToBot($message)) {
+        if (! $this->isAddressedToBot($message)) {
             return;
         }
 
@@ -180,7 +184,7 @@ class AiChatHandler extends BaseHandler
             return null;
         }
 
-        if (preg_match(self::LEGACY_ASK_PATTERN, $content, $matches) === 1) {
+        if (preg_match(self::ASK_PATTERN, $content, $matches) === 1) {
             return trim($matches[1]);
         }
 
@@ -194,15 +198,17 @@ class AiChatHandler extends BaseHandler
     }
 
     /**
-     * In groups the bot only answers when addressed: the legacy "اسال سيك"
-     * prefix, a reply to one of the bot's messages, or an @mention.
+     * The bot only answers when explicitly addressed — in EVERY chat type:
+     * the «سيك …» ask prefix, a reply to one of the bot's messages (natural
+     * follow-ups), or an @mention. Activation (/ai_on) opts a chat in; this
+     * gate keeps the assistant from hijacking ordinary conversation.
      */
     protected function isAddressedToBot(Message $message): bool
     {
         $raw = $message->getText() ?? $message->getCaption();
         $content = is_string($raw) ? trim($raw) : '';
 
-        if (preg_match(self::LEGACY_ASK_PATTERN, $content) === 1) {
+        if (preg_match(self::ASK_PATTERN, $content) === 1) {
             return true;
         }
 
