@@ -75,8 +75,10 @@ class CitationExtractor
     }
 
     /**
-     * A successful get_page result ends with "---\nslug: {slug}"; resolve the
-     * page title from the database (the tool only serves visible pages).
+     * A successful get_page result ends with a "---" footer whose last line
+     * is "slug: {slug}" (an optional freshness-date line sits in between);
+     * resolve the page title from the database (the tool only serves visible
+     * pages).
      *
      * @return list<array{title: string, slug: string, heading: string|null}>
      */
@@ -84,7 +86,7 @@ class CitationExtractor
     {
         $text = $this->resultText($result);
 
-        if ($text === null || preg_match('/\n---\nslug: (\S+)\s*$/u', $text, $matches) !== 1) {
+        if ($text === null || preg_match('/\n---\n(?:[^\n]+\n)?slug: (\S+)\s*$/u', $text, $matches) !== 1) {
             return [];
         }
 

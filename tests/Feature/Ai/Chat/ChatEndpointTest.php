@@ -191,6 +191,26 @@ it('emits citations for content the tools consulted', function () {
         ->and($citations['items'][0])->toHaveKeys(['title', 'slug', 'heading']);
 });
 
+it('emits a citation for a page read in full via get_page despite the freshness-date footer line', function () {
+    $page = seedAssistantPage('مكافأة التفوق', 'ينال الطالب المتفوق مكافأة فصلية من الكلية');
+
+    StudentAssistant::fake([
+        new ToolCall('tc_1', 'get_page', ['slug' => $page->slug]),
+        'ينال المتفوق مكافأة فصلية.',
+    ]);
+
+    $content = withChatSession(chatSessionId())
+        ->post(route('ai.chat.send'), ['message' => 'كم المكافأة؟'])
+        ->assertOk()
+        ->streamedContent();
+
+    $citations = sseEventData($content, 'citations');
+
+    expect($citations)->not->toBeNull()
+        ->and($citations['items'][0]['title'])->toBe('مكافأة التفوق')
+        ->and($citations['items'][0]['slug'])->toBe($page->slug);
+});
+
 it('injects a ready attachment extraction as context for the turn', function () {
     StudentAssistant::fake(['معدلك التراكمي 3.5.']);
 

@@ -129,6 +129,28 @@ it('replies in an activated private chat and stores the conversation for the cha
     expect($usage->feature)->toBe('telegram');
 });
 
+it('delivers the reply as telegram html with markdown converted', function () {
+    StudentAssistant::fake([
+        "## مكافأة الامتياز\n\nتحتاج **شرطين**:\n\n| الفصل | المطلوب |\n|---|---|\n| الأول | معدل ≥ 3.50 |\n\n(المصدر: https://uqucc.sb.sa/adwat/almkafa)",
+    ]);
+
+    activatedChat();
+
+    $api = new FakeTelegramApi;
+
+    aiChatHandler($api)->handle(aiChatMessage());
+
+    $reply = end($api->editedMessages);
+
+    expect($reply['parse_mode'])->toBe('HTML')
+        ->and($reply['text'])->toContain('<b>مكافأة الامتياز</b>')
+        ->and($reply['text'])->toContain('تحتاج <b>شرطين</b>')
+        ->and($reply['text'])->toContain('• <b>الأول</b>: معدل ≥ 3.50')
+        ->and($reply['text'])->not->toContain('##')
+        ->and($reply['text'])->not->toContain('|')
+        ->and($reply['text'])->toContain('(المصدر: https://uqucc.sb.sa/adwat/almkafa)');
+});
+
 it('stays silent in an activated private chat when the message does not address the bot', function () {
     StudentAssistant::fake(['يجب ألا يظهر هذا الرد.']);
 
@@ -397,7 +419,6 @@ it('extracts a captioned photo and injects the text as turn context', function (
         ],
     ]));
 
-    // The reply is MarkdownV2-escaped, so match on the unescaped part.
     expect($api->sentMessages[0]['text'])->toBe('جاري قراءة الملف…')
         ->and(implode(' ', $api->allTexts()))->toContain('معدلك التراكمي');
 

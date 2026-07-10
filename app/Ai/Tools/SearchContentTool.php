@@ -35,7 +35,8 @@ class SearchContentTool implements Tool
         return 'Search the UQU College of Computing student guide (uqucc) content. '
             .'The content is written in Arabic — prefer Arabic queries (البحث في محتوى دليل طلاب كلية الحاسبات بجامعة أم القرى). '
             .'Returns the most relevant content snippets with their page title, slug and section heading, best match first. '
-            .'Use get_page with a returned slug to read a full page. Read-only.';
+            .'Use get_page with a returned slug to read a full page. '
+            .'The full public URL of a page is '.rtrim((string) config('app.url'), '/').'{slug}. Read-only.';
     }
 
     public function handle(Request $request): Stringable|string
