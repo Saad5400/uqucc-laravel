@@ -2,175 +2,272 @@
 
 namespace App\Services;
 
+/**
+ * Converts the assistant's standard markdown into Telegram-renderable HTML
+ * (parse_mode=HTML). Elements Telegram supports natively map to their
+ * entities (bold, italic, strikethrough, code, pre, links, blockquotes);
+ * elements it cannot render are reformatted for readability instead of
+ * being passed through raw: headings become bold lines, tables become
+ * labelled bullet rows, list markers become bullets, and horizontal rules
+ * are dropped.
+ */
 class TelegramMarkdownService
 {
-    /**
-     * Convert standard markdown to Telegram MarkdownV2 format.
-     * 
-     * Telegram MarkdownV2 format:
-     * - *bold* (single asterisk)
-     * - _italic_ (underscore)
-     * - [text](url) (links)
-     * - `code` (backticks)
-     * - ~strikethrough~ (tilde)
-     * 
-     * @param string $text The markdown text to convert
-     * @return string Text formatted for Telegram MarkdownV2
-     */
-    public function toMarkdownV2(string $text): string
+    /** Placeholder frame using the SUB control character — never in chat text. */
+    private const PLACEHOLDER_PREFIX = "\u{1A}TG";
+
+    private const PLACEHOLDER_SUFFIX = "\u{1A}";
+
+    public function toTelegramHtml(string $markdown): string
     {
-        // Use a placeholder that won't be escaped (contains only letters/numbers, no special chars)
-        // Using a pattern that's extremely unlikely to appear in user text
-        $placeholderPrefix = 'TGMDPH';
-        $counter = 0;
-        $placeholders = []; // Associative array to store placeholders
-        $placeholderOrder = []; // Track creation order for proper restoration
-        
-        // Step 1: Protect and convert markdown patterns (order matters - process more specific first)
-        
-        // Protect code blocks: ```language\ncode\n``` (must come before inline code)
-        // Match triple backticks with optional language and code content
-        $text = preg_replace_callback('/```([a-zA-Z0-9+_-]*)\n?([\s\S]*?)```/s', function($matches) use (&$placeholders, &$placeholderOrder, &$counter, $placeholderPrefix) {
-            $key = $placeholderPrefix . 'CB' . $counter++ . 'E';
-            $code = trim($matches[2]);
-            // Keep code blocks with triple backticks (Telegram will display them as text, but it's clear it's a code block)
-            // Preserve the code structure with newlines
-            $formatted = "```\n{$code}\n```";
-            $placeholders[$key] = $formatted;
-            $placeholderOrder[] = $key;
-            return $key;
+        $placeholders = [];
+
+        $text = str_replace(["\r\n", "\r"], "\n", trim($markdown));
+
+        $text = $this->extractFencedCode($text, $placeholders);
+        $text = $this->extractInlineCode($text, $placeholders);
+
+        $text = htmlspecialchars($text, ENT_NOQUOTES, 'UTF-8');
+
+        $text = $this->convertBlocks($text);
+        $text = $this->convertInline($text, $placeholders);
+
+        $text = (string) preg_replace("/\n{3,}/", "\n\n", $text);
+
+        return trim($this->restore($text, $placeholders));
+    }
+
+    /**
+     * The degraded rendering used when Telegram rejects the HTML: the same
+     * restructured text with the entity tags stripped.
+     */
+    public function toPlainText(string $html): string
+    {
+        return trim(html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    }
+
+    /**
+     * @param  array<string, string>  $placeholders
+     */
+    private function extractFencedCode(string $text, array &$placeholders): string
+    {
+        return (string) preg_replace_callback('/```[a-zA-Z0-9+_.-]*\n?(.*?)```/s', function (array $matches) use (&$placeholders): string {
+            $code = htmlspecialchars(trim($matches[1], "\n"), ENT_NOQUOTES, 'UTF-8');
+
+            return $this->claim($placeholders, '<pre>'.$code.'</pre>');
         }, $text);
-        
-        // Protect blockquotes: > text (multiline supported)
-        $text = preg_replace_callback('/^>\s+(.+)$/m', function($matches) use (&$placeholders, &$placeholderOrder, &$counter, $placeholderPrefix) {
-            $key = $placeholderPrefix . 'Q' . $counter++ . 'E';
-            // Convert blockquote to italic (Telegram doesn't support blockquotes)
-            $content = $this->escapeMarkdownV2Content(trim($matches[1]));
-            $placeholders[$key] = '_'.$content.'_';
-            $placeholderOrder[] = $key;
-            return $key;
+    }
+
+    /**
+     * @param  array<string, string>  $placeholders
+     */
+    private function extractInlineCode(string $text, array &$placeholders): string
+    {
+        return (string) preg_replace_callback('/`([^`\n]+)`/', function (array $matches) use (&$placeholders): string {
+            return $this->claim($placeholders, '<code>'.htmlspecialchars($matches[1], ENT_NOQUOTES, 'UTF-8').'</code>');
         }, $text);
-        
-        // Protect bold: **text** (must come before single *)
-        $text = preg_replace_callback('/\*\*(.+?)\*\*/s', function($matches) use (&$placeholders, &$placeholderOrder, &$counter, $placeholderPrefix) {
-            $key = $placeholderPrefix . 'B' . $counter++ . 'E';
-            // Convert to Telegram format and escape content
-            $content = $this->escapeMarkdownV2Content($matches[1]);
-            $placeholders[$key] = '*'.$content.'*';
-            $placeholderOrder[] = $key;
-            return $key;
-        }, $text);
-        
-        // Protect bold: __text__ (must come before single _)
-        $text = preg_replace_callback('/__(.+?)__/s', function($matches) use (&$placeholders, &$placeholderOrder, &$counter, $placeholderPrefix) {
-            $key = $placeholderPrefix . 'B2' . $counter++ . 'E';
-            $content = $this->escapeMarkdownV2Content($matches[1]);
-            $placeholders[$key] = '*'.$content.'*';
-            $placeholderOrder[] = $key;
-            return $key;
-        }, $text);
-        
-        // Protect links: [text](url) - do this early to avoid conflicts
-        $text = preg_replace_callback('/\[([^\]]+)\]\(([^)]+)\)/s', function($matches) use (&$placeholders, &$placeholderOrder, &$counter, $placeholderPrefix) {
-            $key = $placeholderPrefix . 'L' . $counter++ . 'E';
-            // Escape link text, but NOT the URL (Telegram doesn't escape URLs in links)
-            $linkText = $this->escapeMarkdownV2Content($matches[1]);
-            $linkUrl = $matches[2]; // URL is kept as-is
-            $placeholders[$key] = '['.$linkText.']('.$linkUrl.')';
-            $placeholderOrder[] = $key;
-            return $key;
-        }, $text);
-        
-        // Protect inline code: `code` (must come after code blocks)
-        $text = preg_replace_callback('/`([^`]+)`/s', function($matches) use (&$placeholders, &$placeholderOrder, &$counter, $placeholderPrefix) {
-            $key = $placeholderPrefix . 'C' . $counter++ . 'E';
-            // Code content doesn't need escaping in Telegram
-            $placeholders[$key] = '`'.$matches[1].'`';
-            $placeholderOrder[] = $key;
-            return $key;
-        }, $text);
-        
-        // Protect strikethrough: ~text~
-        $text = preg_replace_callback('/~([^~]+)~/s', function($matches) use (&$placeholders, &$placeholderOrder, &$counter, $placeholderPrefix) {
-            $key = $placeholderPrefix . 'S' . $counter++ . 'E';
-            $content = $this->escapeMarkdownV2Content($matches[1]);
-            $placeholders[$key] = '~'.$content.'~';
-            $placeholderOrder[] = $key;
-            return $key;
-        }, $text);
-        
-        // Protect italic: *text* (single asterisk, not part of **)
-        $text = preg_replace_callback('/(?<!\*)\*([^*\n]+?)\*(?!\*)/s', function($matches) use (&$placeholders, &$placeholderOrder, &$counter, $placeholderPrefix) {
-            $key = $placeholderPrefix . 'I' . $counter++ . 'E';
-            $content = $this->escapeMarkdownV2Content($matches[1]);
-            $placeholders[$key] = '_'.$content.'_';
-            $placeholderOrder[] = $key;
-            return $key;
-        }, $text);
-        
-        // Protect italic: _text_ (underscore, not part of __)
-        $text = preg_replace_callback('/(?<!_)_([^_\n]+?)_(?!_)/s', function($matches) use (&$placeholders, &$placeholderOrder, &$counter, $placeholderPrefix) {
-            $key = $placeholderPrefix . 'I2' . $counter++ . 'E';
-            $content = $this->escapeMarkdownV2Content($matches[1]);
-            $placeholders[$key] = '_'.$content.'_';
-            $placeholderOrder[] = $key;
-            return $key;
-        }, $text);
-        
-        // Step 2: Escape all remaining special characters
-        $text = $this->escapeMarkdownV2($text);
-        
-        // Step 3: Restore markdown patterns in reverse creation order (LIFO)
-        // This ensures nested placeholders are restored correctly:
-        // e.g., *[text](url)* → link placeholder first, then italic placeholder
-        // When restoring, we need to restore the outer (later) placeholder first,
-        // which will reveal the inner (earlier) placeholder for restoration
-        $placeholderOrder = array_reverse($placeholderOrder);
-        
-        // Keep iterating until no more replacements are made
-        // This handles cases where placeholders may reference other placeholders
-        do {
-            $previousText = $text;
-            foreach ($placeholderOrder as $key) {
-                if (isset($placeholders[$key])) {
-                    $text = str_replace($key, $placeholders[$key], $text);
+    }
+
+    /**
+     * Line-oriented structures. Runs on entity-escaped text, so blockquote
+     * markers appear as "&gt;".
+     */
+    private function convertBlocks(string $text): string
+    {
+        $lines = explode("\n", $text);
+        $output = [];
+        $index = 0;
+        $count = count($lines);
+
+        while ($index < $count) {
+            if ($this->isTableRow($lines[$index])) {
+                $table = [];
+
+                while ($index < $count && $this->isTableRow($lines[$index])) {
+                    $table[] = $lines[$index];
+                    $index++;
                 }
+
+                array_push($output, ...$this->renderTable($table));
+
+                continue;
             }
-        } while ($text !== $previousText);
-        
-        return $text;
-    }
-    
-    /**
-     * Escape special characters for Telegram MarkdownV2.
-     * Characters that must be escaped: _ * [ ] ( ) ~ ` > # + - = | { } . !
-     * 
-     * @param string $text The text to escape
-     * @return string Escaped text
-     */
-    protected function escapeMarkdownV2(string $text): string
-    {
-        $specialChars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!'];
-        
-        foreach ($specialChars as $char) {
-            $text = str_replace($char, '\\' . $char, $text);
+
+            if (preg_match('/^&gt;\s?/u', $lines[$index]) === 1) {
+                $quote = [];
+
+                while ($index < $count && preg_match('/^&gt;\s?(.*)$/u', $lines[$index], $matches) === 1) {
+                    $quote[] = $matches[1];
+                    $index++;
+                }
+
+                $output[] = '<blockquote>'.trim(implode("\n", $quote)).'</blockquote>';
+
+                continue;
+            }
+
+            $output[] = $this->convertBlockLine($lines[$index]);
+            $index++;
         }
-        
+
+        return implode("\n", $output);
+    }
+
+    private function convertBlockLine(string $line): string
+    {
+        if (preg_match('/^\s*(?:[-*_]\s*){3,}$/', $line) === 1) {
+            return '';
+        }
+
+        if (preg_match('/^#{1,6}\s+(.+?)\s*#*\s*$/u', $line, $matches) === 1) {
+            return '<b>'.$matches[1].'</b>';
+        }
+
+        return (string) preg_replace('/^(\s*)[-*+]\s+/u', '$1• ', $line);
+    }
+
+    private function isTableRow(string $line): bool
+    {
+        return preg_match('/^\s*\|.*\|\s*$/', $line) === 1;
+    }
+
+    /**
+     * A markdown table becomes one bullet line per data row: the first cell
+     * bold as the row's key, the rest labelled with their column headers
+     * (two-column tables read as plain "key: value").
+     *
+     * @param  array<int, string>  $rows
+     * @return array<int, string>
+     */
+    private function renderTable(array $rows): array
+    {
+        $parsed = array_map(function (string $row): array {
+            $cells = array_map('trim', explode('|', trim($row)));
+
+            array_shift($cells);
+            array_pop($cells);
+
+            return $cells;
+        }, $rows);
+
+        $headers = null;
+
+        if (count($parsed) >= 2 && $this->isSeparatorRow($parsed[1])) {
+            $headers = $parsed[0];
+            $parsed = array_slice($parsed, 2);
+        }
+
+        $parsed = array_values(array_filter($parsed, fn (array $cells): bool => ! $this->isSeparatorRow($cells)));
+
+        return array_map(fn (array $cells): string => $this->renderTableRow($cells, $headers), $parsed);
+    }
+
+    /**
+     * @param  array<int, string>  $cells
+     */
+    private function isSeparatorRow(array $cells): bool
+    {
+        if ($cells === []) {
+            return false;
+        }
+
+        foreach ($cells as $cell) {
+            if (preg_match('/^:?-+:?$/', $cell) !== 1) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * @param  array<int, string>  $cells
+     * @param  array<int, string>|null  $headers
+     */
+    private function renderTableRow(array $cells, ?array $headers): string
+    {
+        $first = $cells[0] ?? '';
+        $rest = array_slice($cells, 1, preserve_keys: true);
+
+        if (count($cells) === 2) {
+            return '• <b>'.$first.'</b>: '.$cells[1];
+        }
+
+        $parts = [];
+
+        foreach ($rest as $columnIndex => $cell) {
+            if ($cell === '') {
+                continue;
+            }
+
+            $label = trim($headers[$columnIndex] ?? '');
+            $parts[] = $label !== '' ? $label.': '.$cell : $cell;
+        }
+
+        return '• <b>'.$first.'</b>'.($parts === [] ? '' : ' — '.implode(' — ', $parts));
+    }
+
+    /**
+     * Inline entities. Links, images and bare URLs are claimed as
+     * placeholders first so emphasis markers inside URLs (underscores,
+     * asterisks) are never misread as formatting.
+     *
+     * @param  array<string, string>  $placeholders
+     */
+    private function convertInline(string $text, array &$placeholders): string
+    {
+        $text = (string) preg_replace_callback('/!\[([^\]]*)\]\(([^)\s]+)\)/u', function (array $matches) use (&$placeholders): string {
+            $label = $matches[1] !== '' ? $matches[1] : 'صورة';
+
+            return $this->claim($placeholders, '<a href="'.$this->escapeHref($matches[2]).'">'.$label.'</a>');
+        }, $text);
+
+        $text = (string) preg_replace_callback('/\[([^\]]+)\]\(([^)\s]+)(?:\s+[^)]*)?\)/u', function (array $matches) use (&$placeholders): string {
+            return $this->claim($placeholders, '<a href="'.$this->escapeHref($matches[2]).'">'.$matches[1].'</a>');
+        }, $text);
+
+        $text = (string) preg_replace_callback('/https?:\/\/[^\s<>()]+/u', function (array $matches) use (&$placeholders): string {
+            return $this->claim($placeholders, $matches[0]);
+        }, $text);
+
+        $text = (string) preg_replace('/\*\*(.+?)\*\*/su', '<b>$1</b>', $text);
+        $text = (string) preg_replace('/__(.+?)__/su', '<b>$1</b>', $text);
+        $text = (string) preg_replace('/~~(.+?)~~/su', '<s>$1</s>', $text);
+        $text = (string) preg_replace('/(?<!\*)\*([^*\n]+?)\*(?!\*)/u', '<i>$1</i>', $text);
+        $text = (string) preg_replace('/(?<!_)_([^_\n]+?)_(?!_)/u', '<i>$1</i>', $text);
+
         return $text;
     }
-    
-    /**
-     * Escape content inside markdown patterns (but not the pattern delimiters themselves).
-     * This is used for text inside bold, italic, etc.
-     * 
-     * @param string $text The text to escape
-     * @return string Escaped text
-     */
-    protected function escapeMarkdownV2Content(string $text): string
+
+    private function escapeHref(string $url): string
     {
-        // Escape all special characters except those that are part of the markdown pattern
-        // For content, we escape everything that could break the pattern
-        return $this->escapeMarkdownV2($text);
+        return str_replace('"', '%22', $url);
+    }
+
+    /**
+     * @param  array<string, string>  $placeholders
+     */
+    private function claim(array &$placeholders, string $html): string
+    {
+        $key = self::PLACEHOLDER_PREFIX.count($placeholders).self::PLACEHOLDER_SUFFIX;
+        $placeholders[$key] = $html;
+
+        return $key;
+    }
+
+    /**
+     * Placeholder values can themselves contain earlier placeholder keys
+     * (a code span inside a link label), so restoration loops to a fixpoint.
+     *
+     * @param  array<string, string>  $placeholders
+     */
+    private function restore(string $text, array $placeholders): string
+    {
+        do {
+            $previous = $text;
+            $text = strtr($text, $placeholders);
+        } while ($text !== $previous);
+
+        return $text;
     }
 }
-

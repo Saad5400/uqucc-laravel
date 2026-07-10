@@ -277,10 +277,11 @@ class AiChatHandler extends BaseHandler
     }
 
     /**
-     * Deliver the assistant's reply within Telegram's 4096-char limit: a
-     * single message edits the placeholder (MarkdownV2 with plain-text
-     * fallback); a longer reply is chunked — the first chunk edits the
-     * placeholder and the rest are sent as follow-up messages.
+     * Deliver the assistant's reply within Telegram's 4096-char limit. The
+     * markdown is converted to Telegram HTML once, then chunked: the first
+     * chunk edits the placeholder and the rest are sent as follow-up
+     * messages, each falling back to plain text if Telegram rejects the
+     * formatting.
      */
     protected function sendReply(int $chatId, int $placeholderMessageId, string $text): void
     {
@@ -290,25 +291,13 @@ class AiChatHandler extends BaseHandler
             return;
         }
 
-        $chunks = $this->chunkForTelegram($text);
+        $formatter = new TelegramMarkdownService;
+        $chunks = $this->chunkForTelegram($formatter->toTelegramHtml($text));
 
-        if (count($chunks) === 1) {
-            $this->editWithMarkdownFallback($chatId, $placeholderMessageId, $chunks[0]);
-
-            return;
-        }
-
-        $this->editMessage($chatId, $placeholderMessageId, array_shift($chunks));
+        $this->editWithHtmlFallback($chatId, $placeholderMessageId, array_shift($chunks), $formatter);
 
         foreach ($chunks as $chunk) {
-            try {
-                $this->telegram->sendMessage([
-                    'chat_id' => $chatId,
-                    'text' => $chunk,
-                ]);
-            } catch (Throwable $exception) {
-                Log::warning('Failed to send Telegram AI reply chunk', ['error' => $exception->getMessage()]);
-            }
+            $this->sendWithHtmlFallback($chatId, $chunk, $formatter);
         }
     }
 
@@ -348,17 +337,18 @@ class AiChatHandler extends BaseHandler
     }
 
     /**
-     * Edit the placeholder with the formatted reply: MarkdownV2 first, plain
-     * text when Telegram rejects the formatting.
+     * Edit the placeholder with the formatted reply: HTML first, the same
+     * text stripped to plain when Telegram rejects the formatting.
      */
-    protected function editWithMarkdownFallback(int $chatId, int $messageId, string $text): void
+    protected function editWithHtmlFallback(int $chatId, int $messageId, string $html, TelegramMarkdownService $formatter): void
     {
         try {
             $this->telegram->editMessageText([
                 'chat_id' => $chatId,
                 'message_id' => $messageId,
-                'text' => (new TelegramMarkdownService)->toMarkdownV2($text),
-                'parse_mode' => 'MarkdownV2',
+                'text' => $html,
+                'parse_mode' => 'HTML',
+                'disable_web_page_preview' => true,
             ]);
 
             return;
@@ -366,7 +356,32 @@ class AiChatHandler extends BaseHandler
             // Fall through to plain text.
         }
 
-        $this->editMessage($chatId, $messageId, $text);
+        $this->editMessage($chatId, $messageId, $formatter->toPlainText($html));
+    }
+
+    protected function sendWithHtmlFallback(int $chatId, string $html, TelegramMarkdownService $formatter): void
+    {
+        try {
+            $this->telegram->sendMessage([
+                'chat_id' => $chatId,
+                'text' => $html,
+                'parse_mode' => 'HTML',
+                'disable_web_page_preview' => true,
+            ]);
+
+            return;
+        } catch (Throwable) {
+            // Fall through to plain text.
+        }
+
+        try {
+            $this->telegram->sendMessage([
+                'chat_id' => $chatId,
+                'text' => $formatter->toPlainText($html),
+            ]);
+        } catch (Throwable $exception) {
+            Log::warning('Failed to send Telegram AI reply chunk', ['error' => $exception->getMessage()]);
+        }
     }
 
     protected function editMessage(int $chatId, int $messageId, string $text): void
