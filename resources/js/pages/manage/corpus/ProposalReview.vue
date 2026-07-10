@@ -275,4 +275,28 @@ function runConfirmedAction(): void {
     padding-inline-start: 0.75rem;
     color: var(--muted-foreground);
 }
+
+.proposal-markdown :deep(table) {
+    display: block;
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
+    margin-block: 0.5rem;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.proposal-markdown :deep(th),
+.proposal-markdown :deep(td) {
+    border: 1px solid var(--border);
+    padding: 0.375rem 0.625rem;
+    text-align: start;
+    vertical-align: top;
+}
+
+.proposal-markdown :deep(th) {
+    background: color-mix(in oklab, var(--foreground) 5%, transparent);
+    font-weight: 600;
+}
 </style>

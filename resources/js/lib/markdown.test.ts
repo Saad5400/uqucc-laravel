@@ -44,4 +44,26 @@ describe('renderMarkdown', () => {
     it('renders blockquotes', () => {
         expect(renderMarkdown('> اقتباس')).toBe('<blockquote><p>اقتباس</p></blockquote>');
     });
+
+    it('renders GFM tables with a head and body', () => {
+        const table = '| المادة | الدرجة |\n| --- | --- |\n| رياضيات | 95 |\n| فيزياء | 88 |';
+
+        expect(renderMarkdown(table)).toBe(
+            '<table><thead><tr><th>المادة</th><th>الدرجة</th></tr></thead>' +
+                '<tbody><tr><td>رياضيات</td><td>95</td></tr><tr><td>فيزياء</td><td>88</td></tr></tbody></table>',
+        );
+    });
+
+    it('applies logical alignment from delimiter colons', () => {
+        const table = '| اسم | قيمة |\n| :--- | ---: |\n| أ | 1 |';
+        const html = renderMarkdown(table);
+
+        expect(html).toContain('<th style="text-align: start">اسم</th>');
+        expect(html).toContain('<th style="text-align: end">قيمة</th>');
+        expect(html).toContain('<td style="text-align: end">1</td>');
+    });
+
+    it('does not treat a plain paragraph with a pipe as a table', () => {
+        expect(renderMarkdown('الخيار أ | الخيار ب')).toBe('<p>الخيار أ | الخيار ب</p>');
+    });
 });

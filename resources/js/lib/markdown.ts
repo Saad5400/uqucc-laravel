@@ -8,7 +8,29 @@ import DOMPurify from 'isomorphic-dompurify';
  * through DOMPurify, so model output can never inject markup.
  */
 
-const ALLOWED_TAGS = ['p', 'br', 'strong', 'em', 'code', 'pre', 'a', 'ul', 'ol', 'li', 'h2', 'h3', 'h4', 'blockquote', 'hr'];
+const ALLOWED_TAGS = [
+    'p',
+    'br',
+    'strong',
+    'em',
+    'code',
+    'pre',
+    'a',
+    'ul',
+    'ol',
+    'li',
+    'h2',
+    'h3',
+    'h4',
+    'blockquote',
+    'hr',
+    'table',
+    'thead',
+    'tbody',
+    'tr',
+    'th',
+    'td',
+];
 
 /** Placeholder sentinel for extracted code spans; a control character never survives user text. */
 const CODE_SENTINEL = String.fromCharCode(1);
@@ -40,6 +62,63 @@ const renderInline = (text: string): string => {
     return html.replace(CODE_RESTORE_PATTERN, (_match, index: string) => codeSpans[Number(index)] ?? '');
 };
 
+/** Split one GFM table row into trimmed cells, tolerating optional outer pipes. */
+const splitTableRow = (row: string): string[] =>
+    row
+        .trim()
+        .replace(/^\|/, '')
+        .replace(/\|$/, '')
+        .split('|')
+        .map((cell) => cell.trim());
+
+/** A GFM delimiter row: every cell is dashes with optional alignment colons. */
+const isTableDelimiter = (line: string): boolean => {
+    const cells = splitTableRow(line);
+
+    return cells.length > 0 && cells.every((cell) => /^:?-+:?$/.test(cell));
+};
+
+/** Logical text-align for one delimiter cell (start/center/end), honouring RTL. */
+const cellAlignment = (spec: string): string => {
+    const startColon = spec.startsWith(':');
+    const endColon = spec.endsWith(':');
+
+    if (startColon && endColon) {
+        return ' style="text-align: center"';
+    }
+
+    if (endColon) {
+        return ' style="text-align: end"';
+    }
+
+    if (startColon) {
+        return ' style="text-align: start"';
+    }
+
+    return '';
+};
+
+const renderTable = (lines: string[]): string => {
+    const alignments = splitTableRow(lines[1]).map(cellAlignment);
+
+    const head = splitTableRow(lines[0])
+        .map((cell, index) => `<th${alignments[index] ?? ''}>${renderInline(cell)}</th>`)
+        .join('');
+
+    const body = lines
+        .slice(2)
+        .map((line) => {
+            const cells = splitTableRow(line)
+                .map((cell, index) => `<td${alignments[index] ?? ''}>${renderInline(cell)}</td>`)
+                .join('');
+
+            return `<tr>${cells}</tr>`;
+        })
+        .join('');
+
+    return `<table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
+};
+
 const renderBlock = (block: string): string => {
     const lines = block.split('\n');
 
@@ -47,6 +126,10 @@ const renderBlock = (block: string): string => {
     if (heading && lines.length === 1) {
         const level = Math.min(Math.max(heading[1].length, 2), 4);
         return `<h${level}>${renderInline(heading[2].trim())}</h${level}>`;
+    }
+
+    if (lines.length >= 2 && lines[0].includes('|') && isTableDelimiter(lines[1])) {
+        return renderTable(lines);
     }
 
     if (/^([-*_])\s*\1\s*\1[\s\-*_]*$/.test(block.trim())) {
@@ -93,6 +176,6 @@ export const renderMarkdown = (markdown: string): string => {
 
     return DOMPurify.sanitize(html, {
         ALLOWED_TAGS,
-        ALLOWED_ATTR: ['href', 'target', 'rel'],
+        ALLOWED_ATTR: ['href', 'target', 'rel', 'style'],
     });
 };
