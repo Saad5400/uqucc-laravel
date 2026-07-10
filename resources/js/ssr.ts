@@ -1,6 +1,7 @@
 import { createInertiaApp } from '@inertiajs/vue3';
 import createServer from '@inertiajs/vue3/server';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
+import { ConfigProvider } from 'reka-ui';
 import { createSSRApp, DefineComponent, h } from 'vue';
 import { renderToString } from 'vue/server-renderer';
 
@@ -11,12 +12,13 @@ createServer(
         createInertiaApp({
             page,
             render: renderToString,
-            title: (title) => (title ? `${title} - ${appName}` : appName),
+            /** Pages provide complete titles (SeoHead bakes the site name in server-side), so never re-append it. */
+            title: (title) => title || appName,
             resolve: resolvePage,
-            setup: ({ App, props, plugin }) => createSSRApp({ render: () => h(App, props) }).use(plugin),
+            setup: ({ App, props, plugin }) => createSSRApp({ render: () => h(ConfigProvider, { dir: 'rtl' }, () => h(App, props)) }).use(plugin),
             defaults: {
                 visitOptions: (href, options) => {
-                    return { viewTransition: !options.preserveState }
+                    return { viewTransition: !options.preserveState };
                 },
             },
         }),

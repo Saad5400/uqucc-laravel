@@ -34,7 +34,7 @@
     }
 
     .typography blockquote {
-        @apply mt-6 italic border-l-2 ps-6;
+        @apply mt-6 italic border-s-2 ps-6;
     }
 
     .typography hr {

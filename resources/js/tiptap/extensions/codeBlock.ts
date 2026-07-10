@@ -1,4 +1,4 @@
-import { mergeAttributes, Node } from '@tiptap/core';
+import { mergeAttributes, Node, type CommandProps } from '@tiptap/core';
 import { VueNodeViewRenderer } from '@tiptap/vue-3';
 
 import CodeBlockView from '../views/CodeBlockView.vue';
@@ -43,29 +43,25 @@ const CodeBlock = Node.create({
         ];
     },
 
-    renderHTML({ node, HTMLAttributes }) {
-        return [
-            'pre',
-            mergeAttributes(this.options.HTMLAttributes, HTMLAttributes),
-            ['code', {}, 0],
-        ];
+    renderHTML({ HTMLAttributes }) {
+        return ['pre', mergeAttributes(this.options.HTMLAttributes, HTMLAttributes), ['code', {}, 0]];
     },
 
     addCommands() {
         return {
             setCodeBlock:
-                (attributes = {}) =>
-                ({ commands }) => {
+                (attributes?: { language: string }) =>
+                ({ commands }: CommandProps) => {
                     return commands.wrapIn(this.name, attributes);
                 },
             toggleCodeBlock:
-                (attributes = {}) =>
-                ({ commands }) => {
+                (attributes?: { language: string }) =>
+                ({ commands }: CommandProps) => {
                     return commands.toggleWrap(this.name, attributes);
                 },
             unsetCodeBlock:
                 () =>
-                ({ commands }) => {
+                ({ commands }: CommandProps) => {
                     return commands.lift(this.name);
                 },
         };

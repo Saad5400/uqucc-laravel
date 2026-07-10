@@ -1,25 +1,21 @@
 <script setup lang="ts">
-import { NodeViewWrapper } from '@tiptap/vue-3';
+import { NodeViewWrapper, type NodeViewProps } from '@tiptap/vue-3';
 import DOMPurify from 'isomorphic-dompurify';
 import { computed } from 'vue';
 
+import Button from '@/components/ui/button/Button.vue';
 import Collapsible from '@/components/ui/collapsible/Collapsible.vue';
 import CollapsibleContent from '@/components/ui/collapsible/CollapsibleContent.vue';
 import CollapsibleTrigger from '@/components/ui/collapsible/CollapsibleTrigger.vue';
-import Button from '@/components/ui/button/Button.vue';
 
-const props = defineProps<{
-    node: {
-        attrs: Record<string, unknown>;
-    };
-}>();
+const props = defineProps<NodeViewProps>();
 
 const faqConfig = computed(() => {
     const raw = props.node?.attrs?.config;
     if (typeof raw === 'string') {
         try {
             return JSON.parse(raw);
-        } catch (error) {
+        } catch {
             return {};
         }
     }
@@ -36,7 +32,7 @@ const collapsibleAnswer = computed(() => DOMPurify.sanitize((faqConfig.value?.an
             <CollapsibleTrigger as-child class="w-full">
                 <Button
                     variant="secondary"
-                    class="collapsible-trigger text-base text-foreground/80 w-full border-2 whitespace-normal break-words h-fit text-start justify-between my-0"
+                    class="collapsible-trigger my-0 h-fit w-full justify-between border-2 text-start text-base break-words whitespace-normal text-foreground/80"
                 >
                     {{ collapsibleQuestion }}
                 </Button>

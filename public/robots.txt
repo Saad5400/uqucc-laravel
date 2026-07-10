@@ -1,6 +1,5 @@
 User-agent: *
 Allow: /
 Disallow: /admin
-Disallow: /filament
 
 Sitemap: https://uqucc.sb.sa/sitemap.xml

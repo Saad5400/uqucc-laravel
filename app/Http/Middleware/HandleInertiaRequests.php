@@ -2,9 +2,9 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\SearchIndexService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
-use App\Services\SearchIndexService;
 
 class HandleInertiaRequests extends Middleware
 {
@@ -36,11 +36,23 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $user = $request->user();
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
-                'user' => $request->user(),
+                'user' => $user ? [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'roles' => $user->getRoleNames()->all(),
+                    'permissions' => $user->getAllPermissions()->pluck('name')->all(),
+                ] : null,
+            ],
+            'flash' => [
+                'success' => fn () => $request->session()->get('success'),
+                'error' => fn () => $request->session()->get('error'),
             ],
             // Navigation tree (cached, auto-invalidates on page changes)
             'navigation' => fn () => cache()->remember(

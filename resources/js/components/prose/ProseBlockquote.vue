@@ -1,5 +1,5 @@
 <template>
-  <blockquote class="border-l-0 border-s-4 [&>*]:text-muted-foreground">
-    <slot />
-  </blockquote>
+    <blockquote class="border-s-4 border-e-0 [&>*]:text-muted-foreground">
+        <slot />
+    </blockquote>
 </template>

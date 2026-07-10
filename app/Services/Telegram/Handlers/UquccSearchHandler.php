@@ -8,11 +8,13 @@ use App\Services\QuickResponseService;
 use App\Services\Telegram\ContentParser;
 use App\Services\Telegram\Traits\SearchesPages;
 use App\Services\TipTapContentExtractor;
+use App\Support\Disk;
 use App\Support\ScreenshotConfig;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use League\Flysystem\Local\LocalFilesystemAdapter;
 use Telegram\Bot\FileUpload\InputFile;
 use Telegram\Bot\Objects\Message;
 
@@ -322,7 +324,7 @@ class UquccSearchHandler extends BaseHandler
         // Build links in HTML format
         $escapedUrl = $this->escapeHtml($pageUrl);
         $readMoreLink = "📖 <a href=\"{$escapedUrl}\">اقرأ المزيد على الموقع</a>";
-        
+
         $title = is_string($page->title) ? $page->title : (string) $page->title;
         $escapedTitle = $this->escapeHtml($title);
         $regularLink = "📖 <a href=\"{$escapedUrl}\">{$escapedTitle}</a>";
@@ -573,24 +575,49 @@ class UquccSearchHandler extends BaseHandler
      */
     protected function resolveAttachmentPath(string $pathOrUrl): ?array
     {
-        $disk = Storage::disk('public');
+        $disk = Storage::disk(Disk::MEDIA);
 
         if ($this->isExternalUrl($pathOrUrl)) {
             // External URL - fetch and cache
             return $this->fetchAndCacheExternalFile($pathOrUrl);
         }
 
-        // Internal path - use disk
-        $fullPath = $disk->path($pathOrUrl);
-
-        if (! file_exists($fullPath)) {
+        // Internal path - resolve on the media disk
+        if (! $disk->exists($pathOrUrl)) {
             Log::warning('Attachment file not found', ['path' => $pathOrUrl]);
 
             return null;
         }
 
+        if ($disk->getAdapter() instanceof LocalFilesystemAdapter) {
+            return [
+                'path' => $disk->path($pathOrUrl),
+                'filename' => basename($pathOrUrl),
+            ];
+        }
+
+        // Remote media disk (S3 in production): cache a local copy so the
+        // Telegram SDK can upload from a real filesystem path. Keyed by the
+        // disk path, reused across sends.
+        $cacheDir = storage_path('app/cache/media-attachments');
+        if (! is_dir($cacheDir)) {
+            mkdir($cacheDir, 0755, true);
+        }
+
+        $localPath = $cacheDir.'/'.md5($pathOrUrl).'_'.basename($pathOrUrl);
+
+        if (! file_exists($localPath)) {
+            $contents = $disk->get($pathOrUrl);
+
+            if ($contents === null || file_put_contents($localPath, $contents) === false) {
+                Log::warning('Attachment file could not be copied locally', ['path' => $pathOrUrl]);
+
+                return null;
+            }
+        }
+
         return [
-            'path' => $fullPath,
+            'path' => $localPath,
             'filename' => basename($pathOrUrl),
         ];
     }

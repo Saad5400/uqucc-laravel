@@ -607,7 +607,8 @@ class PageManagementHandler extends BaseHandler
     }
 
     /**
-     * Download a file from Telegram and save it locally.
+     * Download a file from Telegram and save it on the media disk (local
+     * `/storage` in dev, S3 in production) under `quick-responses/`.
      */
     protected function downloadAndSaveFile(string $fileId, string $type, ?string $fileName = null): ?string
     {
@@ -630,19 +631,24 @@ class PageManagementHandler extends BaseHandler
                 $savedFileName = 'telegram_'.time().'_'.uniqid().'.'.$extension;
             }
 
-            // Create directory if needed
-            $storageDir = storage_path('app/public/quick-responses');
-            if (! is_dir($storageDir)) {
-                mkdir($storageDir, 0755, true);
+            // Download to a temp file, then push it onto the media disk.
+            $download = \App\Support\LocalFile::temporary($extension);
+            $this->telegram->downloadFile($file, $download->path);
+
+            if (! file_exists($download->path) || filesize($download->path) === 0) {
+                \Illuminate\Support\Facades\Log::error('Telegram file download: File not saved', ['path' => $download->path]);
+
+                return null;
             }
 
-            // Use SDK's downloadFile method
-            $localPath = $storageDir.'/'.$savedFileName;
-            $this->telegram->downloadFile($file, $localPath);
+            $stored = \Illuminate\Support\Facades\Storage::disk(\App\Support\Disk::MEDIA)->putFileAs(
+                'quick-responses',
+                new \Illuminate\Http\File($download->path),
+                $savedFileName,
+            );
 
-            // Verify file was saved
-            if (! file_exists($localPath)) {
-                \Illuminate\Support\Facades\Log::error('Telegram file download: File not saved', ['path' => $localPath]);
+            if ($stored === false) {
+                \Illuminate\Support\Facades\Log::error('Telegram file download: media disk write failed', ['filename' => $savedFileName]);
 
                 return null;
             }
@@ -664,7 +670,7 @@ class PageManagementHandler extends BaseHandler
      */
     protected function removeButtonLinesFromHtml(string $html): string
     {
-        $lines = explode("<br>", $html);
+        $lines = explode('<br>', $html);
         $filtered = [];
 
         foreach ($lines as $line) {
@@ -683,7 +689,7 @@ class PageManagementHandler extends BaseHandler
             $filtered[] = $line;
         }
 
-        return implode("<br>", $filtered);
+        return implode('<br>', $filtered);
     }
 
     /**
@@ -887,7 +893,7 @@ class PageManagementHandler extends BaseHandler
         if (! empty($attachments)) {
             foreach ($attachments as $attachmentPath) {
                 // Get public URL for the attachment
-                $publicUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($attachmentPath);
+                $publicUrl = \Illuminate\Support\Facades\Storage::disk(\App\Support\Disk::MEDIA)->url($attachmentPath);
 
                 // Determine if it's an image by checking extension
                 $extension = strtolower(pathinfo($attachmentPath, PATHINFO_EXTENSION));
@@ -945,12 +951,14 @@ class PageManagementHandler extends BaseHandler
             // Skip button pattern lines: (text|url)
             if (preg_match('/^\((.+?)\|(.+?)\)$/', $trimmedLine)) {
                 $cumulativeOffset += $lineLength + 1; // +1 for newline
+
                 continue;
             }
 
             // Skip row layout pattern lines: [صف:X-Y-Z]
             if (preg_match('/^\[صف:([0-9\-]+)\]$/', $trimmedLine)) {
                 $cumulativeOffset += $lineLength + 1; // +1 for newline
+
                 continue;
             }
 
@@ -959,6 +967,7 @@ class PageManagementHandler extends BaseHandler
                 if ($lineIndex > 0) {
                     $cumulativeOffset += 1; // Account for newline character
                 }
+
                 continue;
             }
 

@@ -34,9 +34,6 @@ cmds = [
     "php artisan route:cache",
     "php artisan view:cache",
 
-    # Filament
-    "php artisan filament:optimize",
-
     # Frontend builds (command will run client + SSR)
     "npm run build:ssr",
 
@@ -189,6 +186,22 @@ stopasgroup=true
 killasgroup=true
 stdout_logfile=/var/log/worker-telegram-queue.log
 stderr_logfile=/var/log/worker-telegram-queue.log
+'''
+
+# Dedicated worker for AI jobs (LLM calls can be slow: --timeout=300).
+# stopwaitsecs > timeout so supervisor lets in-flight AI jobs finish on restart.
+"worker-ai-queue.conf" = '''
+[program:worker-ai-queue]
+process_name=%(program_name)s_%(process_num)02d
+command=bash -c 'exec php /app/artisan queue:work --queue=ai --sleep=1 --tries=1 --timeout=300 --max-time=3600'
+numprocs=2
+autostart=true
+autorestart=true
+stopwaitsecs=310
+stopasgroup=true
+killasgroup=true
+stdout_logfile=/var/log/worker-ai-queue.log
+stderr_logfile=/var/log/worker-ai-queue.log
 '''
 
 "worker-inertia-ssr.conf" = '''

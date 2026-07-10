@@ -28,10 +28,8 @@
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <link rel="manifest" href="/site.webmanifest">
 
-        {{-- Fonts --}}
-        <link rel="preconnect" href="https://fonts.googleapis.com">
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-        <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+        {{-- Fonts (self-hosted, see resources/css/app.css) --}}
+        <link rel="preload" href="/fonts/cairo/cairo-arabic.woff2" as="font" type="font/woff2" crossorigin>
 
         {{-- Open Graph / Facebook --}}
         <meta inertia="og:type" property="og:type" content="{{ $ogType }}">

@@ -5,104 +5,145 @@
 
         <!-- Rich content from database -->
         <div v-if="hasContent" class="typography mb-6">
-            <RichContentRenderer :content="page.html_content" />
+            <RichContentRenderer :content="page?.html_content" />
         </div>
 
         <div class="typography">
-            <div v-auto-animate>
-                <div v-if="totalCredits" class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                    <!-- Real GPA -->
-                    <Card size="sm">
-                        <CardHeader size="sm">
-                            <CardTitle class="text-lg">المعدل الدقيق</CardTitle>
-                        </CardHeader>
-                        <CardContent size="sm" class="text-end text-2xl font-bold">
-                            {{ gpa }}
-                        </CardContent>
-                    </Card>
-
-                    <!-- Approximate GPA -->
-                    <Card size="sm">
-                        <CardHeader size="sm">
-                            <CardTitle class="text-lg">المعدل التقريبي</CardTitle>
-                        </CardHeader>
-                        <CardContent size="sm" class="text-end text-2xl font-bold">
-                            {{ approximateGpa }}
-                        </CardContent>
-                    </Card>
-
-                    <!-- Total Credits -->
-                    <Card size="sm">
-                        <CardHeader size="sm">
-                            <CardTitle class="text-lg">إجمالي الساعات</CardTitle>
-                        </CardHeader>
-                        <CardContent size="sm" class="text-end text-2xl font-bold">
-                            {{ totalCredits }}
-                        </CardContent>
-                    </Card>
-
-                    <!-- Total Points -->
-                    <Card size="sm">
-                        <CardHeader size="sm">
-                            <CardTitle class="text-lg">إجمالي النقاط</CardTitle>
-                        </CardHeader>
-                        <CardContent size="sm" class="text-end text-2xl font-bold">
-                            {{ totalPoints }}
-                        </CardContent>
-                    </Card>
+            <!-- Empty state: no courses yet — teach what the tool does and how to start -->
+            <div v-if="courses.length === 0" class="!my-4 flex flex-col items-center gap-4 rounded-xl border border-dashed px-6 py-10 text-center">
+                <Calculator class="size-10 text-muted-foreground" aria-hidden="true" />
+                <div class="space-y-1">
+                    <p class="!m-0 font-medium">احسب معدلك التراكمي</p>
+                    <p class="!m-0 text-sm text-muted-foreground">
+                        أضف مقرراتك مع عدد الساعات والتقدير ليظهر المعدل فورًا، وتُحفظ بياناتك على جهازك تلقائيًا.
+                    </p>
                 </div>
-
-                <p v-else class="!mb-2 text-muted-foreground">املأ البيانات لحساب المعدل</p>
-            </div>
-
-            <div class="!my-4 flex flex-col gap-2">
-                <div class="flex items-center justify-between gap-2 overflow-x-auto">
-                    <Button @click="addCourse" class="flex-1">
-                        إضافة مقرر
+                <div class="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+                    <Button @click="addCourse">
+                        أضف أول مقرر
                         <Plus />
                     </Button>
-                    <div class="flex gap-2">
-                        <Button variant="secondary" @click="exportCourses" class="flex-1">
-                            تصدير البيانات
-                            <FileDown />
+                    <Button variant="outline" :disabled="isParsingTranscript" @click="openTranscriptPicker">
+                        {{ isParsingTranscript ? 'جارٍ استخراج البيانات...' : 'استيراد من السجل الأكاديمي' }}
+                        <GraduationCap />
+                    </Button>
+                </div>
+                <button type="button" class="cursor-pointer text-xs text-muted-foreground underline-offset-4 hover:underline" @click="importCourses">
+                    لديك بيانات مصدَّرة سابقًا؟ استيراد من الحافظة
+                </button>
+            </div>
+
+            <template v-else>
+                <div v-auto-animate>
+                    <div v-if="totalCredits" class="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+                        <!-- Real GPA -->
+                        <Card size="sm">
+                            <CardHeader size="sm" class="px-4 pt-3">
+                                <CardTitle class="text-sm font-medium text-muted-foreground">المعدل الدقيق</CardTitle>
+                            </CardHeader>
+                            <CardContent size="sm" class="px-4 pb-3 text-end text-xl font-bold sm:text-2xl">
+                                <span dir="ltr" class="inline-block tabular-nums">{{ gpa }}</span>
+                            </CardContent>
+                        </Card>
+
+                        <!-- Approximate GPA -->
+                        <Card size="sm">
+                            <CardHeader size="sm" class="px-4 pt-3">
+                                <CardTitle class="text-sm font-medium text-muted-foreground">المعدل التقريبي</CardTitle>
+                            </CardHeader>
+                            <CardContent size="sm" class="px-4 pb-3 text-end text-xl font-bold sm:text-2xl">
+                                <span dir="ltr" class="inline-block tabular-nums">{{ approximateGpa }}</span>
+                            </CardContent>
+                        </Card>
+
+                        <!-- Total Credits -->
+                        <Card size="sm">
+                            <CardHeader size="sm" class="px-4 pt-3">
+                                <CardTitle class="text-sm font-medium text-muted-foreground">إجمالي الساعات</CardTitle>
+                            </CardHeader>
+                            <CardContent size="sm" class="px-4 pb-3 text-end text-xl font-bold sm:text-2xl">
+                                <span dir="ltr" class="inline-block tabular-nums">{{ totalCredits }}</span>
+                            </CardContent>
+                        </Card>
+
+                        <!-- Total Points -->
+                        <Card size="sm">
+                            <CardHeader size="sm" class="px-4 pt-3">
+                                <CardTitle class="text-sm font-medium text-muted-foreground">إجمالي النقاط</CardTitle>
+                            </CardHeader>
+                            <CardContent size="sm" class="px-4 pb-3 text-end text-xl font-bold sm:text-2xl">
+                                <span dir="ltr" class="inline-block tabular-nums">{{ totalPoints }}</span>
+                            </CardContent>
+                        </Card>
+                    </div>
+
+                    <p v-else class="!mb-2 text-muted-foreground">أكمل الساعات والتقدير لكل مقرر ليظهر المعدل</p>
+                </div>
+
+                <div class="!my-4 flex flex-col gap-2">
+                    <div class="flex flex-wrap items-center justify-between gap-2">
+                        <Button @click="addCourse" class="flex-1">
+                            إضافة مقرر
+                            <Plus />
                         </Button>
-                        <Button variant="secondary" @click="importCourses" class="flex-1">
-                            استيراد البيانات
-                            <FileUp />
-                        </Button>
+                        <div class="flex gap-2">
+                            <Button variant="secondary" @click="exportCourses" class="flex-1">
+                                تصدير البيانات
+                                <FileDown />
+                            </Button>
+                            <Button variant="secondary" @click="importCourses" class="flex-1">
+                                استيراد البيانات
+                                <FileUp />
+                            </Button>
+                        </div>
+                    </div>
+
+                    <Button variant="outline" class="w-full" :disabled="isParsingTranscript" @click="openTranscriptPicker">
+                        {{ isParsingTranscript ? 'جارٍ استخراج البيانات...' : 'استيراد من السجل الأكاديمي' }}
+                        <GraduationCap />
+                    </Button>
+                </div>
+
+                <div v-auto-animate class="!space-y-2">
+                    <div v-for="course in courses" :key="course.id" class="my-0 rounded-lg border p-2 sm:rounded-none sm:border-0 sm:p-0">
+                        <div class="flex flex-col gap-2 sm:flex-row">
+                            <Input v-model="course.name" placeholder="اسم المقرر" class="h-10 sm:h-9 sm:flex-1" />
+                            <div class="flex gap-2">
+                                <Input
+                                    v-model="course.credits"
+                                    placeholder="الساعات"
+                                    inputmode="decimal"
+                                    dir="ltr"
+                                    class="h-10 min-w-0 flex-1 text-end tabular-nums sm:h-9 sm:w-42 sm:flex-none"
+                                />
+                                <Select
+                                    :model-value="course.grade?.value"
+                                    @update:model-value="(val) => updateCourseField(course.id, 'grade', { value: val, label: val })"
+                                >
+                                    <SelectTrigger class="!h-10 min-w-0 flex-1 sm:!h-9 sm:w-42 sm:flex-none">
+                                        <SelectValue placeholder="التقدير" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem v-for="grade in Object.keys(gradeValues)" :key="grade" :value="grade">
+                                            {{ grade }}
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <Button
+                                    class="!size-10 shrink-0 sm:!size-9"
+                                    aria-label="حذف المقرر"
+                                    variant="destructive"
+                                    @click="removeCourse(course.id)"
+                                >
+                                    <Trash />
+                                </Button>
+                            </div>
+                        </div>
                     </div>
                 </div>
+            </template>
 
-                <Button variant="outline" class="w-full" :disabled="isParsingTranscript" @click="openTranscriptPicker">
-                    {{ isParsingTranscript ? 'جارٍ استخراج البيانات...' : 'استيراد من السجل الأكاديمي' }}
-                    <GraduationCap />
-                </Button>
-
-                <input ref="transcriptInput" type="file" accept="application/pdf,.pdf" class="hidden" @change="handleTranscriptUpload" />
-            </div>
-
-            <div v-auto-animate class="!space-y-2">
-                <div v-for="course in courses" :key="course.id" class="my-0 flex gap-2">
-                    <Button class="!size-9" aria-label="حذف" variant="destructive" @click="removeCourse(course.id)">
-                        <Trash />
-                    </Button>
-                    <Input v-model="course.name" placeholder="اسم المقرر" />
-                    <Input v-model="course.credits" placeholder="الساعات" class="w-42" />
-                    <Select
-                        :model-value="course.grade?.value"
-                        @update:model-value="(val) => updateCourseField(course.id, 'grade', { value: val, label: val })"
-                    >
-                        <SelectTrigger class="w-42">
-                            <SelectValue placeholder="التقدير" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem v-for="grade in Object.keys(gradeValues)" :key="grade" :value="grade">
-                                {{ grade }}
-                            </SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-            </div>
+            <input ref="transcriptInput" type="file" accept="application/pdf,.pdf" class="hidden" @change="handleTranscriptUpload" />
         </div>
     </DocsLayout>
 </template>
@@ -116,10 +157,11 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { computeGpaStats, gradeValues } from '@/lib/calculators/gpa';
 import { deserializeCourses, serializeCourses, type PortableCourse } from '@/lib/calculators/gpaSerialization';
 import { transcriptToCourses } from '@/lib/transcript/transcriptToCourses';
 import { vAutoAnimate } from '@formkit/auto-animate/vue';
-import { FileDown, FileUp, GraduationCap, Plus, Trash } from 'lucide-vue-next';
+import { Calculator, FileDown, FileUp, GraduationCap, Plus, Trash } from 'lucide-vue-next';
 import { nanoid } from 'nanoid';
 import { computed, onMounted, ref, watch } from 'vue';
 import { toast } from 'vue-sonner';
@@ -150,27 +192,6 @@ interface Course {
         label: string;
     };
 }
-
-// Convert Arabic-Indic digits and separators to a JS number
-const parseArabicNumber = (text = '') =>
-    parseFloat(
-        text
-            .trim()
-            .replace(/[٠-٩]/g, (digit) => '٠١٢٣٤٥٦٧٨٩'.indexOf(digit) + '')
-            .replace(/[٫،,]/g, '.'),
-    ) || 0;
-
-const gradeValues: Record<string, number> = {
-    'A+': 4,
-    A: 3.75,
-    'B+': 3.5,
-    B: 3,
-    'C+': 2.5,
-    C: 2,
-    'D+': 1.5,
-    D: 1,
-    F: 0,
-};
 
 // Initialize courses with data from localStorage (client-side only)
 const courses = ref<Course[]>([]);
@@ -220,31 +241,8 @@ const saveCourses = () => {
 // Watch for changes and save to localStorage
 watch(courses, saveCourses, { deep: true });
 
-// Computed statistics
-const stats = computed(() => {
-    const { creditsSum, pointsSum } = courses.value.reduce(
-        (acc, { credits, grade }) => {
-            const creditValue = parseArabicNumber(credits);
-
-            // Only include in calculation if BOTH credits and grade are entered
-            if (creditValue > 0 && grade?.value && gradeValues[grade.value] !== undefined) {
-                acc.creditsSum += creditValue;
-                acc.pointsSum += creditValue * gradeValues[grade.value];
-            }
-
-            return acc;
-        },
-        { creditsSum: 0, pointsSum: 0 },
-    );
-
-    const average = creditsSum ? pointsSum / creditsSum : 0;
-    return {
-        gpa: +average.toFixed(5),
-        approximateGpa: +average.toFixed(2),
-        totalCredits: creditsSum,
-        totalPoints: pointsSum,
-    };
-});
+// Computed statistics (pinned by the vitest suite for computeGpaStats)
+const stats = computed(() => computeGpaStats(courses.value));
 
 // Individual computed refs for easier template access
 const gpa = computed(() => stats.value.gpa);
