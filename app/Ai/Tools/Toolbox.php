@@ -27,6 +27,7 @@ class Toolbox
             CalculateDeprivationTool::class,
             CalculateTransferTool::class,
             FindTutorsTool::class,
+            ListStalePagesTool::class,
         ];
     }
 }

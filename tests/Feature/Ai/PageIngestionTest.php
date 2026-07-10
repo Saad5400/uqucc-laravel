@@ -105,6 +105,31 @@ describe('page ingestion', function () {
             ->and($item->chunks()->pluck('normalized_content')->join(' '))->not->toContain('قديم');
     });
 
+    it('stamps source_updated_at from the page and refreshes it when only the date changes', function () {
+        enableAiSearch();
+
+        $page = makeArabicPage('المكافآت', 'تفاصيل مكافآت التفوق والامتياز');
+
+        $item = CorpusItem::query()->forPage($page)->firstOrFail();
+
+        expect($item->source_updated_at?->getTimestamp())->toBe($page->fresh()->updated_at->getTimestamp());
+
+        $originalChecksum = $item->checksum;
+        $originalChunkIds = $item->chunks()->pluck('id')->all();
+
+        $this->travel(3)->days();
+
+        // A save without a content change: the checksum guard must skip the
+        // chunks but still refresh the freshness stamp.
+        $page->fresh()->touch();
+
+        $item->refresh();
+
+        expect($item->checksum)->toBe($originalChecksum)
+            ->and($item->chunks()->pluck('id')->all())->toBe($originalChunkIds)
+            ->and($item->source_updated_at->getTimestamp())->toBe($page->fresh()->updated_at->getTimestamp());
+    });
+
     it('does nothing while AI search is disabled', function () {
         $page = makeArabicPage('صفحة', 'محتوى لن يفهرس');
 

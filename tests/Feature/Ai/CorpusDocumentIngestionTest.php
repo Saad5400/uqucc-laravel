@@ -226,6 +226,36 @@ describe('document ingestion', function () {
             ->and($item->chunks()->pluck('normalized_content')->join(' '))->not->toContain('قديم');
     });
 
+    it('stamps source_updated_at from the document and refreshes it when only the date changes', function () {
+        enableDocumentAiSearch();
+
+        $document = makeCorpusDocument('text-layer.pdf', 'application/pdf', [
+            'status' => CorpusDocument::STATUS_READY,
+            'extracted_markdown' => 'نص المستند لاختبار تاريخ التحديث.',
+        ]);
+
+        app(IngestDocument::class)->ingest($document);
+
+        $item = documentCorpusItem($document);
+
+        expect($item->source_updated_at?->getTimestamp())->toBe($document->updated_at->getTimestamp());
+
+        $originalChecksum = $item->checksum;
+        $originalChunkIds = $item->chunks()->pluck('id')->all();
+
+        $this->travel(3)->days();
+
+        $document->touch();
+
+        app(IngestDocument::class)->ingest($document->fresh());
+
+        $item->refresh();
+
+        expect($item->checksum)->toBe($originalChecksum)
+            ->and($item->chunks()->pluck('id')->all())->toBe($originalChunkIds)
+            ->and($item->source_updated_at->getTimestamp())->toBe($document->fresh()->updated_at->getTimestamp());
+    });
+
     it('does nothing while AI search is disabled', function () {
         $document = CorpusDocument::factory()->ready()->create();
 

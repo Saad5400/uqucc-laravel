@@ -30,7 +30,8 @@ it('returns the full page as markdown by slug', function () {
     expect($reply)->toContain('# دليل التحويل')
         ->toContain('## الشروط')
         ->toContain('يشترط اجتياز مقررات السنة الأولى المشتركة.')
-        ->toContain('slug: /adwat/dalil-altahwil');
+        ->toContain('slug: /adwat/dalil-altahwil')
+        ->toContain('آخر تحديث: '.$page->fresh()->updated_at->toDateString());
 });
 
 it('accepts the slug without a leading slash', function () {

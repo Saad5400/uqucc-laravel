@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string $status
  * @property string|null $checksum
  * @property array<string, mixed>|null $meta
+ * @property \Illuminate\Support\Carbon|null $source_updated_at
  */
 class CorpusItem extends Model
 {
@@ -48,6 +49,7 @@ class CorpusItem extends Model
         'status',
         'checksum',
         'meta',
+        'source_updated_at',
     ];
 
     /**
@@ -58,6 +60,7 @@ class CorpusItem extends Model
         return [
             'source_type' => CorpusSourceType::class,
             'meta' => 'array',
+            'source_updated_at' => 'datetime',
         ];
     }
 

@@ -69,6 +69,12 @@ class IngestDocument
             && $item->checksum === $checksum
             && $item->status === CorpusItem::STATUS_READY
             && $item->chunks()->exists()) {
+            // Unchanged text can still carry a fresher save date — keep the
+            // freshness signal current without re-chunking or re-embedding.
+            if ($item->source_updated_at?->getTimestamp() !== $document->updated_at?->getTimestamp()) {
+                $item->update(['source_updated_at' => $document->updated_at]);
+            }
+
             return;
         }
 
@@ -77,6 +83,7 @@ class IngestDocument
             'slug' => null,
             'lang' => 'ar',
             'status' => CorpusItem::STATUS_PROCESSING,
+            'source_updated_at' => $document->updated_at,
         ])->save();
 
         try {

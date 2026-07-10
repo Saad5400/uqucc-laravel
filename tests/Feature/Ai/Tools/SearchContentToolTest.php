@@ -36,7 +36,8 @@ it('returns matching content with title, slug and snippet', function () {
 
     expect($reply)->toContain('الخطة الدراسية')
         ->toContain($plan->slug)
-        ->toContain('البرمجة');
+        ->toContain('البرمجة')
+        ->toContain('آخر تحديث: '.$plan->fresh()->updated_at->toDateString());
 });
 
 it('respects the limit argument', function () {

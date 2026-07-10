@@ -194,6 +194,7 @@ class CorpusRetriever
             heading: $chunk->heading,
             content: $chunk->content,
             score: (float) $chunk->getAttribute('search_score'),
+            sourceUpdatedAt: $item->source_updated_at,
         );
     }
 

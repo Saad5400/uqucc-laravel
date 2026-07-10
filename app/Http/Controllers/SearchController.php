@@ -43,6 +43,7 @@ class SearchController extends Controller
                     'heading' => $result->heading,
                     'snippet' => Str::limit($result->content, self::SNIPPET_LENGTH),
                     'score' => round($result->score, 4),
+                    'updated_at' => $result->sourceUpdatedAt?->toDateString(),
                 ])
                 ->values(),
         ]);

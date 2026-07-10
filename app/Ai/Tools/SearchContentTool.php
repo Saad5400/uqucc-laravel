@@ -62,12 +62,20 @@ class SearchContentTool implements Tool
             $heading = $result->heading !== null && $result->heading !== '' ? " — {$result->heading}" : '';
             $slug = $result->slug !== null && $result->slug !== '' ? " (slug: {$result->slug})" : '';
 
+            // The freshness date lives on its own indented line: the result
+            // line must keep ENDING with "(slug: …)" — CitationExtractor
+            // parses that stable marker.
+            $updated = $result->sourceUpdatedAt !== null
+                ? "\n   آخر تحديث: ".$result->sourceUpdatedAt->toDateString()
+                : '';
+
             return sprintf(
-                "%d. %s%s%s\n   %s",
+                "%d. %s%s%s%s\n   %s",
                 $index + 1,
                 $result->title,
                 $heading,
                 $slug,
+                $updated,
                 Str::limit(trim($result->content), self::SNIPPET_LENGTH),
             );
         });

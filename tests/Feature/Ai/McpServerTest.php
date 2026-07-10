@@ -24,7 +24,7 @@ function mcpJsonRpc(array $overrides = []): array
     ], $overrides);
 }
 
-it('lists all six tools over the http transport', function () {
+it('lists all seven tools over the http transport', function () {
     $response = $this->postJson('/mcp', mcpJsonRpc(['method' => 'tools/list']));
 
     $response->assertOk();
@@ -38,6 +38,7 @@ it('lists all six tools over the http transport', function () {
         'calculate_deprivation',
         'calculate_transfer',
         'find_tutors',
+        'list_stale_pages',
     ]);
 
     expect($response->json('result.tools.0.description'))->toContain('uqucc')

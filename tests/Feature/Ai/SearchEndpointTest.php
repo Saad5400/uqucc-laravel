@@ -36,10 +36,11 @@ it('returns matching results for a valid arabic query', function () {
         ->assertJsonPath('enabled', true)
         ->assertJsonPath('results.0.title', 'الخطة الدراسية')
         ->assertJsonPath('results.0.slug', $plan->slug)
+        ->assertJsonPath('results.0.updated_at', $plan->fresh()->updated_at->toDateString())
         ->assertJsonStructure([
             'enabled',
             'results' => [
-                ['title', 'slug', 'heading', 'snippet', 'score'],
+                ['title', 'slug', 'heading', 'snippet', 'score', 'updated_at'],
             ],
         ]);
 

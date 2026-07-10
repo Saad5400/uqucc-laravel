@@ -51,8 +51,14 @@ class GetPageTool implements Tool
             return "لم يتم العثور على صفحة بالمعرف \"{$normalizedSlug}\". No visible page matches this slug — use search_content to find the right one.";
         }
 
+        // The date goes ABOVE the slug marker: CitationExtractor relies on
+        // the "slug:" line staying the last line of a successful reply.
+        $updated = $page->updated_at !== null
+            ? 'آخر تحديث: '.$page->updated_at->toDateString()."\n"
+            : '';
+
         return $this->extractor->extract($page)
-            ."\n\n---\nslug: {$page->slug}";
+            ."\n\n---\n{$updated}slug: {$page->slug}";
     }
 
     /**

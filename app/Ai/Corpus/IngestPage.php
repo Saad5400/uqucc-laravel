@@ -55,7 +55,7 @@ class IngestPage
             return;
         }
 
-        $text = $this->extractor->extract($page);
+        $text = $this->extractor->extractForIngestion($page);
         $checksum = $this->checksumFor($text);
 
         $item = CorpusItem::query()->firstOrNew([
@@ -67,6 +67,12 @@ class IngestPage
             && $item->checksum === $checksum
             && $item->status === CorpusItem::STATUS_READY
             && $item->chunks()->exists()) {
+            // Unchanged content can still carry a fresher save date — keep the
+            // freshness signal current without re-chunking or re-embedding.
+            if ($item->source_updated_at?->getTimestamp() !== $page->updated_at?->getTimestamp()) {
+                $item->update(['source_updated_at' => $page->updated_at]);
+            }
+
             return;
         }
 
@@ -75,6 +81,7 @@ class IngestPage
             'slug' => $page->slug,
             'lang' => 'ar',
             'status' => CorpusItem::STATUS_PROCESSING,
+            'source_updated_at' => $page->updated_at,
         ])->save();
 
         try {
