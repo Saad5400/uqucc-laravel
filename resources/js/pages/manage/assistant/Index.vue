@@ -514,4 +514,29 @@ onBeforeUnmount(() => abortController?.abort());
     padding-inline-start: 0.75rem;
     color: var(--muted-foreground);
 }
+
+/* Tables scroll inside the bubble on narrow screens instead of overflowing it. */
+.assistant-markdown :deep(table) {
+    display: block;
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
+    margin-block: 0.5rem;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.assistant-markdown :deep(th),
+.assistant-markdown :deep(td) {
+    border: 1px solid var(--border);
+    padding: 0.375rem 0.625rem;
+    text-align: start;
+    vertical-align: top;
+}
+
+.assistant-markdown :deep(th) {
+    background: var(--background);
+    font-weight: 600;
+}
 </style>

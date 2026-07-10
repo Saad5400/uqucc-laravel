@@ -245,7 +245,10 @@ clear_env = no
 
 ; Useful production tweaks
 php_admin_value[memory_limit] = 512M
-php_admin_value[max_execution_time] = 60
+; Long enough for a streamed AI turn (SSE): reasoning models plus tool
+; calls can run well past a minute before the reply completes. nginx's
+; fastcgi_read_timeout is raised to match.
+php_admin_value[max_execution_time] = 300
 php_admin_value[max_input_time] = 60
 php_admin_value[post_max_size] = 256M
 php_admin_value[upload_max_filesize] = 64M
@@ -334,6 +337,14 @@ http {
 
             # Inertia-specific buffer tweak
             fastcgi_buffer_size 8k;
+
+            # AI chat replies stream as SSE: the controllers send
+            # "X-Accel-Buffering: no" so nginx flushes each token frame
+            # instead of buffering the whole response. The long read timeout
+            # lets a slow turn (reasoning model thinking before the first
+            # token, or a multi-step tool call) finish without nginx killing
+            # the connection at the default 60s and truncating the reply.
+            fastcgi_read_timeout 300;
         }
 
         location ~ /\.(?!well-known).* {
