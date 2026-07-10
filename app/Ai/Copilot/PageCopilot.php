@@ -165,6 +165,6 @@ class PageCopilot
     {
         $model = trim($this->settings->chat_model);
 
-        return $model !== '' ? $model : (string) config('ai.chat.model', 'google/gemini-3.5-flash');
+        return $model !== '' ? $model : (string) config('ai.chat.model', 'deepseek/deepseek-v4-flash');
     }
 }

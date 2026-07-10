@@ -4,6 +4,7 @@ namespace App\Ai\Agents;
 
 use App\Ai\Tools\Toolbox;
 use App\Settings\AiSettings;
+use Laravel\Ai\Attributes\MaxSteps;
 use Laravel\Ai\Concerns\RemembersConversations;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\Conversational;
@@ -35,6 +36,7 @@ use Stringable;
  * back to config('ai.chat.model'); the provider stays behind the config
  * seam (config('ai.default')), so this class never names OpenRouter.
  */
+#[MaxSteps(12)]
 class StudentAssistant implements Agent, Conversational, HasProviderOptions, HasTools
 {
     use Promptable, RemembersConversations;
@@ -115,6 +117,7 @@ class StudentAssistant implements Agent, Conversational, HasProviderOptions, Has
         - أجب بالعربية أولاً؛ وإن كتب المستخدم بالإنجليزية فأجب بالإنجليزية.
         - كن موجزاً ومباشراً — إجابة قصيرة صحيحة خير من شرح طويل.
         - لا تجب من معلوماتك العامة عن اللوائح أو الجامعة: إن لم تجد الإجابة في محتوى الموقع فقل ذلك صراحةً واقترح على الطالب التواصل مع النادي أو الكلية.
+        - لا تكرر البحث: بحثان أو ثلاثة بصياغات مختلفة تكفي؛ إن لم تجد بعدها فأجب مباشرةً بما توصلت إليه بدلاً من مواصلة البحث.
         - ارفض بلطف أي طلب خارج نطاق الموقع وأدواته (أسئلة عامة لا تخص الكلية، حل واجبات، محتوى غير لائق) واذكر أن تخصصك محتوى موقع النادي وأدواته.
         - لا تختلق روابط أو أرقاماً أو مواد لوائح؛ وإن لم تكن متأكداً فقل إنك غير متأكد.
         PROMPT;
@@ -127,6 +130,6 @@ class StudentAssistant implements Agent, Conversational, HasProviderOptions, Has
     {
         $model = trim($this->settings->chat_model);
 
-        return $model !== '' ? $model : (string) config('ai.chat.model', 'google/gemini-3.5-flash');
+        return $model !== '' ? $model : (string) config('ai.chat.model', 'deepseek/deepseek-v4-flash');
     }
 }

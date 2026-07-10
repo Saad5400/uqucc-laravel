@@ -43,9 +43,27 @@ return [
     */
 
     'chat' => [
-        'model' => env('AI_CHAT_MODEL', 'google/gemini-3.5-flash'),
-        'reasoning_effort' => env('AI_CHAT_REASONING_EFFORT', 'medium'),
+        'model' => env('AI_CHAT_MODEL', 'deepseek/deepseek-v4-flash'),
+        'reasoning_effort' => env('AI_CHAT_REASONING_EFFORT', 'high'),
         'timeout' => (int) env('AI_CHAT_TIMEOUT', 60),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Authoring (the "smart" tier)
+    |--------------------------------------------------------------------------
+    |
+    | Used for heavyweight content work — drafting a page from an uploaded
+    | document, proposing revisions to an existing page, stale-content
+    | analysis. Deliberately a stronger reasoning model than chat: these are
+    | rare, admin-triggered, review-gated calls where quality beats latency.
+    |
+    */
+
+    'authoring' => [
+        'model' => env('AI_AUTHORING_MODEL', 'deepseek/deepseek-v4-pro'),
+        'reasoning_effort' => env('AI_AUTHORING_REASONING_EFFORT', 'high'),
+        'timeout' => (int) env('AI_AUTHORING_TIMEOUT', 180),
     ],
 
     /*

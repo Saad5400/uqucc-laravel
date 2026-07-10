@@ -74,6 +74,13 @@ class ReasoningOpenRouterGateway extends OpenRouterGateway
      * Ask OpenRouter to include `usage` (and therefore `usage.cost`) in the
      * response, on top of the stock body. Late-binds into both the streamed
      * and non-streamed step builders.
+     *
+     * On the LAST allowed step the tools are withheld so the model is forced
+     * to answer in text: TextGenerationLoop ends the loop after the final
+     * step regardless, so a tool call there would be discarded and the whole
+     * turn would surface as an empty response. Thorough reasoning models
+     * (DeepSeek V4 at high effort) hit this for real — they happily spend
+     * every step searching.
      */
     protected function buildStepBody(
         Provider $provider,
@@ -85,7 +92,15 @@ class ReasoningOpenRouterGateway extends OpenRouterGateway
         ?TextGenerationOptions $options,
         StepContext $stepContext,
     ): array {
+        if ($stepContext->isFinalStep) {
+            $tools = [];
+        }
+
         $body = parent::buildStepBody($provider, $model, $instructions, $messages, $tools, $schema, $options, $stepContext);
+
+        if ($stepContext->isFinalStep) {
+            unset($body['tools'], $body['tool_choice']);
+        }
 
         $body['usage'] = array_merge($body['usage'] ?? [], ['include' => true]);
 
