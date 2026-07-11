@@ -70,20 +70,25 @@ class SearchContentTool implements Tool
                 default => '',
             };
 
-            // The freshness date lives on its own indented line: the result
-            // line must keep ENDING with "(slug: …)" — CitationExtractor
-            // parses that stable marker.
+            // The freshness date and document link live on their own indented
+            // lines: the result line must keep ENDING with "(slug: …)" —
+            // CitationExtractor parses that stable marker.
             $updated = $result->sourceUpdatedAt !== null
                 ? "\n   آخر تحديث: ".$result->sourceUpdatedAt->toDateString()
                 : '';
 
+            $documentUrl = $result->sourceType === CorpusSourceType::Document
+                ? "\n   رابط المستند (المصدر): ".route('documents.show', $result->sourceId)
+                : '';
+
             return sprintf(
-                "%d. %s%s%s%s\n   %s",
+                "%d. %s%s%s%s%s\n   %s",
                 $index + 1,
                 $result->title,
                 $heading,
                 $slug,
                 $updated,
+                $documentUrl,
                 Str::limit(trim($result->content), self::SNIPPET_LENGTH),
             );
         });

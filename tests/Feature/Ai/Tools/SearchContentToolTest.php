@@ -63,6 +63,7 @@ it('marks results from uploaded documents with their document id', function () {
 
     expect($reply)->toContain('قواعد حقوق الطلبة')
         ->toContain("(document: {$document->id})")
+        ->toContain('رابط المستند (المصدر): '.route('documents.show', $document->id))
         ->not->toContain('(slug:');
 });
 
