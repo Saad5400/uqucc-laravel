@@ -52,8 +52,10 @@ class GetDocumentTool implements Tool
             ? 'آخر تحديث: '.$document->updated_at->toDateString()."\n"
             : '';
 
+        $url = route('documents.show', $document);
+
         return Str::limit(trim((string) $document->extracted_markdown), self::MAX_CHARS, "\n[اقتُطع باقي المستند لطوله]")
-            ."\n\n---\n{$updated}document: {$document->id} — {$document->title}";
+            ."\n\n---\n{$updated}رابط المستند (المصدر): {$url}\ndocument: {$document->id} — {$document->title}";
     }
 
     /**

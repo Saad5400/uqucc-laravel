@@ -23,6 +23,7 @@ it('returns the full document text with the id and title footer', function () {
     expect($reply)->toContain('## المادة العشرون')
         ->toContain('يُحرم الطالب من دخول الاختبار النهائي')
         ->toContain("document: {$document->id} — لائحة الدراسة والاختبارات")
+        ->toContain('رابط المستند (المصدر): '.route('documents.show', $document))
         ->toContain('آخر تحديث: '.$document->fresh()->updated_at->toDateString());
 });
 

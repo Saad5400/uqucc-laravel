@@ -38,6 +38,12 @@ Route::get('/bahth', SearchController::class)
     ->middleware('throttle:ai-search')
     ->name('search');
 
+// Original file of a ready corpus document (regulations PDF) — the citable
+// source URL for AI answers drawn from uploaded documents.
+Route::get('/mstnd/{document}', App\Http\Controllers\CorpusDocumentFileController::class)
+    ->whereNumber('document')
+    ->name('documents.show');
+
 // AI assistant chat (SSE + JSON; must come before catch-all route) - rate limited, never cached.
 // Feature/budget/daily-quota gating happens inside the controllers against AiSettings + SpendLedger.
 Route::middleware('throttle:ai-chat')->group(function () {
