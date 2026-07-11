@@ -4,6 +4,7 @@ namespace App\Ai\Tools;
 
 use App\Ai\Corpus\CorpusRetriever;
 use App\Ai\Corpus\CorpusSearchResult;
+use App\Ai\Corpus\CorpusSourceType;
 use App\Ai\Tools\Concerns\GatedByAiSettings;
 use App\Settings\AiSettings;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
@@ -35,7 +36,8 @@ class SearchContentTool implements Tool
         return 'Search the UQU College of Computing student guide (uqucc) content. '
             .'The content is written in Arabic — prefer Arabic queries (البحث في محتوى دليل طلاب كلية الحاسبات بجامعة أم القرى). '
             .'Returns the most relevant content snippets with their page title, slug and section heading, best match first. '
-            .'Use get_page with a returned slug to read a full page. '
+            .'Use get_page with a returned slug to read a full page; results marked "(document: {id})" come from an uploaded '
+            .'document (regulations/rules PDF) — read those in full with get_document instead. '
             .'The full public URL of a page is '.rtrim((string) config('app.url'), '/').'{slug}. Read-only.';
     }
 
@@ -61,7 +63,12 @@ class SearchContentTool implements Tool
 
         $lines = $results->map(function (CorpusSearchResult $result, int $index): string {
             $heading = $result->heading !== null && $result->heading !== '' ? " — {$result->heading}" : '';
-            $slug = $result->slug !== null && $result->slug !== '' ? " (slug: {$result->slug})" : '';
+
+            $slug = match (true) {
+                $result->slug !== null && $result->slug !== '' => " (slug: {$result->slug})",
+                $result->sourceType === CorpusSourceType::Document => " (document: {$result->sourceId})",
+                default => '',
+            };
 
             // The freshness date lives on its own indented line: the result
             // line must keep ENDING with "(slug: …)" — CitationExtractor

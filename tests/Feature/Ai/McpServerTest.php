@@ -24,7 +24,7 @@ function mcpJsonRpc(array $overrides = []): array
     ], $overrides);
 }
 
-it('lists all seven tools over the http transport', function () {
+it('lists all eight tools over the http transport', function () {
     $response = $this->postJson('/mcp', mcpJsonRpc(['method' => 'tools/list']));
 
     $response->assertOk();
@@ -34,6 +34,7 @@ it('lists all seven tools over the http transport', function () {
     expect($names)->toBe([
         'search_content',
         'get_page',
+        'get_document',
         'calculate_gpa',
         'calculate_deprivation',
         'calculate_transfer',
@@ -42,7 +43,7 @@ it('lists all seven tools over the http transport', function () {
     ]);
 
     expect($response->json('result.tools.0.description'))->toContain('uqucc')
-        ->and($response->json('result.tools.2.inputSchema.properties.courses.type'))->toBe('array')
+        ->and($response->json('result.tools.3.inputSchema.properties.courses.type'))->toBe('array')
         ->and($response->json('result.tools.0.annotations.readOnlyHint'))->toBeTrue();
 });
 

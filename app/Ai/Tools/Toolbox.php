@@ -23,6 +23,7 @@ class Toolbox
         return [
             SearchContentTool::class,
             GetPageTool::class,
+            GetDocumentTool::class,
             CalculateGpaTool::class,
             CalculateDeprivationTool::class,
             CalculateTransferTool::class,
