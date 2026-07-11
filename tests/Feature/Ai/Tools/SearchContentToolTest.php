@@ -50,6 +50,22 @@ it('respects the limit argument', function () {
     expect(preg_match_all('/^\d+\. /mu', $reply))->toBe(2);
 });
 
+it('marks results from uploaded documents with their document id', function () {
+    $document = \App\Models\Corpus\CorpusDocument::factory()->create([
+        'title' => 'قواعد حقوق الطلبة',
+        'status' => \App\Models\Corpus\CorpusDocument::STATUS_READY,
+        'extracted_markdown' => "# قواعد حقوق الطلبة\n\nللطالب الحق في الحصول على المقررات الدراسية المعتمدة في خطته.",
+    ]);
+
+    app(\App\Ai\Corpus\IngestDocument::class)->ingest($document);
+
+    $reply = (string) app(SearchContentTool::class)->handle(new Request(['query' => 'حقوق الطلبة المقررات']));
+
+    expect($reply)->toContain('قواعد حقوق الطلبة')
+        ->toContain("(document: {$document->id})")
+        ->not->toContain('(slug:');
+});
+
 it('reports when nothing matches', function () {
     seedToolSearchablePage('صفحة', 'محتوى عادي تماما');
 

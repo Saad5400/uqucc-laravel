@@ -8,6 +8,7 @@ use Laravel\Ai\Gateway\OpenRouter\OpenRouterGateway;
 use Laravel\Ai\Gateway\StepContext;
 use Laravel\Ai\Gateway\StepResponse;
 use Laravel\Ai\Gateway\TextGenerationOptions;
+use Laravel\Ai\Messages\UserMessage;
 use Laravel\Ai\Providers\Provider;
 use Laravel\Ai\Responses\Data\Meta;
 use Laravel\Ai\Responses\Data\ToolCall;
@@ -80,7 +81,10 @@ class ReasoningOpenRouterGateway extends OpenRouterGateway
      * step regardless, so a tool call there would be discarded and the whole
      * turn would surface as an empty response. Thorough reasoning models
      * (DeepSeek V4 at high effort) hit this for real — they happily spend
-     * every step searching.
+     * every step searching. Withholding tools alone is not always enough:
+     * a model that still "wants" a tool can burn the step on reasoning and
+     * finish with empty content, so an explicit answer-now user message is
+     * appended too (request-only — it is never stored on the conversation).
      */
     protected function buildStepBody(
         Provider $provider,
@@ -92,8 +96,12 @@ class ReasoningOpenRouterGateway extends OpenRouterGateway
         ?TextGenerationOptions $options,
         StepContext $stepContext,
     ): array {
-        if ($stepContext->isFinalStep) {
+        if ($stepContext->isFinalStep && $tools !== []) {
             $tools = [];
+            $messages[] = new UserMessage(
+                'انتهت خطوات استخدام الأدوات. قدّم الآن إجابتك النهائية للمستخدم نصاً بناءً على ما توصلت إليه، وإن لم تجد المعلومة فقل ذلك صراحةً. '
+                .'Tool steps are over — write your complete final answer as plain text now; if the information was not found, say so plainly.'
+            );
         }
 
         $body = parent::buildStepBody($provider, $model, $instructions, $messages, $tools, $schema, $options, $stepContext);
