@@ -40,6 +40,7 @@ const form = useForm<{
     url: string;
     avatar: string;
     roles: string[];
+    requires_review: boolean;
 }>({
     name: '',
     email: '',
@@ -50,6 +51,7 @@ const form = useForm<{
     url: '',
     avatar: '',
     roles: [],
+    requires_review: false,
 });
 
 watch(open, (isOpen) => {
@@ -66,6 +68,7 @@ watch(open, (isOpen) => {
         form.url = props.user?.url ?? '';
         form.avatar = props.user?.avatar ?? '';
         form.roles = [...(props.user?.roles ?? [])];
+        form.requires_review = props.user?.requires_review ?? false;
     }
 });
 
@@ -95,7 +98,7 @@ function submit(): void {
         url: emptyToNull(data.url),
         avatar: emptyToNull(data.avatar),
         ...(changingPassword.value && data.password !== '' ? { password: data.password, password_confirmation: data.password_confirmation } : {}),
-        ...(props.canAssignRoles ? { roles: data.roles } : {}),
+        ...(props.canAssignRoles ? { roles: data.roles, requires_review: data.requires_review } : {}),
     })).put(`/manage/users/${props.user.id}`, {
         preserveScroll: true,
         preserveState: true,
@@ -145,6 +148,16 @@ function submit(): void {
                     <RolesField v-model="form.roles" :role-options="roleOptions" :locked-roles="lockedRoles" />
                     <p v-if="form.errors.roles" class="text-sm text-destructive-foreground">{{ form.errors.roles }}</p>
                 </div>
+                <div v-if="canAssignRoles" class="flex items-center justify-between gap-4">
+                    <div class="space-y-1">
+                        <Label for="edit-user-requires-review">إلزام المراجعة</Label>
+                        <p class="text-xs text-muted-foreground">
+                            عند التفعيل، تُرسل تعديلات هذا المستخدم على المحتوى للمراجعة ولا تُنشر إلا بعد اعتمادها.
+                        </p>
+                    </div>
+                    <Switch id="edit-user-requires-review" v-model="form.requires_review" />
+                </div>
+                <p v-if="form.errors.requires_review" class="text-sm text-destructive-foreground">{{ form.errors.requires_review }}</p>
                 <div v-if="user?.telegram_id" class="flex items-center gap-2 rounded-md border border-border px-3 py-2 text-sm text-muted-foreground">
                     <Send class="size-4 shrink-0" />
                     مرتبط بتيليجرام:

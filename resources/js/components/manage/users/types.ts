@@ -3,6 +3,7 @@ export interface UserRow {
     name: string;
     email: string;
     roles: string[];
+    requires_review: boolean;
     telegram_id: string | null;
     verified: boolean;
     username: string | null;

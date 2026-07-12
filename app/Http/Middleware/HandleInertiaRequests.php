@@ -48,8 +48,15 @@ class HandleInertiaRequests extends Middleware
                     'email' => $user->email,
                     'roles' => $user->getRoleNames()->all(),
                     'permissions' => $user->getAllPermissions()->pluck('name')->all(),
+                    'requires_review' => $user->mustHaveChangesReviewed(),
+                    'can_review_changes' => $user->canReviewChanges(),
                 ] : null,
             ],
+            // Count of edits awaiting review, shared for the sidebar badge; only
+            // resolved (and only non-zero) for users who can actually review.
+            'pendingReviewsCount' => $user?->canReviewChanges()
+                ? fn () => \App\Models\PageChangeRequest::where('status', \App\Models\PageChangeRequest::STATUS_PENDING)->count()
+                : 0,
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),

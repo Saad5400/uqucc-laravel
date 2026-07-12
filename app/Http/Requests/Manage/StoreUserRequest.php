@@ -30,6 +30,7 @@ class StoreUserRequest extends FormRequest
             'password' => ['required', 'string', 'confirmed', Password::defaults()],
             'roles' => ['sometimes', 'array'],
             'roles.*' => ['string', 'exists:roles,name'],
+            'requires_review' => ['sometimes', 'boolean'],
         ];
     }
 
@@ -56,6 +57,7 @@ class StoreUserRequest extends FormRequest
             'roles.array' => 'قائمة الأدوار غير صالحة.',
             'roles.*.string' => 'الدور غير صالح.',
             'roles.*.exists' => 'أحد الأدوار المحددة غير موجود.',
+            'requires_review.boolean' => 'قيمة إلزام المراجعة غير صالحة.',
         ];
     }
 }

@@ -9,6 +9,7 @@ use App\Http\Controllers\Manage\DashboardController;
 use App\Http\Controllers\Manage\LoginController;
 use App\Http\Controllers\Manage\PageAuthoringController;
 use App\Http\Controllers\Manage\PageAuthorsController;
+use App\Http\Controllers\Manage\PageChangeRequestController;
 use App\Http\Controllers\Manage\PageController;
 use App\Http\Controllers\Manage\PageCopilotController;
 use App\Http\Controllers\Manage\PageUploadController;
@@ -86,6 +87,13 @@ Route::prefix('manage')->name('manage.')->group(function () {
             Route::post('/courses/reorder', [PrivateTutorCourseController::class, 'reorder'])->name('courses.reorder');
             Route::put('/courses/{course}', [PrivateTutorCourseController::class, 'update'])->name('courses.update');
             Route::delete('/courses/{course}', [PrivateTutorCourseController::class, 'destroy'])->name('courses.destroy');
+        });
+
+        Route::middleware('can:review-changes')->group(function () {
+            Route::get('/reviews', [PageChangeRequestController::class, 'index'])->name('reviews.index');
+            Route::get('/reviews/{changeRequest}', [PageChangeRequestController::class, 'show'])->name('reviews.show');
+            Route::post('/reviews/{changeRequest}/approve', [PageChangeRequestController::class, 'approve'])->name('reviews.approve');
+            Route::post('/reviews/{changeRequest}/reject', [PageChangeRequestController::class, 'reject'])->name('reviews.reject');
         });
 
         Route::get('/activity', [ActivityLogController::class, 'index'])

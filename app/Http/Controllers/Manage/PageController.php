@@ -7,6 +7,7 @@ use App\Http\Requests\Manage\ReorderPagesRequest;
 use App\Http\Requests\Manage\StorePageRequest;
 use App\Http\Requests\Manage\UpdatePageRequest;
 use App\Models\Page;
+use App\Models\PageChangeRequest;
 use App\Models\User;
 use App\Settings\AiSettings;
 use App\Support\Disk;
@@ -147,12 +148,39 @@ class PageController extends Controller
             'copilot' => [
                 'enabled' => app(AiSettings::class)->isFeatureEnabled('admin_copilot'),
             ],
+            'review' => $this->reviewContext($page),
         ]);
+    }
+
+    /**
+     * Review banner context for the workspace: whether the viewer's own saves
+     * are review-gated, and whether they already have a pending change waiting
+     * on this page.
+     *
+     * @return array{mode: bool, has_pending: bool}
+     */
+    protected function reviewContext(Page $page): array
+    {
+        $user = auth()->user();
+        $mode = $user !== null && $user->mustHaveChangesReviewed();
+
+        return [
+            'mode' => $mode,
+            'has_pending' => $mode && $page->changeRequests()
+                ->where('author_id', $user->id)
+                ->where('status', PageChangeRequest::STATUS_PENDING)
+                ->exists(),
+        ];
     }
 
     /**
      * Apply a partial update. All writes go through Eloquent so the
      * `Page::booted()` cache flushes keep firing (frozen contract).
+     *
+     * For a review-mode editor the payload never touches the live page: it is
+     * captured as a pending change request (merged into their existing pending
+     * one for this page, so a run of per-tab saves accumulates into a single
+     * review) for a reviewer to approve or reject.
      */
     public function update(UpdatePageRequest $request, Page $page): RedirectResponse
     {
@@ -160,6 +188,24 @@ class PageController extends Controller
 
         if (array_key_exists('html_content', $data) && $data['html_content'] === null) {
             $data['html_content'] = '';
+        }
+
+        if ($request->user()->mustHaveChangesReviewed()) {
+            $pending = $page->changeRequests()
+                ->where('author_id', $request->user()->id)
+                ->where('status', PageChangeRequest::STATUS_PENDING)
+                ->first();
+
+            $page->changeRequests()->updateOrCreate(
+                ['id' => $pending?->id],
+                [
+                    'author_id' => $request->user()->id,
+                    'status' => PageChangeRequest::STATUS_PENDING,
+                    'payload' => array_merge($pending?->payload ?? [], $data),
+                ],
+            );
+
+            return back()->with('success', 'تم إرسال تعديلك للمراجعة. سيظهر على الموقع بعد اعتماده من مراجع.');
         }
 
         $page->update($data);
