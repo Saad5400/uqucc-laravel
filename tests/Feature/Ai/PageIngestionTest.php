@@ -164,6 +164,27 @@ describe('page ingestion', function () {
             ->and(CorpusChunk::query()->count())->toBe(0);
     });
 
+    it('never ingests a page that is hidden from the AI assistant', function () {
+        enableAiSearch();
+
+        $page = makeArabicPage('صفحة مخفية عن الذكاء', 'محتوى لا يفهرس', ['hidden_from_ai' => true]);
+
+        expect(CorpusItem::query()->forPage($page)->exists())->toBeFalse();
+    });
+
+    it('evicts a page from the corpus when it becomes hidden from the AI assistant', function () {
+        enableAiSearch();
+
+        $page = makeArabicPage('صفحة تُخفى عن الذكاء لاحقا', 'محتوى ظاهر');
+
+        expect(CorpusItem::query()->forPage($page)->exists())->toBeTrue();
+
+        $page->update(['hidden_from_ai' => true]);
+
+        expect(CorpusItem::query()->forPage($page)->exists())->toBeFalse()
+            ->and(CorpusChunk::query()->count())->toBe(0);
+    });
+
     it('evicts a page from the corpus when it is deleted', function () {
         enableAiSearch();
 
@@ -190,6 +211,24 @@ describe('ai:ingest-pages command', function () {
 
         expect(CorpusItem::query()->forPage($visible)->exists())->toBeTrue()
             ->and(CorpusItem::query()->whereKey($stale->id)->exists())->toBeFalse()
+            ->and(CorpusItem::query()->count())->toBe(1);
+    });
+
+    it('excludes and prunes pages hidden from the AI assistant', function () {
+        enableAiSearch();
+
+        $visible = makeArabicPage('صفحة ظاهرة للذكاء', 'محتوى ظاهر');
+        $aiHidden = makeArabicPage('صفحة مخفية عن الذكاء', 'محتوى مخفي');
+
+        // Ingested while still visible, then hidden from the AI directly in the
+        // database so the observer does not evict it before the command runs.
+        expect(CorpusItem::query()->forPage($aiHidden)->exists())->toBeTrue();
+        Page::query()->whereKey($aiHidden->id)->update(['hidden_from_ai' => true]);
+
+        $this->artisan('ai:ingest-pages')->assertSuccessful();
+
+        expect(CorpusItem::query()->forPage($visible)->exists())->toBeTrue()
+            ->and(CorpusItem::query()->forPage($aiHidden)->exists())->toBeFalse()
             ->and(CorpusItem::query()->count())->toBe(1);
     });
 

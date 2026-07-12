@@ -59,6 +59,20 @@ it('never exposes hidden pages', function () {
         ->not->toContain('صفحة مخفية');
 });
 
+it('never exposes pages hidden from the AI assistant', function () {
+    Page::factory()->create([
+        'slug' => '/mkhfia-an-aldhka',
+        'title' => 'صفحة مخفية عن الذكاء',
+        'hidden' => false,
+        'hidden_from_ai' => true,
+    ]);
+
+    $reply = (string) app(GetPageTool::class)->handle(new Request(['slug' => '/mkhfia-an-aldhka']));
+
+    expect($reply)->toContain('لم يتم العثور')
+        ->not->toContain('صفحة مخفية عن الذكاء');
+});
+
 it('reports an unknown slug', function () {
     $reply = (string) app(GetPageTool::class)->handle(new Request(['slug' => '/gheir-mawjood']));
 

@@ -74,6 +74,21 @@ describe('visibility scopes', function () {
         expect(Page::visibleInBot()->pluck('id')->all())->not->toContain($page->id);
     });
 
+    it('filters AI-hidden pages via the visibleToAi scope', function () {
+        $visible = PageFactory::new()->create();
+        PageFactory::new()->hiddenFromAi()->create();
+
+        expect(Page::visibleToAi()->pluck('id')->all())->toBe([$visible->id]);
+    });
+
+    it('hides a page from the AI assistant but not the website or bot independently', function () {
+        $page = PageFactory::new()->hiddenFromAi()->create();
+
+        expect(Page::visible()->pluck('id')->all())->toContain($page->id);
+        expect(Page::visibleInBot()->pluck('id')->all())->toContain($page->id);
+        expect(Page::visibleToAi()->pluck('id')->all())->not->toContain($page->id);
+    });
+
     it('returns only pages without a parent via the rootLevel scope', function () {
         $root = PageFactory::new()->create();
         PageFactory::new()->childOf($root)->create();

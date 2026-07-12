@@ -44,6 +44,7 @@ class GetPageTool implements Tool
 
         $page = Page::query()
             ->visible()
+            ->visibleToAi()
             ->where('slug', $normalizedSlug)
             ->first();
 

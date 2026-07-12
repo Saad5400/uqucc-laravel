@@ -366,6 +366,15 @@ describe('update', function () {
         ])->assertSessionHasErrors('quick_response_message');
     });
 
+    it('toggles hidden_from_ai through the update endpoint', function () {
+        $page = PageFactory::new()->create(['hidden_from_ai' => false]);
+
+        $this->actingAs($this->admin)->put("/manage/pages/{$page->id}", ['hidden_from_ai' => true])
+            ->assertSessionDoesntHaveErrors();
+
+        expect($page->fresh()->hidden_from_ai)->toBeTrue();
+    });
+
     it('stores null html_content as an empty string (column is not nullable)', function () {
         $page = PageFactory::new()->create();
 

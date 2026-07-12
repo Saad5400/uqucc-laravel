@@ -107,6 +107,7 @@ class PageController extends Controller
                 'icon' => $page->icon,
                 'hidden' => $page->hidden,
                 'hidden_from_bot' => $page->hidden_from_bot,
+                'hidden_from_ai' => $page->hidden_from_ai,
                 'smart_search' => $page->smart_search,
                 'requires_prefix' => $page->requires_prefix,
                 'parent_id' => $page->parent_id,

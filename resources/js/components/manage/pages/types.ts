@@ -51,6 +51,7 @@ export interface PageWorkspace {
     icon: string | null;
     hidden: boolean;
     hidden_from_bot: boolean;
+    hidden_from_ai: boolean;
     smart_search: boolean;
     requires_prefix: boolean;
     parent_id: number | null;
