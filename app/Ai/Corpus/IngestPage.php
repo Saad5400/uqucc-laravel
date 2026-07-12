@@ -22,8 +22,9 @@ use Throwable;
  *
  * SAFE NO-OP when AI search is disabled in settings or the embedding driver
  * is unusable (openrouter without a key) — ingestion never throws for a
- * missing key and never runs against operator intent. Hidden or trashed
- * pages are evicted from the corpus rather than indexed.
+ * missing key and never runs against operator intent. Pages that are
+ * hidden, hidden from the AI assistant, or trashed are evicted from the
+ * corpus rather than indexed.
  */
 class IngestPage
 {
@@ -49,7 +50,7 @@ class IngestPage
             return;
         }
 
-        if ($page->hidden || $page->trashed()) {
+        if ($page->hidden || $page->hidden_from_ai || $page->trashed()) {
             $this->forget($page->id);
 
             return;

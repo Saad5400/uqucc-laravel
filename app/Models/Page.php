@@ -104,6 +104,7 @@ class Page extends Model implements Sortable
         'icon',
         'hidden',
         'hidden_from_bot',
+        'hidden_from_ai',
         'smart_search',
         'requires_prefix',
         'parent_id',
@@ -122,6 +123,7 @@ class Page extends Model implements Sortable
     protected $casts = [
         'hidden' => 'boolean',
         'hidden_from_bot' => 'boolean',
+        'hidden_from_ai' => 'boolean',
         'smart_search' => 'boolean',
         'requires_prefix' => 'boolean',
         'order' => 'integer',
@@ -203,6 +205,14 @@ class Page extends Model implements Sortable
     }
 
     /**
+     * Scope to filter pages exposed to the AI assistant and its corpus
+     */
+    public function scopeVisibleToAi($query)
+    {
+        return $query->where('hidden_from_ai', false);
+    }
+
+    /**
      * Scope to get smart search enabled pages
      */
     public function scopeSmartSearch($query)
@@ -232,6 +242,7 @@ class Page extends Model implements Sortable
                 'icon',
                 'hidden',
                 'hidden_from_bot',
+                'hidden_from_ai',
                 'smart_search',
                 'requires_prefix',
                 'parent_id',

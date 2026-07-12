@@ -32,6 +32,7 @@ class PageFactory extends Factory
             ],
             'hidden' => false,
             'hidden_from_bot' => false,
+            'hidden_from_ai' => false,
             'smart_search' => false,
             'requires_prefix' => false,
             'parent_id' => null,
@@ -57,6 +58,16 @@ class PageFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'hidden_from_bot' => true,
+        ]);
+    }
+
+    /**
+     * Indicate that the page is hidden from the AI assistant and its corpus.
+     */
+    public function hiddenFromAi(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'hidden_from_ai' => true,
         ]);
     }
 

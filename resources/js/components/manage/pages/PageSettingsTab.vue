@@ -24,6 +24,7 @@ const form = useForm<{
     icon: string;
     hidden: boolean;
     hidden_from_bot: boolean;
+    hidden_from_ai: boolean;
     smart_search: boolean;
     requires_prefix: boolean;
 }>({
@@ -32,6 +33,7 @@ const form = useForm<{
     icon: props.page.icon ?? '',
     hidden: props.page.hidden,
     hidden_from_bot: props.page.hidden_from_bot,
+    hidden_from_ai: props.page.hidden_from_ai,
     smart_search: props.page.smart_search,
     requires_prefix: props.page.requires_prefix,
 });
@@ -51,9 +53,14 @@ onMounted(() => {
 
 const urlPreview = computed(() => `${origin.value}${form.slug}`);
 
-const toggles: { field: 'hidden' | 'hidden_from_bot' | 'smart_search' | 'requires_prefix'; label: string; description: string }[] = [
+const toggles: { field: 'hidden' | 'hidden_from_bot' | 'hidden_from_ai' | 'smart_search' | 'requires_prefix'; label: string; description: string }[] = [
     { field: 'hidden', label: 'مخفي', description: 'إخفاء الصفحة من الموقع الإلكتروني.' },
     { field: 'hidden_from_bot', label: 'مخفي من البوت', description: 'إخفاء الصفحة من بوت تيليجرام.' },
+    {
+        field: 'hidden_from_ai',
+        label: 'مخفي من المساعد الذكي',
+        description: 'إخفاء الصفحة من قاعدة معرفة المساعد الذكي، فلا يعتمد عليها في إجاباته في الموقع والبوت.',
+    },
     { field: 'smart_search', label: 'البحث الذكي', description: 'عند التفعيل، يمكن العثور على الصفحة بالبحث في أي جزء من العنوان.' },
     {
         field: 'requires_prefix',

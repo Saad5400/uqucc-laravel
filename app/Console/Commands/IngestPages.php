@@ -11,8 +11,9 @@ use Illuminate\Console\Command;
 
 /**
  * (Re)ingest every published page into the AI corpus, and prune corpus items
- * whose pages no longer exist or are hidden. The per-page checksum makes a
- * full re-run cheap: unchanged pages are skipped without re-embedding.
+ * whose pages no longer exist, are hidden, or are hidden from the AI
+ * assistant. The per-page checksum makes a full re-run cheap: unchanged pages
+ * are skipped without re-embedding.
  */
 class IngestPages extends Command
 {
@@ -34,7 +35,7 @@ class IngestPages extends Command
             return self::FAILURE;
         }
 
-        $pages = Page::visible()->get();
+        $pages = Page::visible()->visibleToAi()->get();
 
         $pruned = $this->pruneStaleItems($pages->pluck('id'));
 
@@ -59,16 +60,17 @@ class IngestPages extends Command
     }
 
     /**
-     * Remove page-sourced corpus items that no longer correspond to a
-     * published page (deleted or hidden since the last run).
+     * Remove page-sourced corpus items that no longer correspond to an
+     * ingestible page (deleted, hidden, or hidden from the AI assistant since
+     * the last run).
      *
-     * @param  \Illuminate\Support\Collection<int, int>  $publishedPageIds
+     * @param  \Illuminate\Support\Collection<int, int>  $ingestiblePageIds
      */
-    private function pruneStaleItems($publishedPageIds): int
+    private function pruneStaleItems($ingestiblePageIds): int
     {
         return CorpusItem::query()
             ->where('source_type', CorpusSourceType::Page)
-            ->whereNotIn('source_id', $publishedPageIds)
+            ->whereNotIn('source_id', $ingestiblePageIds)
             ->delete();
     }
 }
