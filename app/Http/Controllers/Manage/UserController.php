@@ -31,6 +31,7 @@ class UserController extends Controller
                     'name' => $user->name,
                     'email' => $user->email,
                     'roles' => $user->getRoleNames()->values(),
+                    'requires_review' => $user->requires_review,
                     'telegram_id' => $user->telegram_id,
                     'verified' => $user->email_verified_at !== null,
                     'username' => $user->username,
@@ -50,6 +51,11 @@ class UserController extends Controller
     {
         $user = new User($request->safe()->only(['name', 'email', 'password']));
         $user->email_verified_at = now();
+
+        if ($request->user()->can('assign-roles')) {
+            $user->requires_review = $request->boolean('requires_review');
+        }
+
         $user->save();
 
         if ($request->user()->can('assign-roles')) {
@@ -73,6 +79,10 @@ class UserController extends Controller
 
         if ($request->has('verified')) {
             $user->email_verified_at = $request->boolean('verified') ? ($user->email_verified_at ?? now()) : null;
+        }
+
+        if ($request->has('requires_review') && $request->user()->can('assign-roles')) {
+            $user->requires_review = $request->boolean('requires_review');
         }
 
         $user->save();

@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { EllipsisVertical, FileText, MailWarning, Pencil, Plus, Send, Trash2, Users } from 'lucide-vue-next';
+import { EllipsisVertical, FileText, MailWarning, Pencil, Plus, Send, ShieldCheck, Trash2, Users } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 defineOptions({ layout: ManageLayout });
@@ -124,6 +124,10 @@ function deleteUser(): void {
                         <span class="font-medium">{{ user.name }}</span>
                         <Badge v-for="role in user.roles" :key="role" :variant="role === 'admin' ? 'default' : 'secondary'">
                             {{ roleLabels[role] ?? role }}
+                        </Badge>
+                        <Badge v-if="user.requires_review" variant="outline" class="gap-1">
+                            <ShieldCheck class="size-3" />
+                            مراجعة إلزامية
                         </Badge>
                     </div>
                     <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">

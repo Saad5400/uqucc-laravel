@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { useForm } from '@inertiajs/vue3';
 import { Loader2 } from 'lucide-vue-next';
 import { watch } from 'vue';
@@ -15,12 +16,20 @@ const props = defineProps<{
 
 const open = defineModel<boolean>('open', { default: false });
 
-const form = useForm<{ name: string; email: string; password: string; password_confirmation: string; roles: string[] }>({
+const form = useForm<{
+    name: string;
+    email: string;
+    password: string;
+    password_confirmation: string;
+    roles: string[];
+    requires_review: boolean;
+}>({
     name: '',
     email: '',
     password: '',
     password_confirmation: '',
     roles: [],
+    requires_review: false,
 });
 
 watch(open, (isOpen) => {
@@ -36,7 +45,7 @@ function submit(): void {
         email: data.email,
         password: data.password,
         password_confirmation: data.password_confirmation,
-        ...(props.canAssignRoles ? { roles: data.roles } : {}),
+        ...(props.canAssignRoles ? { roles: data.roles, requires_review: data.requires_review } : {}),
     })).post('/manage/users', {
         preserveScroll: true,
         preserveState: true,
@@ -103,6 +112,13 @@ function submit(): void {
                     <Label>الأدوار</Label>
                     <RolesField v-model="form.roles" :role-options="roleOptions" />
                     <p v-if="form.errors.roles" class="text-sm text-destructive-foreground">{{ form.errors.roles }}</p>
+                </div>
+                <div v-if="canAssignRoles" class="flex items-center justify-between gap-4">
+                    <div class="space-y-1">
+                        <Label for="create-user-requires-review">إلزام المراجعة</Label>
+                        <p class="text-xs text-muted-foreground">تُرسل تعديلات هذا المستخدم على المحتوى للمراجعة قبل نشرها.</p>
+                    </div>
+                    <Switch id="create-user-requires-review" v-model="form.requires_review" />
                 </div>
                 <DialogFooter>
                     <Button type="button" variant="outline" :disabled="form.processing" @click="open = false">إلغاء</Button>

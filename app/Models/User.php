@@ -28,6 +28,7 @@ class User extends Authenticatable
         'username',
         'url',
         'avatar',
+        'requires_review',
         'password',
     ];
 
@@ -51,6 +52,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'requires_review' => 'boolean',
         ];
     }
 
@@ -60,6 +62,24 @@ class User extends Authenticatable
     public function canAccessManagePanel(): bool
     {
         return $this->hasAnyRole(['admin', 'editor']);
+    }
+
+    /**
+     * Whether this user's content edits must be reviewed before going live.
+     * Admins are never gated, even if the flag is set on their account.
+     */
+    public function mustHaveChangesReviewed(): bool
+    {
+        return $this->requires_review && ! $this->hasRole('admin');
+    }
+
+    /**
+     * Whether this user may review (approve/reject) other users' pending
+     * changes: a panel user who is not themselves in review mode.
+     */
+    public function canReviewChanges(): bool
+    {
+        return $this->canAccessManagePanel() && ! $this->mustHaveChangesReviewed();
     }
 
     /**

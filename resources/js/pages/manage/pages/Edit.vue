@@ -18,7 +18,7 @@ import type {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
-import { ArchiveRestore, ChevronLeft, ExternalLink, Loader2, Pencil } from 'lucide-vue-next';
+import { ArchiveRestore, ChevronLeft, ExternalLink, Loader2, Pencil, ShieldCheck } from 'lucide-vue-next';
 import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef } from 'vue';
 
 defineOptions({ layout: ManageLayout });
@@ -33,6 +33,7 @@ const props = defineProps<{
     users: UserOption[];
     attachments: AttachmentInfo[];
     copilot: { enabled: boolean };
+    review: { mode: boolean; has_pending: boolean };
 }>();
 
 const inertiaPage = usePage();
@@ -218,6 +219,17 @@ onUnmounted(() => {
             <ChevronLeft class="size-3.5" aria-hidden="true" />
             <span class="text-foreground">{{ displayedTitle }}</span>
         </nav>
+
+        <div
+            v-if="review.mode"
+            class="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-foreground"
+        >
+            <ShieldCheck class="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
+            <p>
+                تعديلاتك على هذه الصفحة تُرسل للمراجعة ولا تظهر على الموقع إلا بعد اعتمادها.
+                <span v-if="review.has_pending" class="font-medium">لديك تعديل بانتظار المراجعة على هذه الصفحة.</span>
+            </p>
+        </div>
 
         <div
             v-if="page.deleted_at"

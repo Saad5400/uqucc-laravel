@@ -169,6 +169,16 @@ class Page extends Model implements Sortable
         return $this->belongsToMany(User::class)->withPivot('order')->withTimestamps()->orderBy('order');
     }
 
+    /**
+     * Review-gated edits submitted against this page by review-mode editors.
+     *
+     * @return HasMany<PageChangeRequest, $this>
+     */
+    public function changeRequests(): HasMany
+    {
+        return $this->hasMany(PageChangeRequest::class);
+    }
+
     protected function htmlContent(): Attribute
     {
         return Attribute::make(

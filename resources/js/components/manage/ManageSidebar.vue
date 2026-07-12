@@ -30,12 +30,14 @@ interface ManageUser {
     email: string;
     roles: string[];
     permissions: string[];
+    can_review_changes: boolean;
 }
 
 const page = usePage();
 const sidebar = useSidebar();
 
 const user = computed(() => (page.props.auth?.user ?? null) as unknown as ManageUser | null);
+const pendingReviewsCount = computed(() => (page.props.pendingReviewsCount as number | undefined) ?? 0);
 
 const roleLabels: Record<string, string> = {
     admin: 'مدير',
@@ -44,7 +46,7 @@ const roleLabels: Record<string, string> = {
 
 const userRoles = computed(() => (user.value?.roles ?? []).map((role) => roleLabels[role] ?? role).join('، '));
 
-const navItems = computed(() => visibleNavItems(user.value?.permissions ?? []));
+const navItems = computed(() => visibleNavItems(user.value?.permissions ?? [], user.value?.can_review_changes ?? false));
 </script>
 
 <template>
@@ -71,6 +73,13 @@ const navItems = computed(() => visibleNavItems(user.value?.permissions ?? []));
                             <Link :href="item.href" @click="sidebar.setOpenMobile(false)">
                                 <component :is="item.icon" class="!size-5 group-data-[collapsible=icon]:!size-4" />
                                 <span class="truncate">{{ item.title }}</span>
+                                <span
+                                    v-if="item.href === '/manage/reviews' && pendingReviewsCount > 0"
+                                    class="ms-auto inline-flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-xs font-medium text-primary-foreground tabular-nums group-data-[collapsible=icon]:hidden"
+                                    :aria-label="`${pendingReviewsCount} تعديل بانتظار المراجعة`"
+                                >
+                                    {{ pendingReviewsCount }}
+                                </span>
                             </Link>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
