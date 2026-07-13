@@ -746,6 +746,13 @@ onBeforeUnmount(() => abortController?.abort());
     color: var(--primary);
     text-decoration: underline;
     text-underline-offset: 2px;
+    overflow-wrap: anywhere;
+}
+
+/* Bare URLs render as LTR islands so a long link never overflows the bubble or reverses in RTL prose. */
+.assistant-markdown :deep(a[dir='ltr']) {
+    unicode-bidi: isolate;
+    font-variant-numeric: tabular-nums;
 }
 
 .assistant-markdown :deep(blockquote) {

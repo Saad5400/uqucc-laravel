@@ -32,18 +32,27 @@ const ALLOWED_TAGS = [
     'td',
 ];
 
-/** Placeholder sentinel for extracted code spans; a control character never survives user text. */
+/** Placeholder sentinels for extracted spans; control characters never survive user text. */
 const CODE_SENTINEL = String.fromCharCode(1);
+const LINK_SENTINEL = String.fromCharCode(2);
 
 const CODE_RESTORE_PATTERN = new RegExp(`${CODE_SENTINEL}(\\d+)${CODE_SENTINEL}`, 'g');
+const LINK_RESTORE_PATTERN = new RegExp(`${LINK_SENTINEL}(\\d+)${LINK_SENTINEL}`, 'g');
 
-const SENTINEL_STRIP_PATTERN = new RegExp(CODE_SENTINEL, 'g');
+const SENTINEL_STRIP_PATTERN = new RegExp(`[${CODE_SENTINEL}${LINK_SENTINEL}]`, 'g');
+
+/** Trailing punctuation that hugs a bare URL in prose ("(المصدر: https://…/page)") but isn't part of it. */
+const URL_TRAILING_PATTERN = /[)\]}>.,;:!؟?،؛»"'’]+$/u;
 
 const escapeHtml = (text: string): string => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 const isSafeUrl = (url: string): boolean => /^(https?:\/\/|\/(?!\/)|#)/i.test(url);
 
-/** Inline markdown on already-escaped text: code spans, bold, italic, links. */
+/** Anchor for a URL, opening in a new tab; `dir="ltr"` keeps a bare URL an LTR island inside RTL prose. */
+const anchor = (url: string, label: string, bare: boolean): string =>
+    `<a href="${url}" target="_blank" rel="noopener noreferrer"${bare ? ' dir="ltr"' : ''}>${label}</a>`;
+
+/** Inline markdown on already-escaped text: code spans, bold, italic, explicit links, bare URLs. */
 const renderInline = (text: string): string => {
     const codeSpans: string[] = [];
 
@@ -52,12 +61,31 @@ const renderInline = (text: string): string => {
         return `${CODE_SENTINEL}${codeSpans.length - 1}${CODE_SENTINEL}`;
     });
 
-    html = html
-        .replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (match, label: string, url: string) =>
-            isSafeUrl(url) ? `<a href="${url}" target="_blank" rel="noopener noreferrer">${label}</a>` : match,
-        )
-        .replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>')
-        .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+    /**
+     * Stash finished anchors behind a sentinel so later passes (bold/italic,
+     * bare-URL autolinking) never re-process their markup — a bare URL sitting
+     * inside an explicit link's target must not be linkified a second time.
+     */
+    const links: string[] = [];
+    const stashLink = (markup: string): string => {
+        links.push(markup);
+        return `${LINK_SENTINEL}${links.length - 1}${LINK_SENTINEL}`;
+    };
+
+    html = html.replace(/\[([^\]\n]+)\]\(([^)\s]+)\)/g, (match, label: string, url: string) =>
+        isSafeUrl(url) ? stashLink(anchor(url, label, false)) : match,
+    );
+
+    html = html.replace(/https?:\/\/[^\s<]+/g, (raw: string) => {
+        const trailing = URL_TRAILING_PATTERN.exec(raw)?.[0] ?? '';
+        const url = trailing === '' ? raw : raw.slice(0, raw.length - trailing.length);
+
+        return isSafeUrl(url) ? stashLink(anchor(url, url, true)) + trailing : raw;
+    });
+
+    html = html.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>').replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+
+    html = html.replace(LINK_RESTORE_PATTERN, (_match, index: string) => links[Number(index)] ?? '');
 
     return html.replace(CODE_RESTORE_PATTERN, (_match, index: string) => codeSpans[Number(index)] ?? '');
 };
@@ -176,6 +204,6 @@ export const renderMarkdown = (markdown: string): string => {
 
     return DOMPurify.sanitize(html, {
         ALLOWED_TAGS,
-        ALLOWED_ATTR: ['href', 'target', 'rel', 'style'],
+        ALLOWED_ATTR: ['href', 'target', 'rel', 'style', 'dir'],
     });
 };

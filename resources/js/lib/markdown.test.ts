@@ -33,6 +33,32 @@ describe('renderMarkdown', () => {
         expect(renderMarkdown('[سيئ](javascript:alert(1))')).not.toContain('<a');
     });
 
+    it('autolinks bare urls as pressable ltr islands', () => {
+        expect(renderMarkdown('https://uqucc.sb.sa/adwat/almkafa')).toBe(
+            '<p><a href="https://uqucc.sb.sa/adwat/almkafa" target="_blank" rel="noopener noreferrer" dir="ltr">' +
+                'https://uqucc.sb.sa/adwat/almkafa</a></p>',
+        );
+    });
+
+    it('keeps trailing punctuation outside an autolinked url', () => {
+        expect(renderMarkdown('المصدر: (https://uqucc.sb.sa/allwaeh/altkdyrat).')).toBe(
+            '<p>المصدر: (<a href="https://uqucc.sb.sa/allwaeh/altkdyrat" target="_blank" rel="noopener noreferrer" dir="ltr">' +
+                'https://uqucc.sb.sa/allwaeh/altkdyrat</a>).</p>',
+        );
+    });
+
+    it('does not double-link a url inside an explicit markdown link', () => {
+        expect(renderMarkdown('[الدليل](https://uqucc.sb.sa/allwaeh)')).toBe(
+            '<p><a href="https://uqucc.sb.sa/allwaeh" target="_blank" rel="noopener noreferrer">الدليل</a></p>',
+        );
+    });
+
+    it('does not autolink unsafe protocols', () => {
+        const html = renderMarkdown('javascript:alert(1) و ftp://example.com/x');
+
+        expect(html).not.toContain('<a');
+    });
+
     it('escapes raw html from the model', () => {
         const html = renderMarkdown('<script>alert(1)</script> و <img src=x onerror=alert(1)>');
 
