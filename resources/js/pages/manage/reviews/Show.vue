@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import ConfirmDialog from '@/components/manage/ConfirmDialog.vue';
 import ManageLayout from '@/components/manage/ManageLayout.vue';
+import DiffView from '@/components/manage/reviews/DiffView.vue';
 import { changeStatusLabels, type ReviewChangePayload } from '@/components/manage/reviews/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,6 +18,17 @@ const props = defineProps<{
 }>();
 
 const isPending = computed(() => props.change.status === 'pending');
+
+/** Content fields can render as a colored line diff or as rendered previews. */
+type ContentView = 'diff' | 'preview';
+
+const contentView = ref<ContentView>('diff');
+const contentViews: { value: ContentView; label: string }[] = [
+    { value: 'diff', label: 'الفروقات' },
+    { value: 'preview', label: 'معاينة' },
+];
+
+const hasMarkdownChange = computed(() => props.change.changes.some((field) => field.type === 'markdown'));
 
 /** Why approve/reject are unavailable — null when the reviewer can act. */
 const actionDisabledReason = computed<string | null>(() => {
@@ -123,11 +135,27 @@ function runConfirmedAction(): void {
             لا تتضمن هذه المراجعة أي تغييرات.
         </p>
 
+        <div v-if="hasMarkdownChange" role="tablist" aria-label="طريقة عرض المحتوى" class="flex w-fit gap-1 rounded-lg bg-muted p-1">
+            <button
+                v-for="view in contentViews"
+                :key="view.value"
+                type="button"
+                role="tab"
+                :aria-selected="contentView === view.value"
+                class="rounded-md px-4 py-1.5 text-sm font-medium whitespace-nowrap transition-colors"
+                :class="contentView === view.value ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'"
+                @click="contentView = view.value"
+            >
+                {{ view.label }}
+            </button>
+        </div>
+
         <div v-for="field in change.changes" :key="field.key" class="space-y-2 rounded-lg border border-border p-4">
             <h2 class="text-sm font-semibold">{{ field.label }}</h2>
 
             <template v-if="field.type === 'markdown'">
-                <div class="grid gap-4 lg:grid-cols-2">
+                <DiffView v-if="contentView === 'diff'" :old="String(field.old)" :new="String(field.new)" />
+                <div v-else class="grid gap-4 lg:grid-cols-2">
                     <div class="space-y-1">
                         <p class="text-xs text-muted-foreground">الحالي</p>
                         <p v-if="String(field.old).trim() === ''" class="text-sm text-muted-foreground">فارغ.</p>
