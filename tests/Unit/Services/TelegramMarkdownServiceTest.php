@@ -28,7 +28,7 @@ it('converts a two-column table with a header to key-value bullet lines', functi
     MD;
 
     expect(telegramHtml($markdown))->toBe(
-        "• <b>الفصل الأول</b>: معدل تراكمي ≥ 3.50 ✅\n"
+        "• <b>الفصل الأول</b>: معدل تراكمي ≥ 3.50 ✅\n\n"
         .'• <b>الفصل الثاني</b>: معدل تراكمي ≥ 3.50 ✅'
     );
 });
@@ -46,7 +46,7 @@ it('labels wider table rows with their column headers', function () {
 it('renders a headerless table as joined bullet lines', function () {
     $markdown = "| أ | ب | ج |\n| د | هـ | و |";
 
-    expect(telegramHtml($markdown))->toBe("• <b>أ</b> — ب — ج\n• <b>د</b> — هـ — و");
+    expect(telegramHtml($markdown))->toBe("• <b>أ</b> — ب — ج\n\n• <b>د</b> — هـ — و");
 });
 
 it('converts list markers to bullets and keeps numbered lists', function () {

@@ -88,7 +88,7 @@ class TelegramMarkdownService
                     $index++;
                 }
 
-                array_push($output, ...$this->renderTable($table));
+                $output[] = implode("\n\n", $this->renderTable($table));
 
                 continue;
             }
