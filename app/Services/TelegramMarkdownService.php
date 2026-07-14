@@ -115,6 +115,8 @@ class TelegramMarkdownService
 
     private function convertBlockLine(string $line): string
     {
+        $line = $this->normalizeLineBreaks($line);
+
         if (preg_match('/^\s*(?:[-*_]\s*){3,}$/', $line) === 1) {
             return '';
         }
@@ -124,6 +126,17 @@ class TelegramMarkdownService
         }
 
         return (string) preg_replace('/^(\s*)[-*+]\s+/u', '$1• ', $line);
+    }
+
+    /**
+     * The assistant sometimes emits literal <br> tags (most often inside
+     * table cells to stack sub-items). Telegram's HTML parser supports no
+     * such tag, so after escaping they surface as visible "<br>" text; fold
+     * every <br> / <br/> / <br /> into a real newline instead.
+     */
+    private function normalizeLineBreaks(string $text): string
+    {
+        return (string) preg_replace('/&lt;br\s*\/?&gt;/iu', "\n", $text);
     }
 
     private function isTableRow(string $line): bool
@@ -186,8 +199,16 @@ class TelegramMarkdownService
      */
     private function renderTableRow(array $cells, ?array $headers): string
     {
+        $cells = array_map(fn (string $cell): string => $this->normalizeLineBreaks($cell), $cells);
+
         $first = $cells[0] ?? '';
         $rest = array_slice($cells, 1, preserve_keys: true);
+
+        $isMultiline = array_any($cells, fn (string $cell): bool => str_contains($cell, "\n"));
+
+        if ($isMultiline) {
+            return $this->renderMultilineTableRow($first, $rest, count($cells) === 2 ? null : $headers);
+        }
 
         if (count($cells) === 2) {
             return '• <b>'.$first.'</b>: '.$cells[1];
@@ -205,6 +226,41 @@ class TelegramMarkdownService
         }
 
         return '• <b>'.$first.'</b>'.($parts === [] ? '' : ' — '.implode(' — ', $parts));
+    }
+
+    /**
+     * A row with a cell that stacks several sub-items (via <br>) reads badly
+     * inline, so lay it out vertically: the row key as the bullet, then each
+     * value column under its bold header with the sub-items indented beneath.
+     *
+     * @param  array<int, string>  $rest
+     * @param  array<int, string>|null  $headers
+     */
+    private function renderMultilineTableRow(string $first, array $rest, ?array $headers): string
+    {
+        $lines = ['• <b>'.$first.'</b>'];
+
+        foreach ($rest as $columnIndex => $cell) {
+            if ($cell === '') {
+                continue;
+            }
+
+            $label = trim($headers[$columnIndex] ?? '');
+
+            if ($label !== '') {
+                $lines[] = '   <b>'.$label.'</b>';
+            }
+
+            foreach (explode("\n", $cell) as $subLine) {
+                $subLine = trim($subLine);
+
+                if ($subLine !== '') {
+                    $lines[] = '   '.$subLine;
+                }
+            }
+        }
+
+        return implode("\n", $lines);
     }
 
     /**
