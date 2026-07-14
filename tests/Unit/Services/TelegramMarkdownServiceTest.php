@@ -49,6 +49,39 @@ it('renders a headerless table as joined bullet lines', function () {
     expect(telegramHtml($markdown))->toBe("• <b>أ</b> — ب — ج\n\n• <b>د</b> — هـ — و");
 });
 
+it('folds br tags inside table cells into an indented vertical layout', function () {
+    $markdown = <<<'MD'
+    | البند | علوم الحاسب | هندسة البرمجيات |
+    |---|---|---|
+    | المواد | • الذكاء الاصطناعي<br>• نظم التشغيل | • اختبار البرمجيات<br/>• أنماط التصميم |
+    MD;
+
+    expect(telegramHtml($markdown))->toBe(
+        "• <b>المواد</b>\n"
+        ."   <b>علوم الحاسب</b>\n"
+        ."   • الذكاء الاصطناعي\n"
+        ."   • نظم التشغيل\n"
+        ."   <b>هندسة البرمجيات</b>\n"
+        ."   • اختبار البرمجيات\n"
+        .'   • أنماط التصميم'
+    );
+});
+
+it('folds br tags in a two-column table into stacked value lines', function () {
+    $markdown = "| المهارات | الأساسية |\n|---|---|\n| المطور | • البرمجة<br>• التحليل |";
+
+    expect(telegramHtml($markdown))->toBe(
+        "• <b>المطور</b>\n"
+        ."   • البرمجة\n"
+        .'   • التحليل'
+    );
+});
+
+it('folds br tags in regular paragraph text into newlines', function () {
+    expect(telegramHtml('السطر الأول<br>السطر الثاني<br />السطر الثالث'))
+        ->toBe("السطر الأول\nالسطر الثاني\nالسطر الثالث");
+});
+
 it('converts list markers to bullets and keeps numbered lists', function () {
     expect(telegramHtml("- طلاب البكالوريوس فقط\n* منتظم\n1. أولاً"))
         ->toBe("• طلاب البكالوريوس فقط\n• منتظم\n1. أولاً");
