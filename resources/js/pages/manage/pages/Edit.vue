@@ -227,7 +227,9 @@ onUnmounted(() => {
             <ShieldCheck class="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
             <p>
                 تعديلاتك على هذه الصفحة تُرسل للمراجعة ولا تظهر على الموقع إلا بعد اعتمادها.
-                <span v-if="review.has_pending" class="font-medium">لديك تعديل بانتظار المراجعة على هذه الصفحة.</span>
+                <span v-if="review.has_pending" class="font-medium"
+                    >لديك تعديل بانتظار المراجعة، والحقول أدناه تعرض نسختك المقترحة لا المنشورة.</span
+                >
             </p>
         </div>
 

@@ -82,6 +82,64 @@ describe('review-mode capture on page update', function () {
             ->get("/manage/pages/{$page->id}/edit")
             ->assertInertia(fn (Assert $inertia) => $inertia->where('review.has_pending', true));
     });
+
+    it('overlays the editor\'s own pending payload onto the workspace so they see their proposed version', function () {
+        $page = PageFactory::new()->create(['title' => 'الأصل', 'icon' => 'star', 'html_content' => 'قديم']);
+
+        PageChangeRequest::factory()->create([
+            'page_id' => $page->id,
+            'author_id' => $this->reviewEditor->id,
+            'payload' => ['title' => 'المقترح', 'icon' => 'heart'],
+        ]);
+
+        $this->actingAs($this->reviewEditor)
+            ->get("/manage/pages/{$page->id}/edit")
+            ->assertInertia(fn (Assert $inertia) => $inertia
+                ->where('page.title', 'المقترح')
+                ->where('page.icon', 'heart')
+                ->where('page.html_content', 'قديم')
+                ->where('review.has_pending', true)
+                ->etc());
+
+        expect($page->fresh()->title)->toBe('الأصل');
+    });
+
+    it('does not overlay another editor\'s pending payload', function () {
+        $otherReviewer = User::factory()->create(['requires_review' => true]);
+        $otherReviewer->assignRole('editor');
+
+        $page = PageFactory::new()->create(['title' => 'الأصل']);
+
+        PageChangeRequest::factory()->create([
+            'page_id' => $page->id,
+            'author_id' => $otherReviewer->id,
+            'payload' => ['title' => 'تعديل شخص آخر'],
+        ]);
+
+        $this->actingAs($this->reviewEditor)
+            ->get("/manage/pages/{$page->id}/edit")
+            ->assertInertia(fn (Assert $inertia) => $inertia
+                ->where('page.title', 'الأصل')
+                ->where('review.has_pending', false)
+                ->etc());
+    });
+
+    it('shows the live page to an unrestricted editor even when a pending change exists', function () {
+        $page = PageFactory::new()->create(['title' => 'الأصل']);
+
+        PageChangeRequest::factory()->create([
+            'page_id' => $page->id,
+            'author_id' => $this->reviewEditor->id,
+            'payload' => ['title' => 'المقترح'],
+        ]);
+
+        $this->actingAs($this->editor)
+            ->get("/manage/pages/{$page->id}/edit")
+            ->assertInertia(fn (Assert $inertia) => $inertia
+                ->where('page.title', 'الأصل')
+                ->where('review.has_pending', false)
+                ->etc());
+    });
 });
 
 describe('review queue authorization', function () {

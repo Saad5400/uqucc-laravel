@@ -94,6 +94,12 @@ class PageController extends Controller
     {
         $page->load(['children', 'users']);
 
+        $pendingChange = $this->pendingChangeFor($page);
+
+        if ($pendingChange !== null) {
+            $page->fill($pendingChange->payload);
+        }
+
         $allPages = Page::withTrashed()->orderBy('order')->orderBy('id')->get(['id', 'title', 'parent_id', 'order', 'deleted_at']);
         $pagesById = $allPages->keyBy('id');
         $livePagesByParent = $allPages->filter(fn (Page $candidate) => ! $candidate->trashed())
@@ -149,29 +155,32 @@ class PageController extends Controller
             'copilot' => [
                 'enabled' => app(AiSettings::class)->isFeatureEnabled('admin_copilot'),
             ],
-            'review' => $this->reviewContext($page),
+            'review' => [
+                'mode' => auth()->user()?->mustHaveChangesReviewed() ?? false,
+                'has_pending' => $pendingChange !== null,
+            ],
         ]);
     }
 
     /**
-     * Review banner context for the workspace: whether the viewer's own saves
-     * are review-gated, and whether they already have a pending change waiting
-     * on this page.
-     *
-     * @return array{mode: bool, has_pending: bool}
+     * The viewer's own pending change request against this page, if their
+     * saves are review-gated and they have one. The workspace overlays this
+     * payload onto the page so a review-mode editor sees (and can keep
+     * editing) their proposed version rather than the untouched live page.
      */
-    protected function reviewContext(Page $page): array
+    protected function pendingChangeFor(Page $page): ?PageChangeRequest
     {
         $user = auth()->user();
-        $mode = $user !== null && $user->mustHaveChangesReviewed();
 
-        return [
-            'mode' => $mode,
-            'has_pending' => $mode && $page->changeRequests()
-                ->where('author_id', $user->id)
-                ->where('status', PageChangeRequest::STATUS_PENDING)
-                ->exists(),
-        ];
+        if ($user === null || ! $user->mustHaveChangesReviewed()) {
+            return null;
+        }
+
+        return $page->changeRequests()
+            ->where('author_id', $user->id)
+            ->where('status', PageChangeRequest::STATUS_PENDING)
+            ->latest('updated_at')
+            ->first();
     }
 
     /**
