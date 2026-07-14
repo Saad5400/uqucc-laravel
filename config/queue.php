@@ -68,7 +68,12 @@ return [
             'driver' => 'redis',
             'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
             'queue' => env('REDIS_QUEUE', 'default'),
-            'retry_after' => (int) env('REDIS_QUEUE_RETRY_AFTER', 90),
+            // Must exceed the longest a job may run, or a still-running job is
+            // reclaimed and processed a second time. Our slowest workers set
+            // --timeout=300 (ai) and jobs declare timeout=120 (telegram), so
+            // this sits safely above 300. Static on purpose: it is a fixed
+            // property of our worker topology, not a per-environment knob.
+            'retry_after' => 360,
             'block_for' => null,
             'after_commit' => false,
         ],
