@@ -30,6 +30,18 @@ class TelegramStreamingProgress
     private const TELEGRAM_MESSAGE_LIMIT = 4096;
 
     /**
+     * Bidi controls. Progress edits are plain text with no HTML `dir`, so
+     * these are the only way to keep LTR machine text (course codes, slugs,
+     * quoted queries, model reasoning) from scrambling the surrounding
+     * Arabic — the plain-text analogue of the UX rule's "LTR islands".
+     */
+    private const RTL_MARK = "\u{200F}";
+
+    private const FIRST_STRONG_ISOLATE = "\u{2068}";
+
+    private const POP_DIRECTIONAL_ISOLATE = "\u{2069}";
+
+    /**
      * Minimum seconds between progress edits: 15 edits/min stays clear of
      * Telegram's per-chat limits even in groups (20 messages/min).
      */
@@ -107,7 +119,7 @@ class TelegramStreamingProgress
             return '';
         }
 
-        return ': «'.mb_substr(trim($value), 0, 60).'»';
+        return ': «'.$this->isolate(mb_substr(trim($value), 0, 60)).'»';
     }
 
     /**
@@ -138,7 +150,7 @@ class TelegramStreamingProgress
             $sections[] = $this->textTail().' ▌';
         }
 
-        $render = implode("\n\n", $sections);
+        $render = $this->withRtlBase(implode("\n\n", $sections));
 
         return mb_strlen($render) > self::TELEGRAM_MESSAGE_LIMIT
             ? mb_substr($render, 0, self::TELEGRAM_MESSAGE_LIMIT)
@@ -153,9 +165,36 @@ class TelegramStreamingProgress
             return '';
         }
 
-        return mb_strlen($flat) > self::REASONING_TAIL_CHARS
+        $tail = mb_strlen($flat) > self::REASONING_TAIL_CHARS
             ? '…'.mb_substr($flat, -self::REASONING_TAIL_CHARS)
             : $flat;
+
+        return $this->isolate($tail);
+    }
+
+    /**
+     * Give every line a strong RTL base direction so a line that happens to
+     * begin with an emoji, digit, or Latin run still lays out right-to-left
+     * like the Arabic it belongs to.
+     */
+    private function withRtlBase(string $text): string
+    {
+        $lines = array_map(
+            fn (string $line): string => $line === '' ? $line : self::RTL_MARK.$line,
+            explode("\n", $text),
+        );
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Wrap machine text (slugs, codes, quoted queries, mixed-language
+     * reasoning) in a First Strong Isolate so its internal direction can't
+     * leak out and reorder the Arabic around it.
+     */
+    private function isolate(string $text): string
+    {
+        return self::FIRST_STRONG_ISOLATE.$text.self::POP_DIRECTIONAL_ISOLATE;
     }
 
     private function textTail(): string
