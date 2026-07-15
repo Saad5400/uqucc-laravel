@@ -22,6 +22,9 @@ class FakeTelegramApi extends Api
     /** @var array<int, array<string, mixed>> */
     public array $editedMessages = [];
 
+    /** @var array<int, array<string, mixed>> */
+    public array $sentPhotos = [];
+
     /** Chat-member status per telegram user id (default 'member'). */
     /** @var array<int|string, string> */
     public array $chatMemberStatuses = [];
@@ -41,6 +44,13 @@ class FakeTelegramApi extends Api
     public function sendMessage(array $params): Message
     {
         $this->sentMessages[] = $params;
+
+        return new Message(['message_id' => ++$this->nextMessageId, 'chat' => ['id' => $params['chat_id'] ?? 0]]);
+    }
+
+    public function sendPhoto(array $params): Message
+    {
+        $this->sentPhotos[] = $params;
 
         return new Message(['message_id' => ++$this->nextMessageId, 'chat' => ['id' => $params['chat_id'] ?? 0]]);
     }

@@ -2,8 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\TruthTableRequest;
 use App\Models\Page;
+use App\Services\Logic\FormulaError;
+use App\Services\Logic\TruthTableGenerator;
 use App\Support\Seo;
+use Illuminate\Http\JsonResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -78,6 +82,38 @@ class ToolController extends Controller
             'hasContent' => $page && ! empty($page->html_content),
             'seo' => $this->toolSeo($page, 'حاسبة التحويل', 'احسب معدلك بعد التحويل بين التخصصات أو الجامعات عبر حاسبة التحويل لطلاب كلية الحاسبات.'),
         ]);
+    }
+
+    /**
+     * Display the truth table generator tool.
+     */
+    public function truthTable(): Response
+    {
+        $page = Page::where('slug', '/adwat/jdwal-alsawab')
+            ->where('hidden', false)
+            ->first();
+
+        return Inertia::render('tools/TruthTablePage', [
+            'page' => $page ? [
+                'html_content' => $page->html_content,
+                'title' => $page->title,
+            ] : null,
+            'hasContent' => $page && ! empty($page->html_content),
+            'seo' => $this->toolSeo($page, 'جدول الصواب', 'أنشئ جدول الصواب لأي صيغة منطقية بأي صيغة كتابة (∧ ∨ ¬ → ↔ أو and/or/not) عبر مولد جدول الصواب لطلاب كلية الحاسبات.'),
+        ]);
+    }
+
+    /**
+     * Generate a truth table for the submitted formula (JSON endpoint used
+     * by the truth table tool page).
+     */
+    public function generateTruthTable(TruthTableRequest $request, TruthTableGenerator $generator): JsonResponse
+    {
+        try {
+            return response()->json($generator->generate($request->validated('formula'))->toArray());
+        } catch (FormulaError $error) {
+            return response()->json(['message' => $error->getMessage()], 422);
+        }
     }
 
     /**

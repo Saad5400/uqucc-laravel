@@ -24,7 +24,7 @@ function mcpJsonRpc(array $overrides = []): array
     ], $overrides);
 }
 
-it('lists all eight tools over the http transport', function () {
+it('lists all ten tools over the http transport', function () {
     $response = $this->postJson('/mcp', mcpJsonRpc(['method' => 'tools/list']));
 
     $response->assertOk();
@@ -38,6 +38,8 @@ it('lists all eight tools over the http transport', function () {
         'calculate_gpa',
         'calculate_deprivation',
         'calculate_transfer',
+        'truth_table',
+        'date_time',
         'find_tutors',
         'list_stale_pages',
     ]);
@@ -82,6 +84,22 @@ it('executes a tool call over the http transport', function () {
 
     expect($response->json('result.isError'))->toBeFalse()
         ->and($response->json('result.content.0.text'))->toContain('3.5');
+});
+
+it('generates a truth table over the http transport', function () {
+    $response = $this->postJson('/mcp', mcpJsonRpc([
+        'method' => 'tools/call',
+        'params' => [
+            'name' => 'truth_table',
+            'arguments' => ['formula' => 'p /\ q -> ~r'],
+        ],
+    ]));
+
+    $response->assertOk();
+
+    expect($response->json('result.isError'))->toBeFalse()
+        ->and($response->json('result.content.0.text'))->toContain('p ∧ q → ¬r')
+        ->and($response->json('result.content.0.text'))->toContain('ممكنة');
 });
 
 it('serves search results end to end through mcp', function () {

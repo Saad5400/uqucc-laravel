@@ -5,6 +5,8 @@ namespace App\Jobs;
 use App\Ai\Chat\AttachmentContext;
 use App\Ai\Chat\ChatAttachmentTextExtractor;
 use App\Ai\Spend\SpendLedger;
+use App\Services\Logic\TruthTableGenerator;
+use App\Services\Logic\TruthTableImageRenderer;
 use App\Services\OgImageService;
 use App\Services\QuickResponseService;
 use App\Services\Telegram\ContentParser;
@@ -20,6 +22,7 @@ use App\Services\Telegram\Handlers\LoginHandler;
 use App\Services\Telegram\Handlers\PageManagementHandler;
 use App\Services\Telegram\Handlers\PrivateForwardHandler;
 use App\Services\Telegram\Handlers\PythonExecutionHandler;
+use App\Services\Telegram\Handlers\TruthTableHandler;
 use App\Services\Telegram\Handlers\UquccListHandler;
 use App\Services\Telegram\Handlers\UquccSearchHandler;
 use App\Services\TipTapContentExtractor;
@@ -117,6 +120,7 @@ class ProcessTelegramUpdate implements ShouldQueue
             new UquccListHandler($telegram),
             new PythonExecutionHandler($telegram),
             new JavaExecutionHandler($telegram),
+            new TruthTableHandler($telegram, app(TruthTableGenerator::class), app(TruthTableImageRenderer::class)),
             new InfoHandler($telegram),
             new PrivateForwardHandler($telegram),
             new InviteLinkHandler($telegram),

@@ -90,7 +90,7 @@ abstract class BaseHandler
         return $this->reply($message, $text, 'HTML');
     }
 
-    protected function replyPhoto(Message $message, string $photoUrl, ?string $caption = null): Message
+    protected function replyPhoto(Message $message, \Telegram\Bot\FileUpload\InputFile|string $photo, ?string $caption = null): Message
     {
         // If the user's message is a reply, reply to the original message instead
         $replyToMessageId = $message->getReplyToMessage()
@@ -99,7 +99,7 @@ abstract class BaseHandler
 
         $params = [
             'chat_id' => $message->getChat()->getId(),
-            'photo' => $photoUrl,
+            'photo' => $photo,
             'reply_to_message_id' => $replyToMessageId,
         ];
 

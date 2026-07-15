@@ -30,8 +30,14 @@ Route::middleware(CacheResponse::class)->group(function () {
     Route::get('/adwat/hasbh-alhrman', [ToolController::class, 'deprivationCalculator'])->name('tools.deprivation-calculator');
     Route::get('/adwat/hasbh-almadl', [ToolController::class, 'gpaCalculator'])->name('tools.gpa-calculator');
     Route::get('/adwat/hasbh-altahwel', [ToolController::class, 'transferCalculator'])->name('tools.transfer-calculator');
+    Route::get('/adwat/jdwal-alsawab', [ToolController::class, 'truthTable'])->name('tools.truth-table');
     Route::get('/adwat/alkhosousieen', [PrivateTutorController::class, 'index'])->name('tools.private-tutors');
 });
+
+// Truth table generation endpoint (JSON; used by the tool page) - rate limited, never cached
+Route::post('/adwat/jdwal-alsawab', [ToolController::class, 'generateTruthTable'])
+    ->middleware('throttle:60,1')
+    ->name('tools.truth-table.generate');
 
 // AI corpus search endpoint (JSON; must come before catch-all route) - rate limited, never cached
 Route::get('/bahth', SearchController::class)

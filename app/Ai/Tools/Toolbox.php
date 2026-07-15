@@ -27,6 +27,7 @@ class Toolbox
             CalculateGpaTool::class,
             CalculateDeprivationTool::class,
             CalculateTransferTool::class,
+            TruthTableTool::class,
             DateTimeTool::class,
             FindTutorsTool::class,
             ListStalePagesTool::class,
