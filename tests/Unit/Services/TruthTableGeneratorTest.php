@@ -43,6 +43,90 @@ it('parses or and iff notations identically', function (string $formula) {
     'single pipe' => ['p | q <-> r'],
 ]);
 
+it('evaluates exclusive or (xor)', function () {
+    $table = truthTable('p xor q');
+
+    expect($table->formula)->toBe('p ⊕ q')
+        ->and($table->columns)->toBe(['p', 'q', 'p ⊕ q'])
+        ->and($table->rows)->toBe([
+            [true, true, false],
+            [true, false, true],
+            [false, true, true],
+            [false, false, false],
+        ]);
+});
+
+it('evaluates nand (not-and)', function () {
+    $table = truthTable('p nand q');
+
+    expect($table->formula)->toBe('p ↑ q')
+        ->and($table->columns)->toBe(['p', 'q', 'p ↑ q'])
+        ->and($table->rows)->toBe([
+            [true, true, false],
+            [true, false, true],
+            [false, true, true],
+            [false, false, true],
+        ]);
+});
+
+it('evaluates nor (not-or)', function () {
+    $table = truthTable('p nor q');
+
+    expect($table->formula)->toBe('p ↓ q')
+        ->and($table->columns)->toBe(['p', 'q', 'p ↓ q'])
+        ->and($table->rows)->toBe([
+            [true, true, false],
+            [true, false, false],
+            [false, true, false],
+            [false, false, true],
+        ]);
+});
+
+it('parses every notation for xor, nand, and nor identically', function (string $formula, string $canonical) {
+    expect(truthTable($formula)->formula)->toBe($canonical);
+})->with([
+    'xor unicode' => ['p ⊕ q', 'p ⊕ q'],
+    'xor alt unicode' => ['p ⊻ q', 'p ⊕ q'],
+    'xor word' => ['p XOR q', 'p ⊕ q'],
+    'nand unicode' => ['p ↑ q', 'p ↑ q'],
+    'nand alt unicode' => ['p ⊼ q', 'p ↑ q'],
+    'nand word' => ['p NAND q', 'p ↑ q'],
+    'nor unicode' => ['p ↓ q', 'p ↓ q'],
+    'nor alt unicode' => ['p ⊽ q', 'p ↓ q'],
+    'nor word' => ['p NOR q', 'p ↓ q'],
+]);
+
+it('gives xor precedence over or and under and', function () {
+    $table = truthTable('p or q xor r and s');
+
+    expect($table->formula)->toBe('p ∨ q ⊕ r ∧ s')
+        ->and($table->columns)->toContain('q ⊕ r ∧ s')
+        ->and($table->columns)->toContain('r ∧ s')
+        ->and($table->columns)->not->toContain('p ∨ q');
+});
+
+it('keeps nand and nor left-associative and round-trips their grouping', function () {
+    expect(truthTable('p nand q nand r')->formula)->toBe('p ↑ q ↑ r')
+        ->and(truthTable('p nand (q nand r)')->formula)->toBe('p ↑ (q ↑ r)')
+        ->and(truthTable('p nor q nor r')->formula)->toBe('p ↓ q ↓ r')
+        ->and(truthTable('p nor (q nor r)')->formula)->toBe('p ↓ (q ↓ r)');
+
+    // (p ↑ q) ↑ r differs from p ↑ (q ↑ r) at p=F (row 4): left-assoc is F, right-assoc is T.
+    $leftAssociative = truthTable('p nand q nand r')->rows[4];
+    $rightAssociative = truthTable('p nand (q nand r)')->rows[4];
+
+    expect(end($leftAssociative))->toBeFalse()
+        ->and(end($rightAssociative))->toBeTrue();
+});
+
+it('classifies xor, nand, and nor tautologies and contradictions', function () {
+    expect(truthTable('p xor p')->isContradiction())->toBeTrue()
+        ->and(truthTable('p xor not p')->isTautology())->toBeTrue()
+        ->and(truthTable('(p nand q) <-> not (p and q)')->isTautology())->toBeTrue()
+        ->and(truthTable('(p nor q) <-> not (p or q)')->isTautology())->toBeTrue()
+        ->and(truthTable('p nand q')->isContradiction())->toBeFalse();
+});
+
 it('gives and precedence over or', function () {
     $table = truthTable('p or q and r');
 

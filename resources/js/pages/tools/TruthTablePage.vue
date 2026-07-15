@@ -153,12 +153,15 @@ interface TruthTableResult {
     is_contradiction: boolean;
 }
 
-const examples = ['p /\\ q -> ~r', 'p and q or not r', '(p -> q) <-> (~q -> ~p)', 'p ∧ ¬p'];
+const examples = ['p /\\ q -> ~r', 'p and q or not r', 'p xor q', '(p -> q) <-> (~q -> ~p)', 'p ∧ ¬p'];
 
 const syntaxReference = [
     { name: 'النفي (not)', forms: '¬p    ~p    !p    not p' },
     { name: 'العطف (and)', forms: 'p ∧ q    p /\\ q    p && q    p and q' },
+    { name: 'نفي العطف (nand)', forms: 'p ↑ q    p ⊼ q    p nand q' },
     { name: 'الفصل (or)', forms: 'p ∨ q    p \\/ q    p || q    p or q' },
+    { name: 'نفي الفصل (nor)', forms: 'p ↓ q    p ⊽ q    p nor q' },
+    { name: 'الفصل الحصري (xor)', forms: 'p ⊕ q    p ⊻ q    p xor q' },
     { name: 'الشرط (implies)', forms: 'p → q    p -> q    p => q    p implies q' },
     { name: 'التكافؤ (iff)', forms: 'p ↔ q    p <-> q    p <=> q    p iff q' },
     { name: 'الثوابت (constants)', forms: '⊤  T  true    /    ⊥  F  false' },
