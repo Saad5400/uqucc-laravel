@@ -67,6 +67,22 @@ it('marks results from uploaded documents with their document id', function () {
         ->not->toContain('(slug:');
 });
 
+it('cites a document override url instead of the default file route', function () {
+    $document = \App\Models\Corpus\CorpusDocument::factory()->create([
+        'title' => 'قواعد حقوق الطلبة',
+        'status' => \App\Models\Corpus\CorpusDocument::STATUS_READY,
+        'extracted_markdown' => "# قواعد حقوق الطلبة\n\nللطالب الحق في الحصول على المقررات الدراسية المعتمدة في خطته.",
+        'reference_url' => 'https://example.com/official/students-rights.pdf',
+    ]);
+
+    app(\App\Ai\Corpus\IngestDocument::class)->ingest($document);
+
+    $reply = (string) app(SearchContentTool::class)->handle(new Request(['query' => 'حقوق الطلبة المقررات']));
+
+    expect($reply)->toContain('رابط المستند (المصدر): https://example.com/official/students-rights.pdf')
+        ->not->toContain(route('documents.show', $document->id));
+});
+
 it('reports when nothing matches', function () {
     seedToolSearchablePage('صفحة', 'محتوى عادي تماما');
 

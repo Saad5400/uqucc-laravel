@@ -34,6 +34,7 @@ use Illuminate\Support\Facades\Storage;
  * @property int|null $size
  * @property string $status
  * @property string|null $extracted_markdown
+ * @property string|null $reference_url
  * @property string|null $error
  * @property string|null $authoring_status
  * @property string|null $authoring_error
@@ -76,6 +77,7 @@ class CorpusDocument extends Model
         'size',
         'status',
         'extracted_markdown',
+        'reference_url',
         'error',
         'authoring_status',
         'authoring_error',
@@ -162,6 +164,18 @@ class CorpusDocument extends Model
     public function absolutePath(): string
     {
         return Storage::disk($this->disk)->path($this->path);
+    }
+
+    /**
+     * The citation URL the AI hands to users for this document: the admin's
+     * override when set, otherwise the built-in /mstnd/{document} file route.
+     * The model is never told which of the two it received.
+     */
+    public function referenceUrl(): string
+    {
+        return filled($this->reference_url)
+            ? $this->reference_url
+            : route('documents.show', $this);
     }
 
     public function isPdf(): bool

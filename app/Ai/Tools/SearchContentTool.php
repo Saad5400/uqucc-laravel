@@ -6,8 +6,10 @@ use App\Ai\Corpus\CorpusRetriever;
 use App\Ai\Corpus\CorpusSearchResult;
 use App\Ai\Corpus\CorpusSourceType;
 use App\Ai\Tools\Concerns\GatedByAiSettings;
+use App\Models\Corpus\CorpusDocument;
 use App\Settings\AiSettings;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
@@ -61,7 +63,9 @@ class SearchContentTool implements Tool
             return "لا توجد نتائج مطابقة لـ \"{$query}\". No results matched.";
         }
 
-        $lines = $results->map(function (CorpusSearchResult $result, int $index): string {
+        $documentUrls = $this->documentUrlsFor($results);
+
+        $lines = $results->map(function (CorpusSearchResult $result, int $index) use ($documentUrls): string {
             $heading = $result->heading !== null && $result->heading !== '' ? " — {$result->heading}" : '';
 
             $slug = match (true) {
@@ -78,7 +82,7 @@ class SearchContentTool implements Tool
                 : '';
 
             $documentUrl = $result->sourceType === CorpusSourceType::Document
-                ? "\n   رابط المستند (المصدر): ".route('documents.show', $result->sourceId)
+                ? "\n   رابط المستند (المصدر): ".($documentUrls[$result->sourceId] ?? route('documents.show', $result->sourceId))
                 : '';
 
             return sprintf(
@@ -94,6 +98,32 @@ class SearchContentTool implements Tool
         });
 
         return "نتائج البحث عن \"{$query}\":\n\n".$lines->implode("\n\n");
+    }
+
+    /**
+     * Resolve each document-sourced result to its citation URL in one query,
+     * honoring any per-document override, so the loop above never triggers an
+     * N+1 nor duplicates the model's override-or-default logic.
+     *
+     * @param  Collection<int, CorpusSearchResult>  $results
+     * @return array<int, string> Keyed by document id.
+     */
+    private function documentUrlsFor(Collection $results): array
+    {
+        $documentIds = $results
+            ->filter(fn (CorpusSearchResult $result): bool => $result->sourceType === CorpusSourceType::Document)
+            ->map(fn (CorpusSearchResult $result): int => $result->sourceId)
+            ->unique();
+
+        if ($documentIds->isEmpty()) {
+            return [];
+        }
+
+        return CorpusDocument::query()
+            ->whereKey($documentIds->all())
+            ->get()
+            ->mapWithKeys(fn (CorpusDocument $document): array => [$document->id => $document->referenceUrl()])
+            ->all();
     }
 
     /**

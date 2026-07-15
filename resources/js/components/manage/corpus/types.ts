@@ -20,6 +20,7 @@ export interface CorpusDocumentRow {
 /** The full document as the edit workspace receives it. */
 export interface CorpusDocumentWorkspace extends Omit<CorpusDocumentRow, 'has_markdown'> {
     extracted_markdown: string | null;
+    reference_url: string | null;
 }
 
 /** Coarse stored-file kind, for the type badge. */

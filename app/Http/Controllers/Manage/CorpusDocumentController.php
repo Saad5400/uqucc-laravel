@@ -144,6 +144,7 @@ class CorpusDocumentController extends Controller
                 'error' => $document->error,
                 'index_status' => $document->corpusItem?->status,
                 'extracted_markdown' => $document->extracted_markdown,
+                'reference_url' => $document->reference_url,
                 'uploader_name' => $document->uploader?->name,
                 'created_at' => $document->created_at?->toISOString(),
                 ...$this->authoringPayload($document),
@@ -191,6 +192,7 @@ class CorpusDocumentController extends Controller
         $document->fill([
             'title' => $request->validated('title'),
             'extracted_markdown' => $request->validated('extracted_markdown'),
+            'reference_url' => $request->validated('reference_url'),
         ])->save();
 
         if ($document->wasChanged(['extracted_markdown', 'title'])) {

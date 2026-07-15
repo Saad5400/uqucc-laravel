@@ -34,6 +34,7 @@ usePoll(15_000, { only: ['document'] });
 const form = useForm({
     title: props.document.title,
     extracted_markdown: props.document.extracted_markdown ?? '',
+    reference_url: props.document.reference_url ?? '',
 });
 
 const canReingestNow = computed(() => props.document.status === 'ready' && (props.document.extracted_markdown ?? '').trim() !== '');
@@ -42,6 +43,7 @@ function submit(): void {
     form.transform((data) => ({
         title: data.title,
         extracted_markdown: data.extracted_markdown.trim() === '' ? null : data.extracted_markdown,
+        reference_url: data.reference_url.trim() === '' ? null : data.reference_url.trim(),
     })).put(`/manage/corpus/${props.document.id}`, {
         preserveScroll: true,
         preserveState: true,
@@ -173,6 +175,26 @@ const authoringDisabledReason = computed<string | null>(() => {
                             اسم واضح للمستند كما سيظهر في نتائج البحث الذكي (مثال: لائحة الدراسة والاختبارات).
                         </p>
                         <p v-if="form.errors.title" class="text-sm text-destructive-foreground">{{ form.errors.title }}</p>
+                    </div>
+
+                    <div class="space-y-2">
+                        <Label for="corpus-reference-url">رابط المصدر (اختياري)</Label>
+                        <Input
+                            id="corpus-reference-url"
+                            v-model="form.reference_url"
+                            type="url"
+                            dir="ltr"
+                            inputmode="url"
+                            placeholder="https://…"
+                            maxlength="2048"
+                            :aria-invalid="form.errors.reference_url ? true : undefined"
+                        />
+                        <p class="text-xs text-muted-foreground">
+                            الرابط الذي يستشهد به المساعد الذكي كمصدر لهذا المستند. اتركه فارغاً ليستخدم رابط الملف الافتراضي.
+                        </p>
+                        <p v-if="form.errors.reference_url" class="text-sm text-destructive-foreground">
+                            {{ form.errors.reference_url }}
+                        </p>
                     </div>
 
                     <div class="space-y-2">

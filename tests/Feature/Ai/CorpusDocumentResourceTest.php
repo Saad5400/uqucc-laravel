@@ -276,6 +276,36 @@ describe('corpus document update', function () {
 
         Queue::assertNothingPushed();
     });
+
+    it('saves a reference url override without re-indexing', function () {
+        Queue::fake();
+        $document = CorpusDocument::factory()->ready()->create(['reference_url' => null]);
+
+        $this->actingAs($this->admin)
+            ->put("/manage/corpus/{$document->id}", [
+                'title' => $document->title,
+                'extracted_markdown' => $document->extracted_markdown,
+                'reference_url' => 'https://example.com/official/regulations.pdf',
+            ])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success');
+
+        expect($document->refresh()->reference_url)->toBe('https://example.com/official/regulations.pdf');
+
+        Queue::assertNothingPushed();
+    });
+
+    it('rejects an invalid reference url with an Arabic message', function () {
+        $document = CorpusDocument::factory()->ready()->create();
+
+        $this->actingAs($this->admin)
+            ->put("/manage/corpus/{$document->id}", [
+                'title' => $document->title,
+                'extracted_markdown' => $document->extracted_markdown,
+                'reference_url' => 'not-a-url',
+            ])
+            ->assertSessionHasErrors(['reference_url' => 'رابط المصدر غير صالح.']);
+    });
 });
 
 describe('corpus document actions', function () {

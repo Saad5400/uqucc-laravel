@@ -27,6 +27,20 @@ it('returns the full document text with the id and title footer', function () {
         ->toContain('آخر تحديث: '.$document->fresh()->updated_at->toDateString());
 });
 
+it('cites the override url when one is set, hiding the default file route', function () {
+    $document = CorpusDocument::factory()->create([
+        'title' => 'لائحة الدراسة والاختبارات',
+        'status' => CorpusDocument::STATUS_READY,
+        'extracted_markdown' => '# لائحة الدراسة',
+        'reference_url' => 'https://example.com/official/regulations.pdf',
+    ]);
+
+    $reply = (string) app(GetDocumentTool::class)->handle(new Request(['document' => $document->id]));
+
+    expect($reply)->toContain('رابط المستند (المصدر): https://example.com/official/regulations.pdf')
+        ->not->toContain(route('documents.show', $document));
+});
+
 it('never exposes documents that are not ready', function (string $status) {
     $document = CorpusDocument::factory()->create([
         'title' => 'مستند قيد المعالجة',

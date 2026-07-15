@@ -27,6 +27,7 @@ class UpdateCorpusDocumentRequest extends FormRequest
         return [
             'title' => ['required', 'string', 'max:255'],
             'extracted_markdown' => ['nullable', 'string'],
+            'reference_url' => ['nullable', 'string', 'url', 'max:2048'],
         ];
     }
 
@@ -41,6 +42,8 @@ class UpdateCorpusDocumentRequest extends FormRequest
             'title.required' => 'حقل العنوان مطلوب.',
             'title.max' => 'العنوان طويل جداً.',
             'extracted_markdown.string' => 'النص المستخرج غير صالح.',
+            'reference_url.url' => 'رابط المصدر غير صالح.',
+            'reference_url.max' => 'رابط المصدر طويل جداً.',
         ];
     }
 }
