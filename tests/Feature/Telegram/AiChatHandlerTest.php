@@ -3,6 +3,7 @@
 use App\Ai\Agents\StudentAssistant;
 use App\Ai\Chat\AttachmentContext;
 use App\Ai\Chat\ChatAttachmentTextExtractor;
+use App\Ai\Chat\TelegramTurnContext;
 use App\Ai\Corpus\DocumentExtractionAgent;
 use App\Ai\Spend\SpendLedger;
 use App\Models\Ai\AiUsage;
@@ -37,6 +38,7 @@ function aiChatHandler(FakeTelegramApi $api): AiChatHandler
         app(SpendLedger::class),
         app(ChatAttachmentTextExtractor::class),
         app(AttachmentContext::class),
+        app(TelegramTurnContext::class),
     );
 }
 
@@ -228,7 +230,7 @@ it('strips the سيك prefix from the prompt', function () {
 
     aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك كم مكافأة الامتياز؟']));
 
-    StudentAssistant::assertPrompted(fn ($prompt) => $prompt->prompt === 'كم مكافأة الامتياز؟');
+    StudentAssistant::assertPrompted(fn ($prompt) => str_ends_with($prompt->prompt, "رسالة المستخدم:\nكم مكافأة الامتياز؟"));
 });
 
 it('ignores replies to the bot that lack the سيك prefix', function () {
@@ -328,7 +330,25 @@ it('answers group messages that start with the سيك prefix', function () {
 
     aiChatHandler($api)->handle(groupAiChatMessage(['text' => 'سيك كم مكافأة الامتياز؟']));
 
-    StudentAssistant::assertPrompted(fn ($prompt) => $prompt->prompt === 'كم مكافأة الامتياز؟');
+    StudentAssistant::assertPrompted(fn ($prompt) => str_ends_with($prompt->prompt, "رسالة المستخدم:\nكم مكافأة الامتياز؟"));
+});
+
+it('prefixes the turn with sender and chat metadata for the assistant', function () {
+    StudentAssistant::fake(['المكافأة ألف ريال.']);
+
+    activatedChat(-100777);
+
+    $api = new FakeTelegramApi;
+
+    aiChatHandler($api)->handle(groupAiChatMessage([
+        'from' => ['id' => 501, 'is_bot' => false, 'first_name' => 'سعد', 'username' => 'saad', 'language_code' => 'ar'],
+        'text' => 'سيك كم مكافأة الامتياز؟',
+    ]));
+
+    StudentAssistant::assertPrompted(fn ($prompt) => str_contains($prompt->prompt, 'السائل: سعد (@saad)')
+        && str_contains($prompt->prompt, 'نوع المحادثة: مجموعة')
+        && str_contains($prompt->prompt, 'اسم المجموعة: مجموعة الكلية')
+        && str_ends_with($prompt->prompt, "رسالة المستخدم:\nكم مكافأة الامتياز؟"));
 });
 
 it('keeps the legacy اسال سيك command working through the shared assistant', function () {
@@ -340,7 +360,7 @@ it('keeps the legacy اسال سيك command working through the shared assistan
 
     aiChatHandler($api)->handle(groupAiChatMessage(['text' => 'اسال سيك كيف يحسب المعدل؟']));
 
-    StudentAssistant::assertPrompted(fn ($prompt) => $prompt->prompt === 'كيف يحسب المعدل؟');
+    StudentAssistant::assertPrompted(fn ($prompt) => str_ends_with($prompt->prompt, "رسالة المستخدم:\nكيف يحسب المعدل؟"));
 });
 
 it('leaves slash commands and other handlers\' commands alone', function (string $text) {
@@ -529,7 +549,7 @@ it('ignores captioned documents with unsupported mimes', function () {
     ]));
 
     // No attachment path: the caption alone still counts as a text prompt.
-    StudentAssistant::assertPrompted(fn ($prompt) => $prompt->prompt === 'اقرأ الملف');
+    StudentAssistant::assertPrompted(fn ($prompt) => str_ends_with($prompt->prompt, "رسالة المستخدم:\nاقرأ الملف"));
 
     expect($api->sentMessages[0]['text'])->toBe('جاري المعالجة…')
         ->and(ChatAttachment::query()->count())->toBe(0);

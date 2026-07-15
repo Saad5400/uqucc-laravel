@@ -6,6 +6,7 @@ use App\Ai\Agents\StudentAssistant;
 use App\Ai\Chat\AttachmentContext;
 use App\Ai\Chat\ChatAttachmentTextExtractor;
 use App\Ai\Chat\SessionOwner;
+use App\Ai\Chat\TelegramTurnContext;
 use App\Ai\Spend\SpendLedger;
 use App\Models\Ai\ChatAttachment;
 use App\Models\TelegramChatSetting;
@@ -42,7 +43,10 @@ use Throwable;
  * on the chat's settings row and /ai_new resets it. Photos and PDF documents
  * sent with a caption are downloaded, extracted through the budget-gated
  * {@see ChatAttachmentTextExtractor} (never into the public corpus), and
- * injected as context for that turn via {@see AttachmentContext}.
+ * injected as context for that turn via {@see AttachmentContext}. Each turn is
+ * also prefixed with {@see TelegramTurnContext} — sender/chat metadata that
+ * wraps outside any attachment block, kept in the turn tail so prefix caching
+ * survives.
  */
 class AiChatHandler extends BaseHandler
 {
@@ -79,6 +83,7 @@ class AiChatHandler extends BaseHandler
         protected SpendLedger $ledger,
         protected ChatAttachmentTextExtractor $extractor,
         protected AttachmentContext $attachmentContext,
+        protected TelegramTurnContext $turnContext,
     ) {
         parent::__construct($telegram);
     }
@@ -140,6 +145,8 @@ class AiChatHandler extends BaseHandler
 
                 $prompt = $this->attachmentContext->wrap($prompt, collect([$attachment]));
             }
+
+            $prompt = $this->turnContext->wrap($prompt, $message);
 
             $this->runAssistantTurn($message, $chatSettings, $prompt, $placeholder->getMessageId());
         } finally {
