@@ -9,13 +9,18 @@ namespace App\Services\Logic;
  *
  *  - not:  ¬  ~  !  not
  *  - and:  ∧  /\  &&  &  ^  ·  and
+ *  - nand:  ↑  ⊼  nand
  *  - or:   ∨  \/  ||  |  or
+ *  - nor:  ↓  ⊽  nor
+ *  - xor:  ⊕  ⊻  xor
  *  - implies:  →  ⇒  ->  =>  implies
  *  - iff:  ↔  ⇔  <->  <=>  iff
  *  - constants:  ⊤ T true   /   ⊥ F false
  *
- * Precedence, loosest to tightest: ↔, → (right-associative), ∨, ∧, ¬.
- * Variables are identifiers like p, q, rain (word connectives are reserved,
+ * Precedence, loosest to tightest: ↔, → (right-associative), ∨, ↓, ⊕, ∧, ↑, ¬.
+ * ↑ and ↓ are left-associative and non-associative; the rest of the binary
+ * connectives are left-associative (→ is right-associative). Variables are
+ * identifiers like p, q, rain (word connectives are reserved,
  * case-insensitively).
  */
 class FormulaParser
@@ -31,6 +36,9 @@ class FormulaParser
         ['/\G\s+/u', null],
         ['/\G(?:<->|<=>|↔|⇔)/u', 'IFF'],
         ['/\G(?:->|=>|→|⇒)/u', 'IMPLIES'],
+        ['/\G(?:⊕|⊻)/u', 'XOR'],
+        ['/\G(?:↑|⊼)/u', 'NAND'],
+        ['/\G(?:↓|⊽)/u', 'NOR'],
         ['/\G(?:\/\\\\|&&|∧|·|\^|&)/u', 'AND'],
         ['/\G(?:\\\\\/|\|\||∨|\|)/u', 'OR'],
         ['/\G(?:¬|~|!)/u', 'NOT'],
@@ -49,7 +57,10 @@ class FormulaParser
     private const RESERVED_WORDS = [
         'not' => 'NOT',
         'and' => 'AND',
+        'nand' => 'NAND',
         'or' => 'OR',
+        'nor' => 'NOR',
+        'xor' => 'XOR',
         'implies' => 'IMPLIES',
         'iff' => 'IFF',
         'true' => 'TRUE',
@@ -171,11 +182,35 @@ class FormulaParser
 
     private function parseOr(): Node
     {
-        $node = $this->parseAnd();
+        $node = $this->parseNor();
 
         while ($this->currentKind() === 'OR') {
             $this->position++;
-            $node = Node::binary(NodeKind::OrOp, $node, $this->parseAnd());
+            $node = Node::binary(NodeKind::OrOp, $node, $this->parseNor());
+        }
+
+        return $node;
+    }
+
+    private function parseNor(): Node
+    {
+        $node = $this->parseXor();
+
+        while ($this->currentKind() === 'NOR') {
+            $this->position++;
+            $node = Node::binary(NodeKind::NorOp, $node, $this->parseXor());
+        }
+
+        return $node;
+    }
+
+    private function parseXor(): Node
+    {
+        $node = $this->parseAnd();
+
+        while ($this->currentKind() === 'XOR') {
+            $this->position++;
+            $node = Node::binary(NodeKind::XorOp, $node, $this->parseAnd());
         }
 
         return $node;
@@ -183,11 +218,23 @@ class FormulaParser
 
     private function parseAnd(): Node
     {
-        $node = $this->parseUnary();
+        $node = $this->parseNand();
 
         while ($this->currentKind() === 'AND') {
             $this->position++;
-            $node = Node::binary(NodeKind::AndOp, $node, $this->parseUnary());
+            $node = Node::binary(NodeKind::AndOp, $node, $this->parseNand());
+        }
+
+        return $node;
+    }
+
+    private function parseNand(): Node
+    {
+        $node = $this->parseUnary();
+
+        while ($this->currentKind() === 'NAND') {
+            $this->position++;
+            $node = Node::binary(NodeKind::NandOp, $node, $this->parseUnary());
         }
 
         return $node;

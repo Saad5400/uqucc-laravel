@@ -52,7 +52,10 @@ final readonly class Node
             NodeKind::Constant => $this->value,
             NodeKind::Not => ! $this->children[0]->evaluate($assignment),
             NodeKind::AndOp => $this->children[0]->evaluate($assignment) && $this->children[1]->evaluate($assignment),
+            NodeKind::NandOp => ! ($this->children[0]->evaluate($assignment) && $this->children[1]->evaluate($assignment)),
             NodeKind::OrOp => $this->children[0]->evaluate($assignment) || $this->children[1]->evaluate($assignment),
+            NodeKind::NorOp => ! ($this->children[0]->evaluate($assignment) || $this->children[1]->evaluate($assignment)),
+            NodeKind::XorOp => $this->children[0]->evaluate($assignment) !== $this->children[1]->evaluate($assignment),
             NodeKind::Implies => ! $this->children[0]->evaluate($assignment) || $this->children[1]->evaluate($assignment),
             NodeKind::Iff => $this->children[0]->evaluate($assignment) === $this->children[1]->evaluate($assignment),
         };
@@ -70,6 +73,9 @@ final readonly class Node
             NodeKind::Not => '¬'.$this->renderChild($this->children[0], parenthesizeEqual: false),
             NodeKind::Implies => $this->renderChild($this->children[0], parenthesizeEqual: true)
                 .' → '.$this->renderChild($this->children[1], parenthesizeEqual: false),
+            NodeKind::NandOp, NodeKind::NorOp => $this->renderChild($this->children[0], parenthesizeEqual: false)
+                .' '.$this->kind->symbol().' '
+                .$this->renderChild($this->children[1], parenthesizeEqual: true),
             default => $this->renderChild($this->children[0], parenthesizeEqual: false)
                 .' '.$this->kind->symbol().' '
                 .$this->renderChild($this->children[1], parenthesizeEqual: false),
