@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Ai\Chat\AttachmentContext;
 use App\Ai\Chat\ChatAttachmentTextExtractor;
+use App\Ai\Chat\TelegramTurnContext;
 use App\Ai\Spend\SpendLedger;
 use App\Services\Logic\TruthTableGenerator;
 use App\Services\Logic\TruthTableImageRenderer;
@@ -132,6 +133,7 @@ class ProcessTelegramUpdate implements ShouldQueue
                 app(SpendLedger::class),
                 app(ChatAttachmentTextExtractor::class),
                 app(AttachmentContext::class),
+                app(TelegramTurnContext::class),
             ),
         ];
 
