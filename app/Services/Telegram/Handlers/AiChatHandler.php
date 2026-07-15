@@ -52,6 +52,9 @@ class AiChatHandler extends BaseHandler
     /** Telegram's hard per-message character limit. */
     protected const TELEGRAM_MESSAGE_LIMIT = 4096;
 
+    /** Chars reserved per chunk for the expandable-blockquote wrapper tags. */
+    protected const BLOCKQUOTE_OVERHEAD = 40;
+
     /** Burst limit: messages per minute per chat. */
     protected const BURST_LIMIT = 5;
 
@@ -306,7 +309,9 @@ class AiChatHandler extends BaseHandler
      * markdown is converted to Telegram HTML once, then chunked: the first
      * chunk edits the placeholder and the rest are sent as follow-up
      * messages, each falling back to plain text if Telegram rejects the
-     * formatting.
+     * formatting. Every chunk is wrapped in an expandable blockquote so the
+     * group sees a collapsed reply that expands on tap (each chunk collapses
+     * independently, since a blockquote cannot span two messages).
      */
     protected function sendReply(int $chatId, int $placeholderMessageId, string $text): void
     {
@@ -317,13 +322,37 @@ class AiChatHandler extends BaseHandler
         }
 
         $formatter = new TelegramMarkdownService;
-        $chunks = $this->chunkForTelegram($formatter->toTelegramHtml($this->withDisclaimer($text)));
+        $html = $this->flattenBlockquotes($formatter->toTelegramHtml($this->withDisclaimer($text)));
+
+        $chunks = array_map(
+            fn (string $chunk): string => $this->collapse($chunk),
+            $this->chunkForTelegram($html, self::TELEGRAM_MESSAGE_LIMIT - self::BLOCKQUOTE_OVERHEAD),
+        );
 
         $this->editWithHtmlFallback($chatId, $placeholderMessageId, array_shift($chunks), $formatter);
 
         foreach ($chunks as $chunk) {
             $this->sendWithHtmlFallback($chatId, $chunk, $formatter);
         }
+    }
+
+    /**
+     * Wrap a formatted chunk in an expandable blockquote. An empty chunk is
+     * left as-is — Telegram rejects an empty blockquote.
+     */
+    protected function collapse(string $html): string
+    {
+        return $html === '' ? $html : '<blockquote expandable>'.$html.'</blockquote>';
+    }
+
+    /**
+     * Telegram forbids nested blockquotes, so strip any blockquote wrapper the
+     * markdown conversion produced before the reply is itself wrapped in one.
+     * The quoted lines keep their place; only the tags are removed.
+     */
+    protected function flattenBlockquotes(string $html): string
+    {
+        return str_replace(['<blockquote expandable>', '<blockquote>', '</blockquote>'], '', $html);
     }
 
     /**
@@ -345,9 +374,9 @@ class AiChatHandler extends BaseHandler
      *
      * @return array<int, string>
      */
-    protected function chunkForTelegram(string $text): array
+    protected function chunkForTelegram(string $text, ?int $limit = null): array
     {
-        $limit = self::TELEGRAM_MESSAGE_LIMIT;
+        $limit ??= self::TELEGRAM_MESSAGE_LIMIT;
         $chunks = [];
 
         while (mb_strlen($text) > $limit) {

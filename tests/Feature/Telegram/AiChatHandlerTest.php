@@ -153,6 +153,28 @@ it('delivers the reply as telegram html with markdown converted', function () {
         ->and($reply['text'])->toContain('(المصدر: https://uqucc.sb.sa/adwat/almkafa)');
 });
 
+it('wraps the reply in an expandable blockquote and flattens inner quotes', function () {
+    StudentAssistant::fake([
+        "إليك الخلاصة:\n\n> اقتباس من اللائحة\n\nهذا هو الرد.",
+    ]);
+
+    activatedChat();
+
+    $api = new FakeTelegramApi;
+
+    aiChatHandler($api)->handle(aiChatMessage());
+
+    $reply = end($api->editedMessages);
+
+    // The whole reply is one collapsed block; the model's own quote is
+    // flattened so Telegram never sees a forbidden nested blockquote.
+    expect($reply['parse_mode'])->toBe('HTML')
+        ->and($reply['text'])->toStartWith('<blockquote expandable>')
+        ->and($reply['text'])->toEndWith('</blockquote>')
+        ->and($reply['text'])->toContain('اقتباس من اللائحة')
+        ->and(substr_count($reply['text'], '<blockquote'))->toBe(1);
+});
+
 it('streams plain-text progress edits before the final formatted reply', function () {
     StudentAssistant::fake([
         new \Laravel\Ai\Responses\Data\ToolCall('tc_1', 'search_content', ['query' => 'مكافأة الامتياز']),
