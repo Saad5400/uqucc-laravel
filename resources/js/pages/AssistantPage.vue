@@ -11,7 +11,7 @@ import { send as sendChat, show as showConversation } from '@/routes/ai/chat';
 import { store as storeAttachment } from '@/routes/ai/chat/attachments';
 import { show as showPage } from '@/routes/pages';
 import { Link } from '@inertiajs/vue3';
-import { BookOpenText, CircleStop, LoaderCircle, Paperclip, RotateCcw, SendHorizontal, Sparkles, X } from 'lucide-vue-next';
+import { BookOpenText, CircleStop, Info, LoaderCircle, Paperclip, RotateCcw, SendHorizontal, Sparkles, X } from 'lucide-vue-next';
 import { nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
 
 /**
@@ -28,6 +28,7 @@ defineOptions({ layout: false });
 interface Props {
     page?: { html_content: unknown; title?: string } | null;
     hasContent?: boolean;
+    disclaimer: string;
     seo: SeoData;
 }
 
@@ -558,6 +559,14 @@ onBeforeUnmount(() => abortController?.abort());
                                     <BookOpenText class="size-3 shrink-0" />
                                     <span class="truncate">{{ citation.title }}{{ citation.heading ? ` — ${citation.heading}` : '' }}</span>
                                 </Link>
+                            </div>
+
+                            <div
+                                v-if="message.content !== ''"
+                                class="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground/70"
+                            >
+                                <Info class="size-3 shrink-0" />
+                                <span>{{ disclaimer }}</span>
                             </div>
                         </div>
                     </div>

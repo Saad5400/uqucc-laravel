@@ -50,6 +50,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | End-user assistant surfaces
+    |--------------------------------------------------------------------------
+    |
+    | Settings shared by every end-user AI surface (the web chat and the
+    | Telegram bot) so they stay unified. `disclaimer` is the single source of
+    | truth for the "AI-generated, may be wrong" notice appended to each reply
+    | in code — NOT produced by the model — on both surfaces.
+    |
+    */
+
+    'assistant' => [
+        'disclaimer' => env('AI_ASSISTANT_DISCLAIMER', 'المحتوى مولَّد بالذكاء الاصطناعي وقد يحتوي على أخطاء — تحقّق من المصادر عند الحاجة.'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Authoring (the "smart" tier)
     |--------------------------------------------------------------------------
     |

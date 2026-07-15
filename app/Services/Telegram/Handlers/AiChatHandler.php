@@ -317,13 +317,26 @@ class AiChatHandler extends BaseHandler
         }
 
         $formatter = new TelegramMarkdownService;
-        $chunks = $this->chunkForTelegram($formatter->toTelegramHtml($text));
+        $chunks = $this->chunkForTelegram($formatter->toTelegramHtml($this->withDisclaimer($text)));
 
         $this->editWithHtmlFallback($chatId, $placeholderMessageId, array_shift($chunks), $formatter);
 
         foreach ($chunks as $chunk) {
             $this->sendWithHtmlFallback($chatId, $chunk, $formatter);
         }
+    }
+
+    /**
+     * Append the shared "AI-generated, may be wrong" disclaimer as a trailing
+     * italic line. Appended in code (never model-generated) so it is always
+     * present, and — because it is added before chunking — it lands at the end
+     * of the final message chunk.
+     */
+    protected function withDisclaimer(string $text): string
+    {
+        $disclaimer = trim((string) config('ai.assistant.disclaimer'));
+
+        return $disclaimer === '' ? $text : $text."\n\n_".$disclaimer.'_';
     }
 
     /**

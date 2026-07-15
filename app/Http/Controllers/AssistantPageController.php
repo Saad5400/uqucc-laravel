@@ -28,6 +28,7 @@ class AssistantPageController extends Controller
                 'title' => $page->title,
             ] : null,
             'hasContent' => $page && ! empty($page->html_content),
+            'disclaimer' => (string) config('ai.assistant.disclaimer'),
             'seo' => $page
                 ? Seo::forPage($page)
                 : Seo::forDefault('المساعد الذكي', 'اسأل المساعد الذكي عن كل ما يخص كلية الحاسبات بجامعة أم القرى — اللوائح، التخصصات، الحرمان، والمعدل — بإجابات موثقة من الدليل.'),

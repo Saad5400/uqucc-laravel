@@ -12,6 +12,7 @@ it('renders the assistant page without a backing page using fallback seo', funct
         ->component('AssistantPage')
         ->where('page', null)
         ->where('hasContent', false)
+        ->where('disclaimer', (string) config('ai.assistant.disclaimer'))
         ->has('seo')
         ->where('seo.title', 'المساعد الذكي')
     );

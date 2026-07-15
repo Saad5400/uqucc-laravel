@@ -119,6 +119,8 @@ it('replies in an activated private chat and stores the conversation for the cha
         ->and($api->sentMessages[0]['reply_to_message_id'])->toBe(20)
         ->and(implode(' ', $api->allTexts()))->toContain('مكافأة الامتياز ألف ريال');
 
+    expect(implode(' ', $api->allTexts()))->toContain((string) config('ai.assistant.disclaimer'));
+
     $conversation = Conversation::query()->sole();
 
     expect($conversation->getAttribute('user_id'))->toBe('telegram:900123')
