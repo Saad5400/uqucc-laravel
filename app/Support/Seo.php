@@ -100,11 +100,11 @@ class Seo
 
         $candidates = [
             $page->quick_response_message,
-            self::plainTextFromContent($page->html_content),
+            $page->html_content,
         ];
 
         foreach ($candidates as $candidate) {
-            $text = self::normalize((string) $candidate);
+            $text = self::normalize(self::plainTextFromContent($candidate));
 
             if ($text !== '') {
                 return Str::limit($text, 157);
@@ -129,7 +129,7 @@ class Seo
             return self::extractTextFromBlocks($content);
         }
 
-        return strip_tags((string) $content);
+        return html_entity_decode(strip_tags((string) $content), ENT_QUOTES | ENT_HTML5, 'UTF-8');
     }
 
     /**
@@ -162,7 +162,7 @@ class Seo
 
     private static function normalize(string $value): string
     {
-        return trim((string) preg_replace('/\s+/u', ' ', $value));
+        return trim((string) preg_replace('/[\s\x{00A0}]+/u', ' ', $value));
     }
 
     /**
