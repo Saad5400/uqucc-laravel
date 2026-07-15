@@ -287,7 +287,7 @@ class PageImageExtractor
             $this->ledger->clearContextCosts();
 
             $response = (new DocumentExtractionAgent)->prompt(
-                'انسخ المحتوى النصي للصورة المرفقة كاملاً بصيغة ماركداون. إن لم تحتوِ الصورة نصاً فصِف محتواها بإيجاز في سطر واحد.'."\n\n"
+                'انسخ المحتوى النصي للصورة المرفقة كاملاً بصيغة ماركداون مع الحفاظ على بنيتها: استخدم عناوين وجداول ماركداون عند وجود جداول أو تجميعات (مثل المستويات الدراسية)، واحرص على ربط كل عنصر بمجموعته الصحيحة وقيمه الصحيحة (مثل رمز المقرر واسمه وعدد ساعاته). إن لم تحتوِ الصورة نصاً فصِف محتواها بإيجاز في سطر واحد.'."\n\n"
                     .'Attached image: '.basename($absolutePath),
                 [Image::fromPath($absolutePath, $this->mimeFor($absolutePath))->as(basename($absolutePath))],
                 provider: (string) config('ai.default', 'openrouter'),
@@ -393,6 +393,6 @@ class PageImageExtractor
     {
         $model = trim($this->settings->vision_model);
 
-        return $model !== '' ? $model : (string) config('ai.vision.model', 'google/gemini-2.5-flash');
+        return $model !== '' ? $model : (string) config('ai.vision.model', 'google/gemini-3.1-flash-lite');
     }
 }

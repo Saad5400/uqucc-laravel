@@ -20,7 +20,7 @@ describe('AiSettings defaults', function () {
         $settings = app(AiSettings::class);
 
         expect($settings->chat_model)->toBe('deepseek/deepseek-v4-flash')
-            ->and($settings->vision_model)->toBe('google/gemini-2.5-flash')
+            ->and($settings->vision_model)->toBe('google/gemini-3.1-flash-lite')
             ->and($settings->embedding_model)->toBe('openai/text-embedding-3-small');
     });
 
@@ -77,7 +77,7 @@ describe('manage settings AI card', function () {
             'admin_copilot_enabled' => true,
             'admin_assistant_enabled' => false,
             'chat_model' => 'deepseek/deepseek-v4-flash',
-            'vision_model' => 'google/gemini-2.5-flash',
+            'vision_model' => 'google/gemini-3.1-flash-lite',
             'embedding_model' => 'openai/text-embedding-3-small',
             'daily_budget_usd' => 7.5,
             'per_session_rate_limit' => 25,
@@ -111,7 +111,7 @@ describe('manage settings AI card', function () {
                 ->component('manage/settings/Index')
                 ->where('ai.ai_enabled', false)
                 ->where('ai.chat_model', 'deepseek/deepseek-v4-flash')
-                ->where('ai.vision_model', 'google/gemini-2.5-flash')
+                ->where('ai.vision_model', 'google/gemini-3.1-flash-lite')
                 ->where('ai.embedding_model', 'openai/text-embedding-3-small')
                 ->where('ai.daily_budget_usd', 5)
                 ->where('ai.per_session_rate_limit', 20)
