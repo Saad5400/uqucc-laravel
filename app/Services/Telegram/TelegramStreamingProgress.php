@@ -16,8 +16,9 @@ use Throwable;
  * then the growing answer text. Gone once the caller sends the final reply.
  *
  * Robustness rules, all Telegram-imposed:
- *  - Progress edits are PLAIN TEXT (no parse_mode), so a partial render can
- *    never be rejected as invalid markup mid-stream.
+ *  - Progress edits collapse into an expandable blockquote (HTML) with the
+ *    content HTML-escaped, so a partial render can't be misread as markup;
+ *    any rejection falls back to a plain-text edit so progress never freezes.
  *  - Edits are throttled to one per {@see self::EDIT_INTERVAL_SECONDS} and
  *    back off further on failure, honouring flood-control "retry after N".
  *  - Every render is hard-capped under Telegram's 4096-char message limit,
@@ -28,6 +29,9 @@ class TelegramStreamingProgress
 {
     /** Telegram's hard per-message character limit. */
     private const TELEGRAM_MESSAGE_LIMIT = 4096;
+
+    /** Chars reserved for the expandable-blockquote wrapper tags. */
+    private const BLOCKQUOTE_OVERHEAD = 40;
 
     /**
      * Bidi controls. Progress edits are plain text with no HTML `dir`, so
@@ -152,8 +156,10 @@ class TelegramStreamingProgress
 
         $render = $this->withRtlBase(implode("\n\n", $sections));
 
-        return mb_strlen($render) > self::TELEGRAM_MESSAGE_LIMIT
-            ? mb_substr($render, 0, self::TELEGRAM_MESSAGE_LIMIT)
+        $limit = self::TELEGRAM_MESSAGE_LIMIT - self::BLOCKQUOTE_OVERHEAD;
+
+        return mb_strlen($render) > $limit
+            ? mb_substr($render, 0, $limit)
             : $render;
     }
 
@@ -219,24 +225,80 @@ class TelegramStreamingProgress
         }
 
         try {
-            $this->telegram->editMessageText([
-                'chat_id' => $this->chatId,
-                'message_id' => $this->messageId,
-                'text' => $render,
-            ]);
+            $this->edit($this->collapse($render), 'HTML');
 
-            $this->lastRender = $render;
-            $this->nextEditAt = microtime(true) + self::EDIT_INTERVAL_SECONDS;
+            $this->commit($render);
+
+            return;
         } catch (Throwable $exception) {
             if (str_contains($exception->getMessage(), 'message is not modified')) {
-                $this->lastRender = $render;
-                $this->nextEditAt = microtime(true) + self::EDIT_INTERVAL_SECONDS;
+                $this->commit($render);
+
+                return;
+            }
+
+            // Flood control means the placeholder can't be touched at all yet;
+            // a retry (plain or not) would only add to it, so just back off.
+            if (preg_match('/retry after \d+/i', $exception->getMessage()) === 1) {
+                $this->nextEditAt = microtime(true) + $this->retryDelay($exception);
+
+                return;
+            }
+
+            // Otherwise the HTML itself was rejected (length, escaping) — show
+            // the same snapshot as plain text so progress keeps moving.
+        }
+
+        try {
+            $this->edit($render, null);
+
+            $this->commit($render);
+        } catch (Throwable $exception) {
+            if (str_contains($exception->getMessage(), 'message is not modified')) {
+                $this->commit($render);
 
                 return;
             }
 
             $this->nextEditAt = microtime(true) + $this->retryDelay($exception);
         }
+    }
+
+    /**
+     * Wrap a plain-text snapshot in an expandable blockquote, escaping the
+     * content so tool queries, slugs, or reasoning that contain `<`, `>` or
+     * `&` can never be misread as markup.
+     */
+    private function collapse(string $render): string
+    {
+        return '<blockquote expandable>'.htmlspecialchars($render, ENT_NOQUOTES, 'UTF-8').'</blockquote>';
+    }
+
+    /**
+     * Edit the placeholder, optionally with a parse mode.
+     */
+    private function edit(string $text, ?string $parseMode): void
+    {
+        $payload = [
+            'chat_id' => $this->chatId,
+            'message_id' => $this->messageId,
+            'text' => $text,
+        ];
+
+        if ($parseMode !== null) {
+            $payload['parse_mode'] = $parseMode;
+        }
+
+        $this->telegram->editMessageText($payload);
+    }
+
+    /**
+     * Mark the snapshot as shown and hold off until the next throttle window.
+     */
+    private function commit(string $render): void
+    {
+        $this->lastRender = $render;
+        $this->nextEditAt = microtime(true) + self::EDIT_INTERVAL_SECONDS;
     }
 
     /**

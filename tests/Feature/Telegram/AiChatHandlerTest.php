@@ -191,8 +191,11 @@ it('streams plain-text progress edits before the final formatted reply', functio
 
     $progress = $api->editedMessages[0];
 
-    // Progress snapshots are plain text — never rejectable as invalid markup.
-    expect($progress)->not->toHaveKey('parse_mode')
+    // Progress snapshots are collapsed into an expandable blockquote too, with
+    // their content HTML-escaped so a partial render can't break the markup.
+    expect($progress['parse_mode'])->toBe('HTML')
+        ->and($progress['text'])->toStartWith('<blockquote expandable>')
+        ->and($progress['text'])->toEndWith('</blockquote>')
         ->and($progress['text'])->toContain('🔎 يبحث');
 
     $final = end($api->editedMessages);

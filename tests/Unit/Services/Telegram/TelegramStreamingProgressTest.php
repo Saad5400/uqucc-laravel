@@ -16,10 +16,18 @@ function progressFor(FakeTelegramApi $api): TelegramStreamingProgress
     return new TelegramStreamingProgress($api, 1_234, 5_678);
 }
 
-/** The text of the last edit the progress pushed to Telegram. */
+/**
+ * The rendered snapshot of the last edit, unwrapped from its
+ * expandable-blockquote transport and un-escaped so bidi assertions read the
+ * render itself rather than the HTML envelope.
+ */
 function lastProgressText(FakeTelegramApi $api): string
 {
-    return (string) ($api->editedMessages[array_key_last($api->editedMessages)]['text'] ?? '');
+    $text = (string) ($api->editedMessages[array_key_last($api->editedMessages)]['text'] ?? '');
+
+    $inner = (string) preg_replace('#^<blockquote expandable>(.*)</blockquote>$#s', '$1', $text);
+
+    return html_entity_decode($inner, ENT_QUOTES | ENT_HTML5, 'UTF-8');
 }
 
 function toolCallEvent(string $name, array $arguments): ToolCallEvent
@@ -66,6 +74,19 @@ it('isolates the mixed-language reasoning tail', function () {
     expect($text)
         ->toContain('🧠 '.FIRST_STRONG_ISOLATE)
         ->and($text)->toContain('C++. So the plan'.POP_DIRECTIONAL_ISOLATE);
+});
+
+it('collapses each snapshot into an expandable blockquote with escaped content', function () {
+    $api = new FakeTelegramApi;
+
+    progressFor($api)->note(toolCallEvent('search_content', ['query' => 'a < b & c']));
+
+    $edit = $api->editedMessages[array_key_last($api->editedMessages)];
+
+    expect($edit['parse_mode'])->toBe('HTML')
+        ->and($edit['text'])->toStartWith('<blockquote expandable>')
+        ->and($edit['text'])->toEndWith('</blockquote>')
+        ->and($edit['text'])->toContain('a &lt; b &amp; c');
 });
 
 it('gives every non-empty line a strong RTL base direction', function () {
