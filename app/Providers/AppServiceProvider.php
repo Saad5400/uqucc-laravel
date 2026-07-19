@@ -37,6 +37,16 @@ class AppServiceProvider extends ServiceProvider
         Gate::define('review-changes', fn (User $user): bool => $user->canReviewChanges());
 
         /*
+         * league/oauth2-server refuses to load an OAuth key whose file
+         * permissions are looser than 600/660 and throws on every token/MCP
+         * request. In the container the storage volume can surface the keys as
+         * 0666, which 500s the whole /mcp/admin surface. The keys are only
+         * reachable inside the container, so we relax the permission *warning*
+         * check here — token signing/verification is unaffected.
+         */
+        Passport::$validateKeyPermissions = false;
+
+        /*
          * The consent screen an MCP client's OAuth authorization request lands
          * on after the moderator signs in — the "approve / deny this agent"
          * step of the authorization-code flow (routes/ai.php). Uses the app's
