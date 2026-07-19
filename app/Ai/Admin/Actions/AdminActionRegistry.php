@@ -8,8 +8,27 @@ use App\Ai\Admin\Actions\Pages\ManagePageStructureAction;
 use App\Ai\Admin\Actions\Pages\RestorePageAction;
 use App\Ai\Admin\Actions\Pages\UpdatePageAction;
 use App\Ai\Admin\Actions\Pages\UpdatePageContentAction;
+use App\Ai\Admin\Actions\Reviews\ApprovePageChangeAction;
+use App\Ai\Admin\Actions\Reviews\ListPendingChangesAction;
+use App\Ai\Admin\Actions\Reviews\RejectPageChangeAction;
+use App\Ai\Admin\Actions\Reviews\ShowPageChangeAction;
 use App\Ai\Admin\Actions\Settings\GetSettingsAction;
 use App\Ai\Admin\Actions\Settings\UpdateSettingAction;
+use App\Ai\Admin\Actions\System\ListRoutesAction;
+use App\Ai\Admin\Actions\System\SiteOverviewAction;
+use App\Ai\Admin\Actions\Tutors\CreateCourseAction;
+use App\Ai\Admin\Actions\Tutors\CreateTutorAction;
+use App\Ai\Admin\Actions\Tutors\DeleteCourseAction;
+use App\Ai\Admin\Actions\Tutors\DeleteTutorAction;
+use App\Ai\Admin\Actions\Tutors\ListTutorsAction;
+use App\Ai\Admin\Actions\Tutors\ReorderCoursesAction;
+use App\Ai\Admin\Actions\Tutors\ReorderTutorsAction;
+use App\Ai\Admin\Actions\Tutors\UpdateCourseAction;
+use App\Ai\Admin\Actions\Tutors\UpdateTutorAction;
+use App\Ai\Admin\Actions\Users\CreateUserAction;
+use App\Ai\Admin\Actions\Users\DeleteUserAction;
+use App\Ai\Admin\Actions\Users\ListUsersAction;
+use App\Ai\Admin\Actions\Users\UpdateUserAction;
 
 /**
  * The single ordered list of unified admin capabilities. Both AI surfaces
@@ -31,9 +50,32 @@ class AdminActionRegistry
         UpdatePageAction::class,
         UpdatePageContentAction::class,
         RestorePageAction::class,
+        // Reviews (pending page-change queue)
+        ListPendingChangesAction::class,
+        ShowPageChangeAction::class,
+        ApprovePageChangeAction::class,
+        RejectPageChangeAction::class,
+        // Tutors + course taxonomy
+        ListTutorsAction::class,
+        CreateTutorAction::class,
+        UpdateTutorAction::class,
+        DeleteTutorAction::class,
+        ReorderTutorsAction::class,
+        CreateCourseAction::class,
+        UpdateCourseAction::class,
+        DeleteCourseAction::class,
+        ReorderCoursesAction::class,
+        // Users
+        ListUsersAction::class,
+        CreateUserAction::class,
+        UpdateUserAction::class,
+        DeleteUserAction::class,
         // Settings
         GetSettingsAction::class,
         UpdateSettingAction::class,
+        // System / context
+        SiteOverviewAction::class,
+        ListRoutesAction::class,
     ];
 
     /** @var array<string, AdminAction>|null */

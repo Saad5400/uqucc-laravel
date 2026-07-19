@@ -3,11 +3,18 @@
 use App\Models\Page;
 use App\Models\PageChangeRequest;
 use App\Models\PrivateTutor\PrivateTutor;
+use App\Models\PrivateTutor\PrivateTutorCourse;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Laravel\Passport\Passport;
 
 use function Pest\Laravel\postJson;
+
+/** The text content of a successful tools/call response. */
+function adminResultText(\Illuminate\Testing\TestResponse $response): string
+{
+    return (string) collect($response->json('result.content'))->pluck('text')->implode("\n");
+}
 
 beforeEach(function () {
     $this->seed(RolesAndPermissionsSeeder::class);
@@ -41,7 +48,7 @@ it('rejects unauthenticated access to the admin server', function () {
     postJson('/mcp/admin', adminRpc('list_pending_changes'))->assertUnauthorized();
 });
 
-it('lists the unified admin actions and remaining moderation tools for an authorized moderator', function () {
+it('lists all unified admin actions for an authorized moderator', function () {
     Passport::actingAs(makeUser('admin'));
 
     $response = postJson('/mcp/admin', [
@@ -55,27 +62,33 @@ it('lists the unified admin actions and remaining moderation tools for an author
     $names = collect($response->json('result.tools'))->pluck('name')->all();
 
     expect($names)->toBe([
-        // Unified admin actions (shared with the in-app assistant)
         'list_pages',
         'get_page_content',
         'manage_page_structure',
         'update_page',
         'update_page_content',
         'restore_page',
-        'get_settings',
-        'update_setting',
-        // Moderation tools not yet migrated to the action registry
         'list_pending_changes',
+        'show_page_change',
         'approve_page_change',
         'reject_page_change',
         'list_tutors',
         'create_tutor',
         'update_tutor',
         'delete_tutor',
+        'reorder_tutors',
+        'create_course',
+        'update_course',
+        'delete_course',
+        'reorder_courses',
         'list_users',
         'create_user',
         'update_user',
         'delete_user',
+        'get_settings',
+        'update_setting',
+        'site_overview',
+        'list_routes',
     ]);
 });
 
@@ -256,4 +269,71 @@ it('blocks an admin from deleting their own account', function () {
 
     expect($response->json('result.isError'))->toBeTrue()
         ->and(User::query()->whereKey($admin->id)->exists())->toBeTrue();
+});
+
+it('shows a field-by-field diff of a pending change so a reviewer is not approving blind', function () {
+    $page = Page::factory()->create(['title' => 'العنوان الحالي']);
+    $change = PageChangeRequest::factory()->create([
+        'page_id' => $page->id,
+        'status' => PageChangeRequest::STATUS_PENDING,
+        'payload' => ['title' => 'العنوان المقترح'],
+    ]);
+
+    Passport::actingAs(makeUser('editor'));
+
+    $response = postJson('/mcp/admin', adminRpc('show_page_change', ['change_request_id' => $change->id]))->assertOk();
+    $text = adminResultText($response);
+
+    expect($text)->toContain('العنوان الحالي')
+        ->and($text)->toContain('العنوان المقترح');
+});
+
+it('lets a moderator create, list, and reorder tutor courses (taxonomy the MCP server previously could not manage)', function () {
+    Passport::actingAs(makeUser('admin'));
+
+    postJson('/mcp/admin', adminRpc('create_course', ['name' => 'خوارزميات']))->assertOk();
+    postJson('/mcp/admin', adminRpc('create_course', ['name' => 'قواعد بيانات']))->assertOk();
+
+    $algorithms = PrivateTutorCourse::query()->where('name', 'خوارزميات')->firstOrFail();
+    $databases = PrivateTutorCourse::query()->where('name', 'قواعد بيانات')->firstOrFail();
+
+    $list = adminResultText(postJson('/mcp/admin', adminRpc('list_tutors'))->assertOk());
+    expect($list)->toContain('خوارزميات')->and($list)->toContain('قواعد بيانات');
+
+    postJson('/mcp/admin', adminRpc('reorder_courses', ['ids' => [$databases->id, $algorithms->id]]))->assertOk();
+
+    expect($databases->fresh()->order)->toBe(1)
+        ->and($algorithms->fresh()->order)->toBe(2);
+
+    postJson('/mcp/admin', adminRpc('update_course', ['course_id' => $algorithms->id, 'name' => 'تصميم خوارزميات']))->assertOk();
+    expect($algorithms->fresh()->name)->toBe('تصميم خوارزميات');
+});
+
+it('reorders tutors with sequential orders through Eloquent', function () {
+    $first = PrivateTutor::create(['name' => 'أ. أول', 'order' => 1]);
+    $second = PrivateTutor::create(['name' => 'أ. ثانٍ', 'order' => 2]);
+
+    Passport::actingAs(makeUser('admin'));
+
+    postJson('/mcp/admin', adminRpc('reorder_tutors', ['ids' => [$second->id, $first->id]]))->assertOk();
+
+    expect($second->fresh()->order)->toBe(1)
+        ->and($first->fresh()->order)->toBe(2);
+});
+
+it('exposes the current date and site inventory through site_overview', function () {
+    Passport::actingAs(makeUser('editor'));
+
+    $text = adminResultText(postJson('/mcp/admin', adminRpc('site_overview'))->assertOk());
+
+    expect($text)->toContain(now()->format('Y-m-d'))
+        ->and($text)->toContain('نظرة عامة على الموقع');
+});
+
+it('lists the application routes through list_routes', function () {
+    Passport::actingAs(makeUser('editor'));
+
+    $text = adminResultText(postJson('/mcp/admin', adminRpc('list_routes', ['filter' => 'manage.assistant']))->assertOk());
+
+    expect($text)->toContain('manage.assistant.index');
 });
