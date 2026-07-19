@@ -2,6 +2,14 @@
 
 namespace App\Ai\Admin\Actions;
 
+use App\Ai\Admin\Actions\Analytics\GetAiUsageAction;
+use App\Ai\Admin\Actions\Analytics\GetAnalyticsAction;
+use App\Ai\Admin\Actions\Analytics\ListActivityLogAction;
+use App\Ai\Admin\Actions\Corpus\AuthorPageFromDocumentAction;
+use App\Ai\Admin\Actions\Corpus\GetCorpusDocumentAction;
+use App\Ai\Admin\Actions\Corpus\ListCorpusDocumentsAction;
+use App\Ai\Admin\Actions\Corpus\ReextractCorpusDocumentAction;
+use App\Ai\Admin\Actions\Corpus\ReingestCorpusDocumentAction;
 use App\Ai\Admin\Actions\Pages\GetPageContentAction;
 use App\Ai\Admin\Actions\Pages\ListPagesAction;
 use App\Ai\Admin\Actions\Pages\ManagePageStructureAction;
@@ -14,8 +22,13 @@ use App\Ai\Admin\Actions\Reviews\RejectPageChangeAction;
 use App\Ai\Admin\Actions\Reviews\ShowPageChangeAction;
 use App\Ai\Admin\Actions\Settings\GetSettingsAction;
 use App\Ai\Admin\Actions\Settings\UpdateSettingAction;
+use App\Ai\Admin\Actions\System\ClearCacheAction;
 use App\Ai\Admin\Actions\System\ListRoutesAction;
 use App\Ai\Admin\Actions\System\SiteOverviewAction;
+use App\Ai\Admin\Actions\Telegram\DeleteTelegramChatAction;
+use App\Ai\Admin\Actions\Telegram\ListTelegramChatsAction;
+use App\Ai\Admin\Actions\Telegram\ResetTelegramChatAction;
+use App\Ai\Admin\Actions\Telegram\SetTelegramChatAiAction;
 use App\Ai\Admin\Actions\Tutors\CreateCourseAction;
 use App\Ai\Admin\Actions\Tutors\CreateTutorAction;
 use App\Ai\Admin\Actions\Tutors\DeleteCourseAction;
@@ -73,9 +86,25 @@ class AdminActionRegistry
         // Settings
         GetSettingsAction::class,
         UpdateSettingAction::class,
+        // Telegram (per-chat)
+        ListTelegramChatsAction::class,
+        SetTelegramChatAiAction::class,
+        ResetTelegramChatAction::class,
+        DeleteTelegramChatAction::class,
+        // Corpus / knowledge base
+        ListCorpusDocumentsAction::class,
+        GetCorpusDocumentAction::class,
+        ReextractCorpusDocumentAction::class,
+        ReingestCorpusDocumentAction::class,
+        AuthorPageFromDocumentAction::class,
+        // Analytics / audit
+        GetAnalyticsAction::class,
+        GetAiUsageAction::class,
+        ListActivityLogAction::class,
         // System / context
         SiteOverviewAction::class,
         ListRoutesAction::class,
+        ClearCacheAction::class,
     ];
 
     /** @var array<string, AdminAction>|null */

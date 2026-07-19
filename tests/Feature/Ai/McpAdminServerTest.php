@@ -87,8 +87,21 @@ it('lists all unified admin actions for an authorized moderator', function () {
         'delete_user',
         'get_settings',
         'update_setting',
+        'list_telegram_chats',
+        'set_telegram_chat_ai',
+        'reset_telegram_chat',
+        'delete_telegram_chat',
+        'list_corpus_documents',
+        'get_corpus_document',
+        'reextract_corpus_document',
+        'reingest_corpus_document',
+        'author_page_from_document',
+        'get_analytics',
+        'get_ai_usage',
+        'list_activity_log',
         'site_overview',
         'list_routes',
+        'clear_cache',
     ]);
 });
 
@@ -336,4 +349,39 @@ it('lists the application routes through list_routes', function () {
     $text = adminResultText(postJson('/mcp/admin', adminRpc('list_routes', ['filter' => 'manage.assistant']))->assertOk());
 
     expect($text)->toContain('manage.assistant.index');
+});
+
+it('toggles a Telegram chat AI setting by chat_id', function () {
+    $chat = App\Models\TelegramChatSetting::query()->create([
+        'chat_id' => 123456789,
+        'title' => 'مجموعة',
+        'type' => 'group',
+        'ai_enabled' => false,
+    ]);
+
+    Passport::actingAs(makeUser('admin'));
+
+    postJson('/mcp/admin', adminRpc('set_telegram_chat_ai', ['chat_id' => '123456789', 'enabled' => true]))->assertOk();
+
+    expect($chat->fresh()->ai_enabled)->toBeTrue();
+});
+
+it('summarizes analytics as readable text', function () {
+    Passport::actingAs(makeUser('admin'));
+
+    $text = adminResultText(postJson('/mcp/admin', adminRpc('get_analytics'))->assertOk());
+
+    expect($text)->toContain('إحصاءات الموقع');
+});
+
+it('gates the activity log behind view-activity-logs', function () {
+    Passport::actingAs(makeUser('editor'));
+
+    postJson('/mcp/admin', adminRpc('list_activity_log'))->assertOk();
+});
+
+it('clears the application cache', function () {
+    Passport::actingAs(makeUser('admin'));
+
+    postJson('/mcp/admin', adminRpc('clear_cache'))->assertOk();
 });
