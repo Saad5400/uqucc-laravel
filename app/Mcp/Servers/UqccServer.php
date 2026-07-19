@@ -12,9 +12,9 @@ use Laravel\Mcp\Server;
  * through {@see Toolbox} and wrapped per-tool in {@see ReadOnlyToolAdapter}.
  *
  * Registered unauthenticated in routes/ai.php (every tool is read-only and
- * public content only) behind the `mcp` rate limiter. An authenticated admin
- * server would be a sibling class registered on its own path with an auth
- * middleware.
+ * public content only) behind the `mcp` rate limiter. Its privileged sibling
+ * {@see UqccAdminServer} exposes the moderation tools on its own path behind
+ * OAuth (`auth:api`).
  */
 class UqccServer extends Server
 {
