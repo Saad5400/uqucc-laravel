@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Laravel\Passport\Passport;
 use Pgvector\Laravel\Schema as PgvectorSchema;
 
 class AppServiceProvider extends ServiceProvider
@@ -34,6 +35,14 @@ class AppServiceProvider extends ServiceProvider
         $this->configureRateLimiting();
 
         Gate::define('review-changes', fn (User $user): bool => $user->canReviewChanges());
+
+        /*
+         * The consent screen an MCP client's OAuth authorization request lands
+         * on after the moderator signs in — the "approve / deny this agent"
+         * step of the authorization-code flow (routes/ai.php). Uses the app's
+         * own RTL Arabic view instead of Passport's default English one.
+         */
+        Passport::authorizationView(fn (array $parameters) => view('mcp.authorize', $parameters));
     }
 
     /**
@@ -48,6 +57,10 @@ class AppServiceProvider extends ServiceProvider
      * are stateless HTTP callers without a session cookie, so it keys by
      * client IP only; the budget is higher than `ai-search` because one
      * agent session legitimately chains several JSON-RPC calls.
+     *
+     * `mcp-admin` throttles the authenticated moderation MCP endpoint. Once
+     * OAuth-authenticated there is a stable identity, so it keys by user id
+     * (falling back to IP) with a higher budget than the public server.
      *
      * `ai-chat` is the assistant chat's BURST limiter (same session-first
      * key as `ai-search`); the operator's per-session DAILY quota and the
@@ -65,6 +78,10 @@ class AppServiceProvider extends ServiceProvider
 
         RateLimiter::for('mcp', function (Request $request): Limit {
             return Limit::perMinute(30)->by('mcp:'.(string) $request->ip());
+        });
+
+        RateLimiter::for('mcp-admin', function (Request $request): Limit {
+            return Limit::perMinute(60)->by('mcp-admin:'.($request->user()?->getAuthIdentifier() ?? (string) $request->ip()));
         });
 
         RateLimiter::for('ai-chat', function (Request $request): Limit {
