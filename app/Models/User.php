@@ -19,6 +19,20 @@ class User extends Authenticatable implements OAuthenticatable
     use HasApiTokens, HasFactory, HasRoles, LogsActivity, Notifiable;
 
     /**
+     * Pin spatie's role/permission lookups to the `web` guard.
+     *
+     * Both the `web` and `api` (Passport) guards resolve to this model, and
+     * spatie prefers whichever guard is currently active — so a request
+     * authenticated through `auth:api` (the /mcp/admin server) would look for
+     * roles and permissions under an `api` guard that was never seeded, and
+     * every ability check would silently fail. All roles and permissions are
+     * seeded for `web`, so resolve against it regardless of the active guard.
+     *
+     * @var string
+     */
+    protected $guard_name = 'web';
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
