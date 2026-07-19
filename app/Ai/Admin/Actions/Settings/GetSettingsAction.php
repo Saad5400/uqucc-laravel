@@ -1,38 +1,57 @@
 <?php
 
-namespace App\Ai\Admin\Tools;
+namespace App\Ai\Admin\Actions\Settings;
 
+use App\Ai\Admin\Actions\ActionResult;
+use App\Ai\Admin\Actions\AdminAction;
 use App\Ai\Admin\SettingsRegistry;
-use App\Ai\Admin\Tools\Concerns\GatedByAdminAssistant;
+use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
-use Laravel\Ai\Contracts\Tool;
-use Laravel\Ai\Tools\Request;
-use Stringable;
 
 /**
- * Dumps every operator-editable settings group (values live, secrets masked
- * to their last 4 characters) so the model can ground a settings proposal in
- * the current state. Admin-only: NEVER registered in the public Toolbox.
+ * Dump every operator-editable settings group (values live, secrets masked to
+ * their last 4 characters) so the model can ground a settings change in the
+ * current state. Read-only.
  */
-class GetSettingsTool implements Tool
+class GetSettingsAction extends AdminAction
 {
-    use GatedByAdminAssistant;
-
     public function __construct(private readonly SettingsRegistry $registry) {}
 
-    public function description(): Stringable|string
+    public function name(): string
+    {
+        return 'get_settings';
+    }
+
+    public function isReadOnly(): bool
+    {
+        return true;
+    }
+
+    public function category(): string
+    {
+        return 'settings';
+    }
+
+    public function description(): string
     {
         return 'Read the current values of every site settings group (AI settings, Telegram settings) with each key\'s type '
             .'(قراءة القيم الحالية لجميع إعدادات الموقع مع نوع كل مفتاح). '
-            .'Secret values are masked. Use the group and key names exactly as returned when proposing a settings change. Read-only.';
+            .'Secret values are masked. Use the group and key names exactly as returned when changing a setting. Read-only.';
     }
 
-    public function handle(Request $request): Stringable|string
+    /**
+     * @return array<string, \Illuminate\JsonSchema\Types\Type>
+     */
+    public function schema(JsonSchema $schema): array
     {
-        if ($this->adminAssistantIsDisabled()) {
-            return $this->adminAssistantDisabledReply();
-        }
+        return [];
+    }
 
+    /**
+     * @param  array<string, mixed>  $normalized
+     */
+    protected function run(array $normalized, User $user): ActionResult
+    {
         $sections = [];
 
         foreach (array_keys(SettingsRegistry::groups()) as $group) {
@@ -54,14 +73,6 @@ class GetSettingsTool implements Tool
             $sections[] = implode("\n", $lines);
         }
 
-        return "إعدادات الموقع الحالية:\n\n".implode("\n\n", $sections);
-    }
-
-    /**
-     * Get the tool's schema definition.
-     */
-    public function schema(JsonSchema $schema): array
-    {
-        return [];
+        return ActionResult::text("إعدادات الموقع الحالية:\n\n".implode("\n\n", $sections));
     }
 }

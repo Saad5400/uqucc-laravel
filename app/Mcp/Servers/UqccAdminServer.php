@@ -2,21 +2,22 @@
 
 namespace App\Mcp\Servers;
 
+use App\Ai\Admin\Actions\AdminAction;
+use App\Ai\Admin\Actions\AdminActionRegistry;
+use App\Mcp\Tools\AdminActionTool;
 use App\Mcp\Tools\Moderation\ApprovePageChangeTool;
 use App\Mcp\Tools\Moderation\CreateTutorTool;
 use App\Mcp\Tools\Moderation\CreateUserTool;
 use App\Mcp\Tools\Moderation\DeleteTutorTool;
 use App\Mcp\Tools\Moderation\DeleteUserTool;
-use App\Mcp\Tools\Moderation\ListManagedPagesTool;
 use App\Mcp\Tools\Moderation\ListPendingChangesTool;
 use App\Mcp\Tools\Moderation\ListTutorsTool;
 use App\Mcp\Tools\Moderation\ListUsersTool;
 use App\Mcp\Tools\Moderation\RejectPageChangeTool;
-use App\Mcp\Tools\Moderation\TrashPageTool;
-use App\Mcp\Tools\Moderation\UpdatePageTool;
 use App\Mcp\Tools\Moderation\UpdateTutorTool;
 use App\Mcp\Tools\Moderation\UpdateUserTool;
 use Laravel\Mcp\Server;
+use Laravel\Mcp\Server\Contracts\Transport;
 
 /**
  * Authenticated moderation MCP server for the UQU College of Computing
@@ -48,9 +49,14 @@ class UqccAdminServer extends Server
     public int $defaultPaginationLength = 50;
 
     /**
+     * The moderation tools not yet migrated to the unified action registry
+     * (reviews, tutors, users). The unified page/settings actions are added as
+     * INSTANCES in the constructor. As each of these domains moves onto an
+     * {@see AdminAction}, its legacy tool is removed from here.
+     *
      * @var array<int, class-string<\Laravel\Mcp\Server\Tool>>
      */
-    protected array $tools = [
+    protected array $moderationTools = [
         ListPendingChangesTool::class,
         ApprovePageChangeTool::class,
         RejectPageChangeTool::class,
@@ -62,8 +68,23 @@ class UqccAdminServer extends Server
         CreateUserTool::class,
         UpdateUserTool::class,
         DeleteUserTool::class,
-        ListManagedPagesTool::class,
-        UpdatePageTool::class,
-        TrashPageTool::class,
     ];
+
+    /**
+     * Register the unified admin actions (as configured adapter instances) plus
+     * the remaining legacy moderation tools. laravel/mcp resolves the server
+     * through the container with `transport` as a named parameter, so the
+     * registry is autowired here.
+     */
+    public function __construct(Transport $transport, AdminActionRegistry $registry)
+    {
+        parent::__construct($transport);
+
+        $actionTools = array_map(
+            static fn (AdminAction $action): AdminActionTool => new AdminActionTool($action),
+            array_values($registry->all()),
+        );
+
+        $this->tools = [...$actionTools, ...$this->moderationTools];
+    }
 }

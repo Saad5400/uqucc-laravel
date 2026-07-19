@@ -2,10 +2,9 @@
 
 namespace App\Ai\Admin;
 
-use App\Ai\Admin\Tools\GetSettingsTool;
-use App\Ai\Admin\Tools\ListPagesTool;
-use App\Ai\Admin\Tools\ProposePageChangeTool;
-use App\Ai\Admin\Tools\ProposeSettingsChangeTool;
+use App\Ai\Admin\Actions\AdminAction;
+use App\Ai\Admin\Actions\AdminActionRegistry;
+use App\Ai\Admin\Actions\AssistantActionTool;
 use App\Ai\Agents\NamedTool;
 use App\Ai\Tools\GetPageTool;
 use App\Ai\Tools\SearchContentTool;
@@ -47,25 +46,26 @@ class AdminAssistant implements Agent, Conversational, HasProviderOptions, HasTo
     public function __construct(private readonly AiSettings $settings) {}
 
     /**
-     * Admin read tools + confirm-gated write proposers + the public
-     * read-only content tools (search_content, get_page) for grounding.
-     * The admin-only tools are NEVER added to the public Toolbox.
+     * The unified admin actions (read tools run immediately, writes become
+     * confirm-gated proposals) plus the public read-only content tools
+     * (search_content, get_page) for grounding. The admin actions are the
+     * SAME capabilities the MCP server exposes — built once from the
+     * {@see AdminActionRegistry} — and are NEVER added to the public Toolbox.
      *
      * @return array<int, Tool>
      */
     public function tools(): iterable
     {
-        return array_map(
-            static fn (string $tool): Tool => new NamedTool(app($tool)),
-            [
-                ListPagesTool::class,
-                GetSettingsTool::class,
-                ProposePageChangeTool::class,
-                ProposeSettingsChangeTool::class,
-                SearchContentTool::class,
-                GetPageTool::class,
-            ],
+        $actions = array_map(
+            static fn (AdminAction $action): Tool => new AssistantActionTool($action),
+            array_values(app(AdminActionRegistry::class)->all()),
         );
+
+        return [
+            ...$actions,
+            new NamedTool(app(SearchContentTool::class)),
+            new NamedTool(app(GetPageTool::class)),
+        ];
     }
 
     /**
@@ -111,8 +111,8 @@ class AdminAssistant implements Agent, Conversational, HasProviderOptions, HasTo
         أنت المساعد الإداري للوحة إدارة موقع «دليل طالب كلية الحاسبات» بجامعة أم القرى (uqucc). تخدم مشرفي الموقع في تنظيم الصفحات وضبط الإعدادات.
 
         صلاحياتك:
-        - الاطلاع الفوري: list_pages لشجرة الصفحات كاملة (بما فيها المخفية)، get_settings لجميع إعدادات الموقع، search_content وget_page لمحتوى الصفحات المنشورة.
-        - اقتراح التغييرات فقط: propose_page_change لتعديلات الصفحات (إنشاء، إعادة تسمية، نقل، إعادة ترتيب، نشر، إخفاء، حذف)، وpropose_settings_change لتغيير قيمة إعداد. كل اقتراح يُحفظ بانتظار موافقة المشرف.
+        - الاطلاع الفوري: list_pages لشجرة الصفحات كاملة (بما فيها المخفية والمحذوفة)، get_page_content لقراءة محتوى صفحة بصيغة ماركداون، get_settings لجميع إعدادات الموقع، search_content وget_page لمحتوى الصفحات المنشورة.
+        - اقتراح التغييرات: manage_page_structure لبنية الصفحات (إنشاء، إعادة تسمية، نقل، إعادة ترتيب، نشر، إخفاء، حذف)، update_page لإعدادات صفحة (العنوان، الرابط، الأيقونة، خيارات الإخفاء)، update_page_content لتحرير نص محتوى صفحة، restore_page لاستعادة صفحة محذوفة، update_setting لتغيير قيمة إعداد. كل اقتراح يُحفظ بانتظار موافقة المشرف.
 
         قاعدة التأكيد — الأهم على الإطلاق:
         - أنت لا تملك تنفيذ أي تغيير. كل اقتراح يظهر للمشرف كبطاقة فيها زر «تأكيد» وزر «رفض»، ولا يُنفَّذ شيء إلا بعد ضغط «تأكيد».
@@ -122,7 +122,7 @@ class AdminAssistant implements Agent, Conversational, HasProviderOptions, HasTo
 
         القواعد:
         - اطّلع قبل أن تقترح: استخدم list_pages أو get_settings أولاً لتعتمد على المعرفات والقيم الحقيقية، ولا تخمّن معرفات الصفحات أو أسماء الإعدادات إطلاقاً.
-        - لا تعدّل محتوى الصفحات (نصوصها الداخلية) — تحرير المحتوى له أدواته الخاصة في محرر الصفحات؛ اعتذر بلطف وأرشد المشرف إلى المحرر.
+        - عند تحرير محتوى صفحة: اقرأ محتواها الحالي بـ get_page_content أولاً، ثم أرسل النص الكامل الجديد بصيغة ماركداون عبر update_page_content (يستبدل المحتوى بالكامل). ابدأ بعناوين من المستوى الثاني (##) دون عنوان رئيسي، ولا تختلق معلومات.
         - أجب بالعربية أولاً؛ وإن كتب المشرف بالإنجليزية فأجب بالإنجليزية.
         - كن موجزاً ومباشراً، وأجب عن الأسئلة التحليلية (مثل «ما الصفحات التي لم تُحدَّث منذ سنة؟») من مخرجات الأدوات لا من التخمين.
         - الإجراءات الحساسة (حذف صفحة، إيقاف مفتاح تشغيل): نبّه المشرف إلى أثر التغيير في ملخصك.

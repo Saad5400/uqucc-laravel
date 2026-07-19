@@ -2,7 +2,8 @@
 import type { AssistantProposal } from '@/components/manage/assistant/types';
 import { Button } from '@/components/ui/button';
 import { confirm as confirmProposal, reject as rejectProposal } from '@/routes/manage/assistant/proposals';
-import { Check, CircleAlert, CircleCheck, CircleX, FileText, Loader2, Settings2, X } from 'lucide-vue-next';
+import { Check, CircleAlert, CircleCheck, CircleX, FileText, Loader2, Settings2, Users, X } from 'lucide-vue-next';
+import type { Component } from 'vue';
 import { computed, ref } from 'vue';
 
 /**
@@ -10,7 +11,7 @@ import { computed, ref } from 'vue';
  * summary, the change details, and the two-phase gate — تأكيد applies the
  * change on the server, رفض declines it. After acting, the card collapses
  * into a status chip. Nothing the assistant proposes happens without a
- * click here.
+ * click here. Works for any unified admin action (grouped by category).
  */
 
 const props = defineProps<{
@@ -24,9 +25,18 @@ const emit = defineEmits<{
 const acting = ref<'confirm' | 'reject' | null>(null);
 const actionError = ref<string | null>(null);
 
-const isPageChange = computed(() => props.proposal.type === 'page_change');
+/** Icon + heading per action category. */
+const categoryMeta: Record<string, { icon: Component; label: string }> = {
+    pages: { icon: FileText, label: 'تغيير مقترح على الصفحات' },
+    settings: { icon: Settings2, label: 'تغيير مقترح على الإعدادات' },
+    tutors: { icon: Users, label: 'تغيير مقترح على المدرّسين' },
+    users: { icon: Users, label: 'تغيير مقترح على المستخدمين' },
+    reviews: { icon: FileText, label: 'إجراء مقترح على المراجعات' },
+};
 
-/** Arabic labels for the payload keys worth showing on the card. */
+const meta = computed(() => categoryMeta[props.proposal.category] ?? { icon: FileText, label: 'تغيير مقترح' });
+
+/** Arabic labels for the normalized detail keys worth showing on the card. */
 const detailLabels: Record<string, string> = {
     action: 'الإجراء',
     page_title: 'الصفحة',
@@ -36,6 +46,7 @@ const detailLabels: Record<string, string> = {
     key: 'الإعداد',
     old_value: 'القيمة الحالية',
     value: 'القيمة الجديدة',
+    name: 'الاسم',
 };
 
 const actionLabels: Record<string, string> = {
@@ -48,22 +59,35 @@ const actionLabels: Record<string, string> = {
     delete: 'حذف',
 };
 
+const scalar = (value: unknown): string | null => {
+    if (value === undefined || value === null || value === '') {
+        return null;
+    }
+
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        return String(value);
+    }
+
+    return null;
+};
+
 const details = computed(() => {
     const entries: { label: string; value: string }[] = [];
+    const source = props.proposal.details ?? {};
 
     for (const key of Object.keys(detailLabels)) {
-        const raw = props.proposal.payload[key];
+        const raw = scalar(source[key]);
 
-        if (raw === undefined || raw === null || raw === '') {
+        if (raw === null) {
             continue;
         }
 
-        const value = key === 'action' ? (actionLabels[String(raw)] ?? String(raw)) : typeof raw === 'string' ? raw : JSON.stringify(raw);
+        const value = key === 'action' ? (actionLabels[raw] ?? raw) : raw;
 
         entries.push({ label: detailLabels[key], value });
     }
 
-    const titles = props.proposal.payload.titles;
+    const titles = source.titles;
 
     if (Array.isArray(titles) && titles.length > 0) {
         entries.push({ label: 'الترتيب الجديد', value: titles.map((title, index) => `${index + 1}. ${String(title)}`).join(' — ') });
@@ -117,12 +141,11 @@ const act = async (kind: 'confirm' | 'reject'): Promise<void> => {
     <div class="rounded-lg border border-border bg-background p-3 shadow-sm">
         <div class="flex items-start gap-2">
             <span class="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
-                <FileText v-if="isPageChange" class="size-3.5" />
-                <Settings2 v-else class="size-3.5" />
+                <component :is="meta.icon" class="size-3.5" />
             </span>
             <div class="min-w-0 flex-1 space-y-2">
                 <div class="flex flex-wrap items-center gap-2">
-                    <span class="text-xs text-muted-foreground">{{ isPageChange ? 'تغيير مقترح على الصفحات' : 'تغيير مقترح على الإعدادات' }}</span>
+                    <span class="text-xs text-muted-foreground">{{ meta.label }}</span>
                     <span
                         v-if="proposal.status === 'confirmed'"
                         class="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400"

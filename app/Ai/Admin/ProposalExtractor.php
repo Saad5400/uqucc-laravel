@@ -16,8 +16,6 @@ use Laravel\Ai\Responses\Data\ToolResult;
  */
 class ProposalExtractor
 {
-    private const PROPOSER_TOOLS = ['propose_page_change', 'propose_settings_change'];
-
     /**
      * @param  list<ToolResult>  $toolResults
      * @return list<array{id: string, type: string, summary: string, payload: array<string, mixed>, status: string, error: string|null}>
@@ -27,10 +25,6 @@ class ProposalExtractor
         $ids = [];
 
         foreach ($toolResults as $result) {
-            if (! in_array($result->name, self::PROPOSER_TOOLS, true)) {
-                continue;
-            }
-
             $text = $result->result;
 
             if ($text instanceof \Stringable) {

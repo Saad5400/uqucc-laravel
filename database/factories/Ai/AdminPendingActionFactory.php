@@ -19,8 +19,13 @@ class AdminPendingActionFactory extends Factory
     public function definition(): array
     {
         return [
-            'type' => AdminPendingAction::TYPE_PAGE_CHANGE,
-            'payload' => ['action' => 'rename', 'page_id' => 1, 'title' => fake()->sentence(3)],
+            'type' => 'manage_page_structure',
+            'payload' => [
+                'action' => 'manage_page_structure',
+                'category' => 'pages',
+                'input' => ['action' => 'rename', 'page_id' => 1, 'title' => fake()->sentence(3)],
+                'preview' => ['action' => 'rename', 'page_id' => 1, 'title' => fake()->sentence(3)],
+            ],
             'summary' => 'إعادة تسمية صفحة.',
             'status' => AdminPendingAction::STATUS_PENDING,
             'proposed_by' => User::factory(),
@@ -29,13 +34,34 @@ class AdminPendingActionFactory extends Factory
         ];
     }
 
-    public function settingsChange(string $group = 'ai', string $key = 'search_enabled', string $rawValue = 'true'): static
+    /**
+     * A proposal for any unified action, carrying the raw tool input the
+     * executor re-validates and runs at confirm time.
+     *
+     * @param  array<string, mixed>  $input
+     */
+    public function forAction(string $type, array $input, string $category = 'pages', string $summary = 'اقتراح إداري.'): static
     {
         return $this->state(fn (array $attributes): array => [
-            'type' => AdminPendingAction::TYPE_SETTINGS_CHANGE,
-            'payload' => ['group' => $group, 'key' => $key, 'value' => $rawValue, 'raw_value' => $rawValue, 'old_value' => null],
-            'summary' => "تغيير الإعداد {$group}.{$key}.",
+            'type' => $type,
+            'payload' => [
+                'action' => $type,
+                'category' => $category,
+                'input' => $input,
+                'preview' => $input,
+            ],
+            'summary' => $summary,
         ]);
+    }
+
+    public function settingsChange(string $group = 'ai', string $key = 'search_enabled', string $rawValue = 'true'): static
+    {
+        return $this->forAction(
+            'update_setting',
+            ['group' => $group, 'key' => $key, 'value' => $rawValue],
+            'settings',
+            "تغيير الإعداد {$group}.{$key}.",
+        );
     }
 
     public function confirmed(): static

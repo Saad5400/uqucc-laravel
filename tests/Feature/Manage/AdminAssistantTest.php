@@ -1,8 +1,9 @@
 <?php
 
+use App\Ai\Admin\Actions\AssistantActionTool;
+use App\Ai\Admin\Actions\Settings\GetSettingsAction;
 use App\Ai\Admin\AdminAssistant;
 use App\Ai\Admin\SettingsRegistry;
-use App\Ai\Admin\Tools\GetSettingsTool;
 use App\Models\Ai\AdminPendingAction;
 use App\Models\Ai\AiUsage;
 use App\Models\Page;
@@ -266,7 +267,7 @@ describe('proposal creation via tools', function () {
         $page = Page::factory()->create(['title' => 'اللوائح']);
 
         AdminAssistant::fake([
-            new ToolCall('tc_1', 'propose_page_change', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'اللوائح الدراسية']),
+            new ToolCall('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'اللوائح الدراسية']),
             'أنشأت اقتراحاً بإعادة التسمية — بانتظار تأكيدك.',
         ]);
 
@@ -278,10 +279,10 @@ describe('proposal creation via tools', function () {
         $proposal = AdminPendingAction::query()->sole();
 
         expect($proposal->status)->toBe(AdminPendingAction::STATUS_PENDING)
-            ->and($proposal->type)->toBe(AdminPendingAction::TYPE_PAGE_CHANGE)
+            ->and($proposal->type)->toBe('manage_page_structure')
             ->and($proposal->proposed_by)->toBe($this->admin->id)
-            ->and($proposal->payload['action'])->toBe('rename')
-            ->and($proposal->payload['title'])->toBe('اللوائح الدراسية');
+            ->and($proposal->payload['input']['action'])->toBe('rename')
+            ->and($proposal->payload['input']['title'])->toBe('اللوائح الدراسية');
 
         $event = adminSseEventData($content, 'proposal');
 
@@ -296,7 +297,7 @@ describe('proposal creation via tools', function () {
 
     it('persists a pending settings proposal from a tool call', function () {
         AdminAssistant::fake([
-            new ToolCall('tc_1', 'propose_settings_change', ['group' => 'ai', 'key' => 'search_enabled', 'value' => 'true']),
+            new ToolCall('tc_1', 'update_setting', ['group' => 'ai', 'key' => 'search_enabled', 'value' => 'true']),
             'أنشأت الاقتراح — بانتظار تأكيدك.',
         ]);
 
@@ -307,10 +308,10 @@ describe('proposal creation via tools', function () {
 
         $proposal = AdminPendingAction::query()->sole();
 
-        expect($proposal->type)->toBe(AdminPendingAction::TYPE_SETTINGS_CHANGE)
-            ->and($proposal->payload['group'])->toBe('ai')
-            ->and($proposal->payload['key'])->toBe('search_enabled')
-            ->and($proposal->payload['value'])->toBeTrue()
+        expect($proposal->type)->toBe('update_setting')
+            ->and($proposal->payload['input']['group'])->toBe('ai')
+            ->and($proposal->payload['input']['key'])->toBe('search_enabled')
+            ->and($proposal->payload['preview']['value'])->toBeTrue()
             ->and(adminSseEventData($content, 'proposal'))->not->toBeNull();
 
         expect(app(AiSettings::class)->search_enabled)->toBeFalse();
@@ -318,7 +319,7 @@ describe('proposal creation via tools', function () {
 
     it('creates no proposal when the page id does not exist', function () {
         AdminAssistant::fake([
-            new ToolCall('tc_1', 'propose_page_change', ['action' => 'rename', 'page_id' => 999, 'title' => 'جديد']),
+            new ToolCall('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => 999, 'title' => 'جديد']),
             'تعذر إنشاء الاقتراح.',
         ]);
 
@@ -333,7 +334,7 @@ describe('proposal creation via tools', function () {
 
     it('creates no proposal for an unknown settings key or a type-mismatched value', function (array $arguments) {
         AdminAssistant::fake([
-            new ToolCall('tc_1', 'propose_settings_change', $arguments),
+            new ToolCall('tc_1', 'update_setting', $arguments),
             'تعذر إنشاء الاقتراح.',
         ]);
 
@@ -355,10 +356,9 @@ describe('confirming proposals', function () {
     it('applies a rename through Eloquent (model events flush the app caches) and marks it confirmed', function () {
         $page = Page::factory()->create(['title' => 'قديم']);
 
-        $proposal = AdminPendingAction::factory()->create([
-            'proposed_by' => $this->admin->id,
-            'payload' => ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد'],
-        ]);
+        $proposal = AdminPendingAction::factory()
+            ->forAction('manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد'])
+            ->create(['proposed_by' => $this->admin->id]);
 
         Cache::put(config('app-cache.keys.navigation_tree'), ['stale']);
 
@@ -378,10 +378,9 @@ describe('confirming proposals', function () {
         $sibling = Page::factory()->create(['parent_id' => $newParent->id, 'order' => 3]);
         $page = Page::factory()->create(['parent_id' => $oldParent->id]);
 
-        $proposal = AdminPendingAction::factory()->create([
-            'proposed_by' => $this->admin->id,
-            'payload' => ['action' => 'move', 'page_id' => $page->id, 'parent_id' => $newParent->id],
-        ]);
+        $proposal = AdminPendingAction::factory()
+            ->forAction('manage_page_structure', ['action' => 'move', 'page_id' => $page->id, 'parent_id' => $newParent->id])
+            ->create(['proposed_by' => $this->admin->id]);
 
         $this->actingAs($this->admin)
             ->postJson(route('manage.assistant.proposals.confirm', $proposal))
@@ -395,19 +394,17 @@ describe('confirming proposals', function () {
     it('applies publish and unpublish through the hidden flag', function () {
         $page = Page::factory()->create(['hidden' => true]);
 
-        $publish = AdminPendingAction::factory()->create([
-            'proposed_by' => $this->admin->id,
-            'payload' => ['action' => 'publish', 'page_id' => $page->id],
-        ]);
+        $publish = AdminPendingAction::factory()
+            ->forAction('manage_page_structure', ['action' => 'publish', 'page_id' => $page->id])
+            ->create(['proposed_by' => $this->admin->id]);
 
         $this->actingAs($this->admin)->postJson(route('manage.assistant.proposals.confirm', $publish))->assertOk();
 
         expect($page->refresh()->hidden)->toBeFalse();
 
-        $unpublish = AdminPendingAction::factory()->create([
-            'proposed_by' => $this->admin->id,
-            'payload' => ['action' => 'unpublish', 'page_id' => $page->id],
-        ]);
+        $unpublish = AdminPendingAction::factory()
+            ->forAction('manage_page_structure', ['action' => 'unpublish', 'page_id' => $page->id])
+            ->create(['proposed_by' => $this->admin->id]);
 
         $this->actingAs($this->admin)->postJson(route('manage.assistant.proposals.confirm', $unpublish))->assertOk();
 
@@ -419,10 +416,9 @@ describe('confirming proposals', function () {
         $first = Page::factory()->create(['parent_id' => $parent->id, 'order' => 1]);
         $second = Page::factory()->create(['parent_id' => $parent->id, 'order' => 2]);
 
-        $proposal = AdminPendingAction::factory()->create([
-            'proposed_by' => $this->admin->id,
-            'payload' => ['action' => 'reorder', 'ids' => [$second->id, $first->id]],
-        ]);
+        $proposal = AdminPendingAction::factory()
+            ->forAction('manage_page_structure', ['action' => 'reorder', 'ids' => [$second->id, $first->id]])
+            ->create(['proposed_by' => $this->admin->id]);
 
         $this->actingAs($this->admin)->postJson(route('manage.assistant.proposals.confirm', $proposal))->assertOk();
 
@@ -434,10 +430,9 @@ describe('confirming proposals', function () {
         $page = Page::factory()->create();
         $child = Page::factory()->create(['parent_id' => $page->id]);
 
-        $proposal = AdminPendingAction::factory()->create([
-            'proposed_by' => $this->admin->id,
-            'payload' => ['action' => 'delete', 'page_id' => $page->id],
-        ]);
+        $proposal = AdminPendingAction::factory()
+            ->forAction('manage_page_structure', ['action' => 'delete', 'page_id' => $page->id])
+            ->create(['proposed_by' => $this->admin->id]);
 
         $this->actingAs($this->admin)->postJson(route('manage.assistant.proposals.confirm', $proposal))->assertOk();
 
@@ -463,10 +458,9 @@ describe('confirming proposals', function () {
     it('marks the proposal failed with the reason when re-validation fails (page vanished)', function () {
         $page = Page::factory()->create();
 
-        $proposal = AdminPendingAction::factory()->create([
-            'proposed_by' => $this->admin->id,
-            'payload' => ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد'],
-        ]);
+        $proposal = AdminPendingAction::factory()
+            ->forAction('manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد'])
+            ->create(['proposed_by' => $this->admin->id]);
 
         $page->forceDelete();
 
@@ -492,10 +486,9 @@ describe('rejecting proposals', function () {
     it('marks the proposal rejected and applies nothing', function () {
         $page = Page::factory()->create(['title' => 'قديم']);
 
-        $proposal = AdminPendingAction::factory()->create([
-            'proposed_by' => $this->admin->id,
-            'payload' => ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد'],
-        ]);
+        $proposal = AdminPendingAction::factory()
+            ->forAction('manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد'])
+            ->create(['proposed_by' => $this->admin->id]);
 
         $this->actingAs($this->admin)
             ->postJson(route('manage.assistant.proposals.reject', $proposal))
@@ -517,9 +510,7 @@ describe('rejecting proposals', function () {
 
 describe('settings introspection', function () {
     it('lists every settings group with current values through get_settings', function () {
-        $this->actingAs($this->admin);
-
-        $output = (string) app(GetSettingsTool::class)->handle(new ToolRequest([]));
+        $output = app(GetSettingsAction::class)->handle([], $this->admin)->message;
 
         expect($output)->toContain('group: ai')
             ->and($output)->toContain('group: telegram')
@@ -528,9 +519,11 @@ describe('settings introspection', function () {
     });
 
     it('refuses while the feature toggle is off', function () {
+        $this->actingAs($this->admin);
+
         disableAdminAssistant();
 
-        $output = (string) app(GetSettingsTool::class)->handle(new ToolRequest([]));
+        $output = (string) (new AssistantActionTool(app(GetSettingsAction::class)))->handle(new ToolRequest([]));
 
         expect($output)->toContain('معطل');
     });

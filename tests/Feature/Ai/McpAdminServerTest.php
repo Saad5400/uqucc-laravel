@@ -41,7 +41,7 @@ it('rejects unauthenticated access to the admin server', function () {
     postJson('/mcp/admin', adminRpc('list_pending_changes'))->assertUnauthorized();
 });
 
-it('lists all fourteen moderation tools for an authorized moderator', function () {
+it('lists the unified admin actions and remaining moderation tools for an authorized moderator', function () {
     Passport::actingAs(makeUser('admin'));
 
     $response = postJson('/mcp/admin', [
@@ -55,6 +55,16 @@ it('lists all fourteen moderation tools for an authorized moderator', function (
     $names = collect($response->json('result.tools'))->pluck('name')->all();
 
     expect($names)->toBe([
+        // Unified admin actions (shared with the in-app assistant)
+        'list_pages',
+        'get_page_content',
+        'manage_page_structure',
+        'update_page',
+        'update_page_content',
+        'restore_page',
+        'get_settings',
+        'update_setting',
+        // Moderation tools not yet migrated to the action registry
         'list_pending_changes',
         'approve_page_change',
         'reject_page_change',
@@ -66,9 +76,6 @@ it('lists all fourteen moderation tools for an authorized moderator', function (
         'create_user',
         'update_user',
         'delete_user',
-        'list_managed_pages',
-        'update_page',
-        'trash_page',
     ]);
 });
 
@@ -144,16 +151,60 @@ it('updates the live page directly for an editor who is not review-gated', funct
         ->and(PageChangeRequest::query()->count())->toBe(0);
 });
 
-it('refuses to trash a page for a review-mode editor', function () {
+it('refuses a structural page change for a review-mode editor', function () {
     $reviewGated = makeUser('editor', requiresReview: true);
     $page = Page::factory()->create();
 
     Passport::actingAs($reviewGated);
 
-    $response = postJson('/mcp/admin', adminRpc('trash_page', ['page_id' => $page->id]));
+    $response = postJson('/mcp/admin', adminRpc('manage_page_structure', ['action' => 'delete', 'page_id' => $page->id]));
 
     expect($response->json('result.isError'))->toBeTrue()
         ->and($page->fresh()->trashed())->toBeFalse();
+});
+
+it('lets a non-review editor trash and restore a page through structural actions', function () {
+    $editor = makeUser('editor');
+    $parent = Page::factory()->create();
+    $child = Page::factory()->create(['parent_id' => $parent->id]);
+
+    Passport::actingAs($editor);
+
+    postJson('/mcp/admin', adminRpc('manage_page_structure', ['action' => 'delete', 'page_id' => $parent->id]))
+        ->assertOk();
+
+    expect($parent->fresh()->trashed())->toBeTrue()
+        ->and($child->fresh()->trashed())->toBeTrue();
+
+    postJson('/mcp/admin', adminRpc('restore_page', ['page_id' => $parent->id]))
+        ->assertOk();
+
+    expect($parent->fresh()->trashed())->toBeFalse();
+});
+
+it('edits a page\'s text content through update_page_content, preserving custom blocks', function () {
+    $editor = makeUser('editor');
+    $page = Page::factory()->create([
+        'html_content' => [
+            'type' => 'doc',
+            'content' => [
+                ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'قديم']]],
+                ['type' => 'alert', 'attrs' => ['variant' => 'info'], 'content' => [['type' => 'text', 'text' => 'تنبيه']]],
+            ],
+        ],
+    ]);
+
+    Passport::actingAs($editor);
+
+    postJson('/mcp/admin', adminRpc('update_page_content', ['page_id' => $page->id, 'content' => '## قسم جديد'."\n\n".'نص محدّث.']))
+        ->assertOk();
+
+    $content = $page->fresh()->html_content;
+    $types = collect($content['content'])->pluck('type')->all();
+
+    expect($types)->toContain('alert')
+        ->and(json_encode($content, JSON_UNESCAPED_UNICODE))->toContain('قسم جديد')
+        ->and(json_encode($content, JSON_UNESCAPED_UNICODE))->not->toContain('قديم');
 });
 
 it('lets an admin create a tutor but denies an editor', function () {

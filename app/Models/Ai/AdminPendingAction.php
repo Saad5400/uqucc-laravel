@@ -31,10 +31,6 @@ class AdminPendingAction extends Model
     /** @use HasFactory<AdminPendingActionFactory> */
     use HasFactory, HasUlids;
 
-    public const TYPE_PAGE_CHANGE = 'page_change';
-
-    public const TYPE_SETTINGS_CHANGE = 'settings_change';
-
     public const STATUS_PENDING = 'pending';
 
     public const STATUS_CONFIRMED = 'confirmed';
@@ -76,17 +72,20 @@ class AdminPendingAction extends Model
 
     /**
      * The shape the chat client renders as an action card (SSE `proposal`
-     * events and the rehydration endpoint agree on it).
+     * events and the rehydration endpoint agree on it). `category` groups the
+     * card visually (pages/settings/tutors/…) and `details` are the normalized
+     * fields worth showing under the summary.
      *
-     * @return array{id: string, type: string, summary: string, payload: array<string, mixed>, status: string, error: string|null}
+     * @return array{id: string, type: string, category: string, summary: string, details: array<string, mixed>, status: string, error: string|null}
      */
     public function toClientPayload(): array
     {
         return [
             'id' => $this->id,
             'type' => $this->type,
+            'category' => (string) ($this->payload['category'] ?? 'system'),
             'summary' => $this->summary,
-            'payload' => $this->payload,
+            'details' => is_array($this->payload['preview'] ?? null) ? $this->payload['preview'] : [],
             'status' => $this->status,
             'error' => $this->error,
         ];
