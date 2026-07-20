@@ -73,6 +73,17 @@ return [
             'replace_placeholders' => true,
         ],
 
+        // TEMPORARY diagnostic channel: records every Telegram update whose reply
+        // target is an old message, to pin down why the bot replies to month-old
+        // messages. Remove once the investigation is done.
+        'telegram_old_reply' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/telegram-old-reply.log'),
+            'level' => 'debug',
+            'days' => 30,
+            'replace_placeholders' => false,
+        ],
+
         'slack' => [
             'driver' => 'slack',
             'url' => env('LOG_SLACK_WEBHOOK_URL'),
