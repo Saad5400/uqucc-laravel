@@ -18,14 +18,9 @@ class PageController extends Controller
      */
     public function home(): Response
     {
-        $page = $this->getCachedPage('/');
+        $page = $this->getCachedPageBySlug('/');
 
-        if (! $page) {
-            // If no homepage exists yet, show welcome message
-            return Inertia::render('Welcome', [
-                'seo' => Seo::forDefault(Seo::siteName()),
-            ]);
-        }
+        abort_if($page === null, 404);
 
         return $this->renderPage($page);
     }
@@ -45,20 +40,6 @@ class PageController extends Controller
         }
 
         return $this->renderPage($page);
-    }
-
-    /**
-     * Get a cached page by slug (for homepage).
-     */
-    private function getCachedPage(string $slug): ?Page
-    {
-        $cacheKey = $this->getPageCacheKey($slug);
-
-        return Cache::remember(
-            $cacheKey,
-            config('app-cache.pages.ttl', 1800),
-            fn () => Page::where('slug', $slug)->first()
-        );
     }
 
     /**
@@ -102,6 +83,7 @@ class PageController extends Controller
 
         // Get breadcrumbs (cached)
         $breadcrumbs = $this->getCachedBreadcrumbs($page);
+        $siblings = $this->siblingLinks($page);
 
         // Eager load relationships if not already loaded
         if (! $page->relationLoaded('users')) {
@@ -156,8 +138,84 @@ class PageController extends Controller
             ],
             'breadcrumbs' => $breadcrumbs,
             'hasContent' => ! empty($page->html_content),
+            'siblingPrev' => $siblings['prev'],
+            'siblingNext' => $siblings['next'],
             'seo' => Seo::forPage($page, $breadcrumbs),
         ]);
+    }
+
+    /**
+     * Previous/next sibling links for the article pager, using the same
+     * order/title sort as the navigation tree. Root ('/') has no siblings.
+     *
+     * @return array{prev: ?array{title:string,slug:string}, next: ?array{title:string,slug:string}}
+     */
+    private function siblingLinks(Page $page): array
+    {
+        if ($page->slug === '/') {
+            return ['prev' => null, 'next' => null];
+        }
+
+        $siblings = Page::where('parent_id', $page->parent_id)
+            ->where('hidden', false)
+            ->where('slug', '!=', '/')
+            ->orderBy('order')
+            ->orderBy('title')
+            ->get(['id', 'slug', 'title']);
+
+        $index = $siblings->search(fn (Page $sibling) => $sibling->id === $page->id);
+
+        $toLink = fn (?Page $sibling) => $sibling
+            ? ['title' => $sibling->title, 'slug' => $sibling->slug]
+            : null;
+
+        return [
+            'prev' => $index === false ? null : $toLink($siblings->get($index - 1)),
+            'next' => $index === false ? null : $toLink($siblings->get($index + 1)),
+        ];
+    }
+
+    /**
+     * First plain-text paragraph of a page's content, capped for catalog cards.
+     */
+    private function excerptFrom(mixed $content): ?string
+    {
+        if (blank($content)) {
+            return null;
+        }
+
+        $text = is_array($content)
+            ? $this->plainTextFromBlocks($content)
+            : trim(strip_tags((string) $content));
+
+        $text = trim(preg_replace('/\s+/u', ' ', $text) ?? '');
+
+        return $text === '' ? null : \Illuminate\Support\Str::limit($text, 80);
+    }
+
+    /**
+     * Recursively pull text from a TipTap block array.
+     *
+     * @param  array<mixed>  $blocks
+     */
+    private function plainTextFromBlocks(array $blocks): string
+    {
+        $parts = [];
+
+        $walk = function (array $node) use (&$walk, &$parts): void {
+            if (isset($node['text']) && is_string($node['text'])) {
+                $parts[] = $node['text'];
+            }
+            foreach ($node['content'] ?? [] as $child) {
+                if (is_array($child)) {
+                    $walk($child);
+                }
+            }
+        };
+
+        $walk($blocks);
+
+        return implode(' ', $parts);
     }
 
     /**
@@ -232,6 +290,7 @@ class PageController extends Controller
             'slug' => $child->slug,
             'title' => $child->title,
             'icon' => $child->icon,
+            'excerpt' => $this->excerptFrom($child->html_content),
         ])->toArray();
     }
 }

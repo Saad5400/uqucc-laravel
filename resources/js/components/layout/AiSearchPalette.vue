@@ -162,9 +162,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-    <Button variant="outline" aria-label="البحث الذكي" class="gap-2 border-primary/30 bg-primary/5 hover:bg-primary/10" @click="openPalette">
+    <Button variant="outline" aria-label="Search" class="gap-2 border-primary/30 bg-primary/5 hover:bg-primary/10" @click="openPalette">
         <Sparkles class="size-4 text-amber-500" />
-        <span class="hidden lg:inline">بحث ذكي</span>
+        <span class="hidden lg:inline">Search</span>
         <kbd
             class="pointer-events-none hidden items-center gap-1 rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground lg:inline-flex"
         >
@@ -174,7 +174,7 @@ onBeforeUnmount(() => {
 
     <Dialog v-model:open="isOpen">
         <DialogContent dir="rtl" class="top-24 translate-y-0 gap-0 overflow-hidden p-0 sm:max-w-xl" :show-close-button="false">
-            <DialogTitle class="sr-only">البحث الذكي</DialogTitle>
+            <DialogTitle class="sr-only">Search</DialogTitle>
             <DialogDescription class="sr-only">ابحث في محتوى الدليل بالذكاء الاصطناعي</DialogDescription>
 
             <div class="flex items-center gap-2 border-b border-border px-4">
