@@ -151,7 +151,7 @@
         @apply p-2 align-middle whitespace-nowrap;
     }
 
-    /* Contributors page: bullet list renders as small chips; first two = leads. */
+    /* Contributors page: bullet list renders as small chips; first three = leads. */
     .typography.contributors ul {
         @apply my-0 ms-0 flex list-none flex-wrap gap-2;
     }
@@ -169,7 +169,7 @@
         color: inherit;
     }
 
-    .typography.contributors li:nth-child(-n + 2) {
+    .typography.contributors li:nth-child(-n + 3) {
         @apply border-primary/20 bg-primary/10 text-primary;
     }
 }
