@@ -10,6 +10,7 @@ use App\Services\Logic\TruthTableGenerator;
 use App\Services\Logic\TruthTableImageRenderer;
 use App\Services\OgImageService;
 use App\Services\QuickResponseService;
+use App\Services\Quiz\QuizAnswerRecorder;
 use App\Services\Telegram\ContentParser;
 use App\Services\Telegram\Handlers\AiChatHandler;
 use App\Services\Telegram\Handlers\AiToggleHandler;
@@ -22,6 +23,7 @@ use App\Services\Telegram\Handlers\LoginHandler;
 use App\Services\Telegram\Handlers\PageManagementHandler;
 use App\Services\Telegram\Handlers\PrivateForwardHandler;
 use App\Services\Telegram\Handlers\PythonExecutionHandler;
+use App\Services\Telegram\Handlers\QuizLeaderboardHandler;
 use App\Services\Telegram\Handlers\TruthTableHandler;
 use App\Services\Telegram\Handlers\UquccListHandler;
 use App\Services\Telegram\Handlers\UquccSearchHandler;
@@ -178,6 +180,22 @@ class ProcessTelegramUpdate implements ShouldQueue
      */
     protected function processUpdate(Api $telegram, Update $update): void
     {
+        // Handle quiz poll votes (non-anonymous quiz polls report each vote
+        // as a poll_answer update carrying the voter and chosen option)
+        $pollAnswer = $update->getPollAnswer();
+        if ($pollAnswer instanceof \Telegram\Bot\Objects\PollAnswer) {
+            try {
+                app(QuizAnswerRecorder::class)->record($pollAnswer);
+            } catch (\Exception $e) {
+                Log::error('Telegram poll answer error', [
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile().':'.$e->getLine(),
+                ]);
+            }
+
+            return;
+        }
+
         // Handle callback queries (inline button presses)
         $callbackQuery = $update->getCallbackQuery();
         if ($callbackQuery) {
@@ -232,6 +250,7 @@ class ProcessTelegramUpdate implements ShouldQueue
             new PrivateForwardHandler($telegram),
             new InviteLinkHandler($telegram),
             new AiToggleHandler($telegram),
+            new QuizLeaderboardHandler($telegram),
             // Last on purpose: the assistant only answers messages no other handler owns.
             new AiChatHandler(
                 $telegram,

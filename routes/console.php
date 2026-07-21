@@ -27,3 +27,19 @@ Schedule::command('ai:ingest-pages')
     ->weekly()
     ->withoutOverlapping()
     ->runInBackground();
+
+Schedule::command('quiz:generate')
+    ->dailyAt('05:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('quiz:post')
+    ->dailyAt('16:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('quiz:announce-weekly')
+    ->thursdays()
+    ->at('21:00')
+    ->withoutOverlapping()
+    ->runInBackground();

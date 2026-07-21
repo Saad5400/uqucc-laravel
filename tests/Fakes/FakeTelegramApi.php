@@ -25,6 +25,12 @@ class FakeTelegramApi extends Api
     /** @var array<int, array<string, mixed>> */
     public array $sentPhotos = [];
 
+    /** @var array<int, array<string, mixed>> */
+    public array $sentPolls = [];
+
+    /** @var array<int, array<string, mixed>> */
+    public array $stoppedPolls = [];
+
     /** Chat-member status per telegram user id (default 'member'). */
     /** @var array<int|string, string> */
     public array $chatMemberStatuses = [];
@@ -35,6 +41,8 @@ class FakeTelegramApi extends Api
     public string $botUsername = 'UquccTestBot';
 
     private int $nextMessageId = 1000;
+
+    private int $nextPollId = 5000;
 
     public function __construct()
     {
@@ -53,6 +61,24 @@ class FakeTelegramApi extends Api
         $this->sentPhotos[] = $params;
 
         return new Message(['message_id' => ++$this->nextMessageId, 'chat' => ['id' => $params['chat_id'] ?? 0]]);
+    }
+
+    public function sendPoll(array $params): Message
+    {
+        $this->sentPolls[] = $params;
+
+        return new Message([
+            'message_id' => ++$this->nextMessageId,
+            'chat' => ['id' => $params['chat_id'] ?? 0],
+            'poll' => ['id' => (string) ++$this->nextPollId, 'question' => $params['question'] ?? ''],
+        ]);
+    }
+
+    public function stopPoll(array $params): \Telegram\Bot\Objects\Poll
+    {
+        $this->stoppedPolls[] = $params;
+
+        return new \Telegram\Bot\Objects\Poll(['id' => (string) ($params['message_id'] ?? 0), 'is_closed' => true]);
     }
 
     public function editMessageText(array $params): Message

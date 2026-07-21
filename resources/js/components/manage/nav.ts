@@ -1,4 +1,4 @@
-import { Activity, Bot, FileText, FileUp, GraduationCap, LayoutDashboard, ListChecks, Settings, Sparkles, Users } from 'lucide-vue-next';
+import { Activity, Bot, FileText, FileUp, GraduationCap, LayoutDashboard, ListChecks, Settings, Sparkles, Trophy, Users } from 'lucide-vue-next';
 import type { FunctionalComponent } from 'vue';
 
 export interface ManageNavItem {
@@ -20,6 +20,7 @@ export const manageNavItems: ManageNavItem[] = [
     { title: 'المساعد الإداري', href: '/manage/assistant', icon: Sparkles },
     { title: 'مستندات الذكاء الاصطناعي', href: '/manage/corpus', icon: FileUp },
     { title: 'ذكاء بوت التليجرام', href: '/manage/telegram-chats', icon: Bot },
+    { title: 'سؤال اليوم', href: '/manage/quiz', icon: Trophy },
     { title: 'سجل النشاط', href: '/manage/activity', icon: Activity, permission: 'view-activity-logs' },
     { title: 'الإعدادات', href: '/manage/settings', icon: Settings },
 ];

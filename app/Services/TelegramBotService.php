@@ -42,6 +42,16 @@ class TelegramBotService
                 $updates = $this->telegram->getUpdates([
                     'offset' => $offset,
                     'timeout' => 30,
+                    // Explicit so poll_answer (excluded by some defaults) is
+                    // delivered — the daily quiz scores votes from it.
+                    'allowed_updates' => json_encode([
+                        'message',
+                        'edited_message',
+                        'channel_post',
+                        'edited_channel_post',
+                        'callback_query',
+                        'poll_answer',
+                    ]),
                 ]);
 
                 foreach ($updates as $update) {

@@ -5,6 +5,7 @@ use App\Http\Controllers\Manage\AdminAssistantController;
 use App\Http\Controllers\Manage\AiSettingsController;
 use App\Http\Controllers\Manage\CacheController;
 use App\Http\Controllers\Manage\CorpusDocumentController;
+use App\Http\Controllers\Manage\DailyQuizController;
 use App\Http\Controllers\Manage\DashboardController;
 use App\Http\Controllers\Manage\LoginController;
 use App\Http\Controllers\Manage\PageAuthoringController;
@@ -15,6 +16,8 @@ use App\Http\Controllers\Manage\PageCopilotController;
 use App\Http\Controllers\Manage\PageUploadController;
 use App\Http\Controllers\Manage\PrivateTutorController;
 use App\Http\Controllers\Manage\PrivateTutorCourseController;
+use App\Http\Controllers\Manage\QuizController;
+use App\Http\Controllers\Manage\QuizTopicController;
 use App\Http\Controllers\Manage\TelegramChatSettingController;
 use App\Http\Controllers\Manage\TelegramSettingsController;
 use App\Http\Controllers\Manage\UserController;
@@ -63,6 +66,15 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::post('/corpus/{document}/reextract', [CorpusDocumentController::class, 'reextract'])->name('corpus.reextract');
         Route::post('/corpus/{document}/reingest', [CorpusDocumentController::class, 'reingest'])->name('corpus.reingest');
         Route::delete('/corpus/{document}', [CorpusDocumentController::class, 'destroy'])->name('corpus.destroy');
+
+        Route::get('/quiz', [QuizController::class, 'index'])->name('quiz.index');
+        Route::put('/quiz/settings', [QuizController::class, 'updateSettings'])->name('quiz.settings.update');
+        Route::post('/quiz/generate', [QuizController::class, 'generate'])->name('quiz.generate');
+        Route::post('/quiz/topics', [QuizTopicController::class, 'store'])->name('quiz.topics.store');
+        Route::put('/quiz/topics/{topic}', [QuizTopicController::class, 'update'])->name('quiz.topics.update');
+        Route::delete('/quiz/topics/{topic}', [QuizTopicController::class, 'destroy'])->name('quiz.topics.destroy');
+        Route::put('/quiz/quizzes/{quiz}', [DailyQuizController::class, 'update'])->name('quiz.quizzes.update');
+        Route::delete('/quiz/quizzes/{quiz}', [DailyQuizController::class, 'destroy'])->name('quiz.quizzes.destroy');
 
         Route::get('/telegram-chats', [TelegramChatSettingController::class, 'index'])->name('telegram-chats.index');
         Route::put('/telegram-chats/{chat}', [TelegramChatSettingController::class, 'update'])->name('telegram-chats.update');
