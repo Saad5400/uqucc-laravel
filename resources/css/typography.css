@@ -2,39 +2,53 @@
 
 @layer components {
     .typography * {
-        @apply my-2 break-words whitespace-normal transition-all text-foreground;
+        @apply my-2 break-words whitespace-normal text-foreground transition-all;
     }
 
     .typography h1 {
-        @apply mb-4 text-3xl tracking-tight scroll-m-20;
+        @apply mb-6 scroll-m-20 font-heading text-4xl leading-[1.15] font-bold tracking-tight md:text-[2.75rem];
     }
 
     .typography h2 {
-        @apply pb-2 my-4 text-[1.7rem] font-semibold tracking-tight transition-colors border-b scroll-m-20 first:mt-0;
+        @apply mt-10 mb-4 scroll-m-20 border-b pb-2 font-heading text-2xl leading-snug font-bold tracking-tight transition-colors first:mt-0 md:text-3xl;
     }
 
     .typography h3 {
-        @apply my-4 text-2xl font-semibold tracking-tight scroll-m-20;
+        @apply mt-8 mb-3 scroll-m-20 text-xl font-semibold tracking-tight md:text-2xl;
     }
 
     .typography h4 {
-        @apply my-4 text-xl font-semibold tracking-tight scroll-m-20;
+        @apply mt-6 mb-2 scroll-m-20 text-lg font-semibold tracking-tight md:text-xl;
     }
 
     .typography h5 {
-        @apply text-lg font-semibold tracking-tight scroll-m-20;
+        @apply scroll-m-20 text-lg font-semibold tracking-tight;
     }
 
     .typography h6 {
-        @apply text-base font-semibold tracking-tight scroll-m-20;
+        @apply scroll-m-20 text-base font-semibold tracking-tight;
     }
 
     .typography p {
-        @apply leading-7;
+        @apply leading-[1.9];
+    }
+
+    /* Cap long-form Arabic body text to a comfortable measure (~72ch) while
+       leaving full-width elements (tables, code, images) unconstrained. */
+    .typography :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
+        max-inline-size: 72ch;
     }
 
     .typography blockquote {
-        @apply mt-6 italic border-s-2 ps-6;
+        @apply my-6 rounded-e-lg border-s-4 border-primary bg-primary/5 py-3 ps-5 pe-4 text-foreground/90;
+    }
+
+    .typography blockquote p:first-child {
+        @apply mt-0;
+    }
+
+    .typography blockquote p:last-child {
+        @apply mb-0;
     }
 
     .typography hr {
@@ -64,12 +78,12 @@
     }
 
     .typography pre {
-        @apply p-4 my-6 overflow-x-auto rounded-lg bg-muted whitespace-pre;
+        @apply my-6 overflow-x-auto rounded-lg bg-muted p-4 whitespace-pre;
         direction: ltr;
     }
 
     .typography pre code {
-        @apply px-0 py-0 bg-transparent rounded-none whitespace-pre;
+        @apply rounded-none bg-transparent px-0 py-0 whitespace-pre;
     }
 
     .typography ul {
@@ -81,7 +95,7 @@
     }
 
     .typography img {
-        @apply max-w-full my-6 rounded-lg;
+        @apply my-6 max-w-full rounded-lg;
     }
 
     .typography ul ul,
@@ -100,7 +114,7 @@
     }
 
     .typography small {
-        @apply text-sm font-medium leading-none;
+        @apply text-sm leading-none font-medium;
     }
 
     .typography p.muted {
@@ -108,7 +122,7 @@
     }
 
     /* Table wrapper - matches old project's Table component wrapper */
-    .typography > div[class*="overflow-auto"] {
+    .typography > div[class*='overflow-auto'] {
         @apply my-6;
     }
 
@@ -126,14 +140,36 @@
     }
 
     .typography tr {
-        @apply hover:bg-muted/50 data-[state=selected]:bg-muted border-b transition-colors;
+        @apply border-b transition-colors hover:bg-muted/50 data-[state=selected]:bg-muted;
     }
 
     .typography th {
-        @apply text-muted-foreground h-10 px-2 text-start align-middle font-medium whitespace-nowrap;
+        @apply h-10 px-2 text-start align-middle font-medium whitespace-nowrap text-muted-foreground;
     }
 
     .typography td {
         @apply p-2 align-middle whitespace-nowrap;
+    }
+
+    /* Contributors page: bullet list renders as small chips; first two = leads. */
+    .typography.contributors ul {
+        @apply my-0 ms-0 flex list-none flex-wrap gap-2;
+    }
+
+    .typography.contributors li {
+        @apply mt-0 inline-flex max-w-full items-center rounded-full border border-border bg-muted px-3 py-1 text-sm text-foreground;
+    }
+
+    .typography.contributors li p {
+        @apply my-0;
+    }
+
+    .typography.contributors li a {
+        @apply font-semibold;
+        color: inherit;
+    }
+
+    .typography.contributors li:nth-child(-n + 2) {
+        @apply border-primary/20 bg-primary/10 text-primary;
     }
 }

@@ -4,6 +4,7 @@ import { useColorMode } from '@/composables/useColorMode';
 import { computed, onMounted } from 'vue';
 import { Toaster, toast } from 'vue-sonner';
 import 'vue-sonner/style.css';
+import DocsFooter from './DocsFooter.vue';
 import DocsNavbar from './DocsNavbar.vue';
 import DocsSidebar from './DocsSidebar.vue';
 
@@ -42,6 +43,7 @@ onMounted(() => {
                     }"
                 />
             </main>
+            <DocsFooter />
         </div>
     </SidebarProvider>
 </template>

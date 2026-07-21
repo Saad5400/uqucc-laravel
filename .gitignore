@@ -11,6 +11,7 @@
 /storage/pail
 /storage/app/public/screenshots
 /vendor
+/database/*.sqlite
 .env
 .env.backup
 .env.production
