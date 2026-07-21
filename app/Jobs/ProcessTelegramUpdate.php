@@ -14,7 +14,6 @@ use App\Services\Telegram\ContentParser;
 use App\Services\Telegram\Handlers\AiChatHandler;
 use App\Services\Telegram\Handlers\AiToggleHandler;
 use App\Services\Telegram\Handlers\EditLinkHandler;
-use App\Services\Telegram\Handlers\ExternalSearchHandler;
 use App\Services\Telegram\Handlers\HelpHandler;
 use App\Services\Telegram\Handlers\InfoHandler;
 use App\Services\Telegram\Handlers\InviteLinkHandler;
@@ -224,7 +223,6 @@ class ProcessTelegramUpdate implements ShouldQueue
             new LoginHandler($telegram),
             new PageManagementHandler($telegram, app(ContentParser::class)),
             new EditLinkHandler($telegram),
-            new ExternalSearchHandler($telegram), // Priority handler for قوقل and قيم commands
             new UquccSearchHandler($telegram, app(QuickResponseService::class), app(TipTapContentExtractor::class), app(OgImageService::class)),
             new UquccListHandler($telegram),
             new PythonExecutionHandler($telegram),
