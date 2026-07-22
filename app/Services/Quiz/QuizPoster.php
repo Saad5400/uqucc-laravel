@@ -2,17 +2,20 @@
 
 namespace App\Services\Quiz;
 
+use App\Helpers\ArabicPlural;
 use App\Models\DailyQuiz;
 use App\Models\QuizPlayer;
+use App\Models\QuizPost;
 use App\Settings\QuizSettings;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Telegram\Bot\Api;
 
 /**
- * Everything the bot sends to the group for the daily quiz: the quiz poll
- * itself (a non-anonymous Telegram quiz poll, so votes arrive as attributable
- * `poll_answer` updates) and the weekly winners announcement.
+ * Everything the bot sends to the groups for the daily quiz: one quiz poll
+ * per configured group (non-anonymous quiz polls, so votes arrive as
+ * attributable `poll_answer` updates that map back to one shared quiz) and
+ * the weekly winners announcement.
  *
  * The Api client is built lazily so the service can be container-resolved in
  * environments without a bot token; tests pass a FakeTelegramApi instead.
@@ -32,14 +35,16 @@ class QuizPoster
     }
 
     /**
-     * Post the quiz to the configured group. Stops the previous day's poll
-     * first — one live quiz at a time keeps late votes from outliving the
-     * day they belong to.
+     * Post the quiz to every configured group. Stops the previous day's
+     * polls first — one live quiz at a time keeps late votes from outliving
+     * the day they belong to. A group that fails (bot kicked, no rights) is
+     * logged and skipped; the quiz counts as posted while at least one group
+     * got it.
      */
     public function post(DailyQuiz $quiz): DailyQuiz
     {
         if (! $this->settings->isConfigured()) {
-            throw new RuntimeException('سؤال اليوم غير مهيأ — فعّله وحدد المجموعة من صفحة سؤال اليوم.');
+            throw new RuntimeException('سؤال اليوم غير مهيأ — فعّله وحدد المجموعات من صفحة سؤال اليوم.');
         }
 
         if (! $quiz->isReady()) {
@@ -49,7 +54,6 @@ class QuizPoster
         $this->closeOpenQuizzes();
 
         $params = [
-            'chat_id' => (int) $this->settings->chat_id,
             'question' => $quiz->question,
             'options' => array_values($quiz->options),
             'type' => 'quiz',
@@ -61,100 +65,121 @@ class QuizPoster
             $params['explanation'] = $quiz->explanation;
         }
 
-        $message = $this->telegram()->sendPoll($params);
+        foreach ($this->settings->chat_ids as $chatId) {
+            try {
+                $message = $this->telegram()->sendPoll([...$params, 'chat_id' => (int) $chatId]);
+
+                $post = QuizPost::create([
+                    'daily_quiz_id' => $quiz->id,
+                    'chat_id' => $message->getChat()->getId(),
+                    'message_id' => $message->getMessageId(),
+                    'telegram_poll_id' => $message->getPoll()?->getId(),
+                    'posted_at' => now(),
+                ]);
+
+                $this->pinQuietly($post);
+            } catch (\Throwable $exception) {
+                Log::error('Failed to post quiz to chat', [
+                    'quiz_id' => $quiz->id,
+                    'chat_id' => $chatId,
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+        }
+
+        if ($quiz->posts()->doesntExist()) {
+            throw new RuntimeException('تعذّر نشر السؤال في أي من المجموعات المحددة.');
+        }
 
         $quiz->update([
             'status' => DailyQuiz::STATUS_POSTED,
-            'telegram_poll_id' => $message->getPoll()?->getId(),
-            'chat_id' => $message->getChat()->getId(),
-            'message_id' => $message->getMessageId(),
             'posted_at' => now(),
         ]);
 
-        $this->pinQuietly($quiz->refresh());
-
-        return $quiz;
+        return $quiz->refresh();
     }
 
     /**
-     * Pin the quiz for the day without notifying 10k members (the poll
+     * Pin the quiz for the day without notifying the members (the poll
      * itself is the announcement). Best-effort: the bot may lack the "pin
      * messages" admin right, and the quiz works fine unpinned.
      */
-    private function pinQuietly(DailyQuiz $quiz): void
+    private function pinQuietly(QuizPost $post): void
     {
         try {
             $this->telegram()->pinChatMessage([
-                'chat_id' => $quiz->chat_id,
-                'message_id' => $quiz->message_id,
+                'chat_id' => $post->chat_id,
+                'message_id' => $post->message_id,
                 'disable_notification' => true,
             ]);
         } catch (\Throwable $exception) {
             Log::warning('Failed to pin quiz message', [
-                'quiz_id' => $quiz->id,
+                'quiz_post_id' => $post->id,
                 'message' => $exception->getMessage(),
             ]);
         }
     }
 
     /**
-     * Stop every still-open quiz poll (normally exactly one — yesterday's).
-     * A poll Telegram already closed just makes stopPoll throw; the row is
+     * Stop every still-open quiz poll (normally yesterday's, one per group).
+     * A poll Telegram already closed just makes stopPoll throw; the post is
      * marked closed regardless so scoring stops accepting its votes.
      */
     public function closeOpenQuizzes(): void
     {
-        $openQuizzes = DailyQuiz::query()
-            ->where('status', DailyQuiz::STATUS_POSTED)
-            ->whereNotNull('telegram_poll_id')
-            ->get();
+        $openPosts = QuizPost::query()->open()->get();
 
-        foreach ($openQuizzes as $quiz) {
+        foreach ($openPosts as $post) {
             try {
                 $this->telegram()->stopPoll([
-                    'chat_id' => $quiz->chat_id,
-                    'message_id' => $quiz->message_id,
+                    'chat_id' => $post->chat_id,
+                    'message_id' => $post->message_id,
                 ]);
             } catch (\Throwable $exception) {
                 Log::warning('Failed to stop previous quiz poll', [
-                    'quiz_id' => $quiz->id,
+                    'quiz_post_id' => $post->id,
                     'message' => $exception->getMessage(),
                 ]);
             }
 
-            $this->unpinQuietly($quiz);
+            $this->unpinQuietly($post);
 
-            $quiz->update([
+            $post->update(['closed_at' => now()]);
+        }
+
+        DailyQuiz::query()
+            ->where('status', DailyQuiz::STATUS_POSTED)
+            ->get()
+            ->each(fn (DailyQuiz $quiz) => $quiz->update([
                 'status' => DailyQuiz::STATUS_CLOSED,
                 'closed_at' => now(),
-            ]);
-        }
+            ]));
     }
 
     /**
-     * Unpin exactly this quiz's message — passing message_id makes Telegram
+     * Unpin exactly this post's message — passing message_id makes Telegram
      * leave every other pinned message in the group untouched. Best-effort,
      * like the pin.
      */
-    private function unpinQuietly(DailyQuiz $quiz): void
+    private function unpinQuietly(QuizPost $post): void
     {
         try {
             $this->telegram()->unpinChatMessage([
-                'chat_id' => $quiz->chat_id,
-                'message_id' => $quiz->message_id,
+                'chat_id' => $post->chat_id,
+                'message_id' => $post->message_id,
             ]);
         } catch (\Throwable $exception) {
             Log::warning('Failed to unpin quiz message', [
-                'quiz_id' => $quiz->id,
+                'quiz_post_id' => $post->id,
                 'message' => $exception->getMessage(),
             ]);
         }
     }
 
     /**
-     * Announce this week's top players in the group, then start the new week
-     * by resetting every player's weekly points. Quietly does nothing when
-     * nobody scored — an empty podium is worse than no message.
+     * Announce this week's top players in every configured group, then start
+     * the new week by resetting every player's weekly points. Quietly does
+     * nothing when nobody scored — an empty podium is worse than no message.
      */
     public function announceWeeklyWinners(): void
     {
@@ -179,18 +204,29 @@ class QuizPoster
         $lines = $winners
             ->values()
             ->map(fn (QuizPlayer $player, int $index): string => sprintf(
-                '%s %s — %d نقطة',
+                '%s %s — %s',
                 $medals[$index] ?? ($index + 1).'.',
                 htmlspecialchars($player->displayName(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
-                $player->weekly_points,
+                ArabicPlural::points($player->weekly_points),
             ))
             ->implode("\n");
 
-        $this->telegram()->sendMessage([
-            'chat_id' => (int) $this->settings->chat_id,
-            'text' => "🏆 <b>متصدرو سؤال اليوم هذا الأسبوع</b>\n\n{$lines}\n\nبدأ أسبوع جديد — عدّادات الأسبوع صُفّرت، والفرصة مفتوحة للجميع. لا تفوّتوا سؤال الغد! 👀",
-            'parse_mode' => 'HTML',
-        ]);
+        $text = "🏆 <b>متصدرو سؤال اليوم هذا الأسبوع</b>\n\n{$lines}\n\nبدأ أسبوع جديد — عدّادات الأسبوع صُفّرت، والفرصة مفتوحة للجميع. لا تفوّتوا سؤال الغد! 👀";
+
+        foreach ($this->settings->chat_ids as $chatId) {
+            try {
+                $this->telegram()->sendMessage([
+                    'chat_id' => (int) $chatId,
+                    'text' => $text,
+                    'parse_mode' => 'HTML',
+                ]);
+            } catch (\Throwable $exception) {
+                Log::warning('Failed to announce weekly winners in chat', [
+                    'chat_id' => $chatId,
+                    'message' => $exception->getMessage(),
+                ]);
+            }
+        }
 
         QuizPlayer::query()->where('weekly_points', '>', 0)->update(['weekly_points' => 0]);
     }

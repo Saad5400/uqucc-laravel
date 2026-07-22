@@ -8,7 +8,7 @@ use Tests\Fakes\FakeTelegramApi;
 beforeEach(function () {
     $settings = app(QuizSettings::class);
     $settings->enabled = true;
-    $settings->chat_id = '-100200300';
+    $settings->chat_ids = ['-100200300'];
     $settings->save();
 
     $this->fake = new FakeTelegramApi;
@@ -31,7 +31,7 @@ it('announces the weekly top players and resets weekly points only', function ()
         ->and($text)->toContain('🥇 أحمد — 50 نقطة')
         ->toContain('🥈 نورة — 40 نقطة')
         ->toContain('🥉 خالد — 30 نقطة')
-        ->toContain('4. فهد — 10 نقطة');
+        ->toContain('4. فهد — 10 نقاط');
 
     expect($first->refresh()->weekly_points)->toBe(0)
         ->and($first->total_points)->toBe(300)
@@ -52,6 +52,19 @@ it('caps the announcement at twenty players', function () {
 
     expect($text)->toContain('20. لاعب20')
         ->and($text)->not->toContain('لاعب21');
+});
+
+it('announces in every configured group', function () {
+    $settings = app(QuizSettings::class);
+    $settings->chat_ids = ['-100200300', '-100400500'];
+    $settings->save();
+
+    QuizPlayer::factory()->create(['first_name' => 'أحمد', 'weekly_points' => 50]);
+
+    $this->artisan('quiz:announce-weekly')->assertExitCode(0);
+
+    expect($this->fake->sentMessages)->toHaveCount(2)
+        ->and(collect($this->fake->sentMessages)->pluck('chat_id')->all())->toBe([-100200300, -100400500]);
 });
 
 it('stays silent when nobody scored this week', function () {

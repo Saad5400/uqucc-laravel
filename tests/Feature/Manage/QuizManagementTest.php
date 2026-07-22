@@ -30,7 +30,7 @@ it('renders the quiz page with settings, topics, quizzes and leaderboards', func
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('manage/quiz/Index')
-            ->has('settings', fn (Assert $settings) => $settings->has('enabled')->has('chat_id'))
+            ->has('settings', fn (Assert $settings) => $settings->has('enabled')->has('chat_ids'))
             ->has('topics', 2)
             ->has('quizzes', 1)
             ->where('hasTodayQuiz', true)
@@ -39,22 +39,22 @@ it('renders the quiz page with settings, topics, quizzes and leaderboards', func
             ->has('groupChats'));
 });
 
-it('saves the quiz settings', function () {
+it('saves the quiz settings with multiple groups', function () {
     $this->actingAs($this->admin)
-        ->put('/manage/quiz/settings', ['enabled' => true, 'chat_id' => '-100999'])
+        ->put('/manage/quiz/settings', ['enabled' => true, 'chat_ids' => ['-100999', '-100888']])
         ->assertRedirect()
         ->assertSessionHas('success');
 
     $settings = app(QuizSettings::class)->refresh();
 
     expect($settings->enabled)->toBeTrue()
-        ->and($settings->chat_id)->toBe('-100999');
+        ->and($settings->chat_ids)->toBe(['-100999', '-100888']);
 });
 
 it('rejects a non-numeric chat id', function () {
     $this->actingAs($this->admin)
-        ->put('/manage/quiz/settings', ['enabled' => true, 'chat_id' => 'not-a-chat'])
-        ->assertSessionHasErrors('chat_id');
+        ->put('/manage/quiz/settings', ['enabled' => true, 'chat_ids' => ['not-a-chat']])
+        ->assertSessionHasErrors('chat_ids.0');
 });
 
 it('creates, updates and deletes a topic', function () {

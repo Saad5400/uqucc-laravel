@@ -13,7 +13,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
+import { TagsInput, TagsInputInput, TagsInputItem, TagsInputItemDelete, TagsInputItemText } from '@/components/ui/tags-input';
 import { Textarea } from '@/components/ui/textarea';
+import { arabicCount } from '@/lib/arabic';
 import { formatDateTime, formatRelativeTime, formatShortDate } from '@/lib/formatters';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import { CheckCircle2, EllipsisVertical, Loader2, Pencil, Plus, Sparkles, Trash2, Trophy } from 'lucide-vue-next';
@@ -23,7 +25,7 @@ defineOptions({ layout: ManageLayout });
 
 interface QuizSettingsValues {
     enabled: boolean;
-    chat_id: string | null;
+    chat_ids: string[];
 }
 
 interface GroupChat {
@@ -267,23 +269,32 @@ function deleteTopic(): void {
 
 const settingsForm = useForm({
     enabled: props.settings.enabled,
-    chat_id: props.settings.chat_id ?? '',
+    chat_ids: [...props.settings.chat_ids],
 });
 
 function submitSettings(): void {
-    settingsForm
-        .transform((data) => ({
-            ...data,
-            chat_id: data.chat_id === '' ? null : data.chat_id,
-        }))
-        .put('/manage/quiz/settings', {
-            preserveScroll: true,
-            preserveState: true,
-            onSuccess: () => settingsForm.defaults(),
-        });
+    settingsForm.put('/manage/quiz/settings', {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => settingsForm.defaults(),
+    });
 }
 
-const configured = computed(() => props.settings.enabled && !!props.settings.chat_id);
+function toggleChat(chatId: string): void {
+    settingsForm.chat_ids = settingsForm.chat_ids.includes(chatId)
+        ? settingsForm.chat_ids.filter((id) => id !== chatId)
+        : [...settingsForm.chat_ids, chatId];
+}
+
+/** First error for the chat ids field, including per-element errors like `chat_ids.0`. */
+const chatIdsError = computed(() => {
+    const errors = settingsForm.errors as Record<string, string>;
+    const key = Object.keys(errors).find((errorKey) => errorKey === 'chat_ids' || errorKey.startsWith('chat_ids.'));
+
+    return key ? errors[key] : null;
+});
+
+const configured = computed(() => props.settings.enabled && props.settings.chat_ids.length > 0);
 </script>
 
 <template>
@@ -331,7 +342,8 @@ const configured = computed(() => props.settings.enabled && !!props.settings.cha
                                     <Badge :variant="statusBadges[quiz.status].variant">{{ statusBadges[quiz.status].label }}</Badge>
                                     <Badge v-if="quiz.topic" variant="outline">{{ quiz.topic }}</Badge>
                                     <span v-if="quiz.status !== 'ready'">
-                                        {{ quiz.answers_count }} إجابة — {{ quiz.correct_answers_count }} صحيحة
+                                        {{ arabicCount(quiz.answers_count, { singular: 'إجابة', dual: 'إجابتان', plural: 'إجابات' }) }} — منها
+                                        {{ quiz.correct_answers_count }} صحيحة
                                     </span>
                                 </div>
                                 <p class="font-medium">{{ quiz.question }}</p>
@@ -496,18 +508,17 @@ const configured = computed(() => props.settings.enabled && !!props.settings.cha
                     <p v-if="settingsForm.errors.enabled" class="text-sm text-destructive-foreground">{{ settingsForm.errors.enabled }}</p>
 
                     <div class="space-y-2">
-                        <Label for="quiz-chat-id">المجموعة المستهدفة</Label>
-                        <Input
-                            id="quiz-chat-id"
-                            v-model="settingsForm.chat_id"
-                            dir="ltr"
-                            class="text-start tabular-nums"
-                            inputmode="numeric"
-                            placeholder="-100123456789"
-                            :aria-invalid="settingsForm.errors.chat_id ? true : undefined"
-                        />
+                        <Label for="quiz-chat-ids">المجموعات المستهدفة</Label>
+                        <TagsInput id="quiz-chat-ids" v-model="settingsForm.chat_ids" :aria-invalid="chatIdsError ? true : undefined">
+                            <TagsInputItem v-for="chatId in settingsForm.chat_ids" :key="chatId" :value="chatId" dir="ltr">
+                                <TagsInputItemText />
+                                <TagsInputItemDelete class="-m-1.5 p-1.5" :aria-label="`إزالة ${chatId}`" />
+                            </TagsInputItem>
+                            <TagsInputInput placeholder="أضف معرّف مجموعة…" dir="auto" class="text-start" inputmode="numeric" />
+                        </TagsInput>
                         <p class="text-xs text-muted-foreground">
-                            معرّف مجموعة التليجرام التي يُنشر فيها السؤال — معرّفات المجموعات تبدأ بإشارة سالبة.
+                            يُنشر السؤال نفسه في كل مجموعة، والنقاط واللوحة مشتركة — أول إجابة للعضو في أي مجموعة هي التي تُحتسب. معرّفات المجموعات
+                            تبدأ بإشارة سالبة.
                         </p>
                         <div v-if="groupChats.length" class="flex flex-wrap items-center gap-1.5">
                             <span class="text-xs text-muted-foreground">مجموعات يعرفها البوت:</span>
@@ -516,13 +527,13 @@ const configured = computed(() => props.settings.enabled && !!props.settings.cha
                                 :key="chat.chat_id"
                                 type="button"
                                 class="rounded-full border border-border px-2 py-0.5 text-xs hover:bg-muted"
-                                :class="settingsForm.chat_id === chat.chat_id ? 'border-primary bg-primary/10' : ''"
-                                @click="settingsForm.chat_id = chat.chat_id"
+                                :class="settingsForm.chat_ids.includes(chat.chat_id) ? 'border-primary bg-primary/10' : ''"
+                                @click="toggleChat(chat.chat_id)"
                             >
                                 {{ chat.title ?? chat.chat_id }}
                             </button>
                         </div>
-                        <p v-if="settingsForm.errors.chat_id" class="text-sm text-destructive-foreground">{{ settingsForm.errors.chat_id }}</p>
+                        <p v-if="chatIdsError" class="text-sm text-destructive-foreground">{{ chatIdsError }}</p>
                     </div>
 
                     <div class="flex flex-wrap items-center justify-end gap-3">

@@ -16,6 +16,12 @@ class QuizAnswerRecordingJob extends ProcessTelegramUpdate
     }
 }
 
+/** The Telegram poll id of the quiz's (first) live post. */
+function pollIdOf(DailyQuiz $quiz): string
+{
+    return $quiz->posts()->first()->telegram_poll_id;
+}
+
 /**
  * Feed one poll_answer update through the real job pipeline.
  */
@@ -40,7 +46,7 @@ function runPollAnswer(string $pollId, int $userId = 111, array $optionIds = [1]
 it('records a correct answer with base points and creates the player', function () {
     $quiz = DailyQuiz::factory()->posted()->create(['correct_option' => 1]);
 
-    runPollAnswer($quiz->telegram_poll_id, optionIds: [1]);
+    runPollAnswer(pollIdOf($quiz), optionIds: [1]);
 
     $player = QuizPlayer::query()->where('telegram_user_id', 111)->first();
 
@@ -66,7 +72,7 @@ it('records a correct answer with base points and creates the player', function 
 it('records a wrong answer with participation points', function () {
     $quiz = DailyQuiz::factory()->posted()->create(['correct_option' => 1]);
 
-    runPollAnswer($quiz->telegram_poll_id, optionIds: [3]);
+    runPollAnswer(pollIdOf($quiz), optionIds: [3]);
 
     $player = QuizPlayer::query()->where('telegram_user_id', 111)->first();
 
@@ -89,7 +95,7 @@ it('continues the streak when the previous quiz was answered', function () {
         'last_answered_on' => today()->subDay(),
     ]);
 
-    runPollAnswer($quiz->telegram_poll_id, optionIds: [1]);
+    runPollAnswer(pollIdOf($quiz), optionIds: [1]);
 
     $player = QuizPlayer::query()->where('telegram_user_id', 111)->first();
 
@@ -111,7 +117,7 @@ it('caps the streak bonus', function () {
         'last_answered_on' => today()->subDay(),
     ]);
 
-    runPollAnswer($quiz->telegram_poll_id, optionIds: [1]);
+    runPollAnswer(pollIdOf($quiz), optionIds: [1]);
 
     $player = QuizPlayer::query()->where('telegram_user_id', 111)->first();
 
@@ -131,7 +137,7 @@ it('resets the streak when the previous quiz was missed', function () {
         'last_answered_on' => today()->subDays(2),
     ]);
 
-    runPollAnswer($quiz->telegram_poll_id, optionIds: [1]);
+    runPollAnswer(pollIdOf($quiz), optionIds: [1]);
 
     $player = QuizPlayer::query()->where('telegram_user_id', 111)->first();
 
@@ -151,7 +157,7 @@ it('keeps the streak across a day where no quiz was posted', function () {
         'last_answered_on' => today()->subDays(2),
     ]);
 
-    runPollAnswer($quiz->telegram_poll_id, optionIds: [1]);
+    runPollAnswer(pollIdOf($quiz), optionIds: [1]);
 
     expect(QuizPlayer::query()->where('telegram_user_id', 111)->first()->current_streak)->toBe(3);
 });
@@ -159,8 +165,22 @@ it('keeps the streak across a day where no quiz was posted', function () {
 it('ignores a second vote from the same player on the same quiz', function () {
     $quiz = DailyQuiz::factory()->posted()->create(['correct_option' => 1]);
 
-    runPollAnswer($quiz->telegram_poll_id, optionIds: [1]);
-    runPollAnswer($quiz->telegram_poll_id, optionIds: [0]);
+    runPollAnswer(pollIdOf($quiz), optionIds: [1]);
+    runPollAnswer(pollIdOf($quiz), optionIds: [0]);
+
+    $player = QuizPlayer::query()->where('telegram_user_id', 111)->first();
+
+    expect(QuizAnswer::query()->count())->toBe(1)
+        ->and($player->total_points)->toBe(QuizAnswerRecorder::POINTS_CORRECT)
+        ->and($player->answers_count)->toBe(1);
+});
+
+it('counts only the first vote when a member answers in two groups', function () {
+    $quiz = DailyQuiz::factory()->posted()->create(['correct_option' => 1]);
+    $secondPost = \App\Models\QuizPost::factory()->create(['daily_quiz_id' => $quiz->id, 'chat_id' => -100400500]);
+
+    runPollAnswer(pollIdOf($quiz), optionIds: [1]);
+    runPollAnswer($secondPost->telegram_poll_id, optionIds: [0]);
 
     $player = QuizPlayer::query()->where('telegram_user_id', 111)->first();
 
@@ -179,7 +199,7 @@ it('ignores votes on unknown polls', function () {
 it('ignores retracted votes', function () {
     $quiz = DailyQuiz::factory()->posted()->create();
 
-    runPollAnswer($quiz->telegram_poll_id, optionIds: []);
+    runPollAnswer(pollIdOf($quiz), optionIds: []);
 
     expect(QuizAnswer::query()->count())->toBe(0);
 });
@@ -187,7 +207,7 @@ it('ignores retracted votes', function () {
 it('ignores votes from bots', function () {
     $quiz = DailyQuiz::factory()->posted()->create();
 
-    runPollAnswer($quiz->telegram_poll_id, user: ['is_bot' => true]);
+    runPollAnswer(pollIdOf($quiz), user: ['is_bot' => true]);
 
     expect(QuizAnswer::query()->count())->toBe(0);
 });
@@ -203,7 +223,7 @@ it('refreshes the player name snapshot on each answer', function () {
         'last_answered_on' => today()->subDay(),
     ]);
 
-    runPollAnswer($quiz->telegram_poll_id, user: ['first_name' => 'اسم جديد', 'username' => 'fresh']);
+    runPollAnswer(pollIdOf($quiz), user: ['first_name' => 'اسم جديد', 'username' => 'fresh']);
 
     $player = QuizPlayer::query()->where('telegram_user_id', 111)->first();
 

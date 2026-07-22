@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\DailyQuiz;
+use App\Models\QuizPost;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -23,22 +24,32 @@ class DailyQuizFactory extends Factory
         ];
     }
 
+    /**
+     * Posted to one group: the quiz row plus a live QuizPost carrying the
+     * Telegram identifiers.
+     */
     public function posted(): static
     {
         return $this->state(fn (): array => [
             'status' => DailyQuiz::STATUS_POSTED,
-            'telegram_poll_id' => 'poll-'.$this->faker->unique()->numberBetween(1000, 999999),
-            'chat_id' => -100200300,
-            'message_id' => $this->faker->numberBetween(1, 100000),
             'posted_at' => now(),
-        ]);
+        ])->afterCreating(function (DailyQuiz $quiz): void {
+            if ($quiz->posts()->doesntExist()) {
+                QuizPost::factory()->create(['daily_quiz_id' => $quiz->id]);
+            }
+        });
     }
 
     public function closed(): static
     {
-        return $this->posted()->state(fn (): array => [
+        return $this->state(fn (): array => [
             'status' => DailyQuiz::STATUS_CLOSED,
+            'posted_at' => now(),
             'closed_at' => now(),
-        ]);
+        ])->afterCreating(function (DailyQuiz $quiz): void {
+            if ($quiz->posts()->doesntExist()) {
+                QuizPost::factory()->closed()->create(['daily_quiz_id' => $quiz->id]);
+            }
+        });
     }
 }

@@ -11,8 +11,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 /**
  * One AI-generated multiple-choice question, keyed by the day it is meant to
  * be posted. Lifecycle: `ready` (generated, admins may still edit) →
- * `posted` (live quiz poll in the group, `telegram_poll_id` set) → `closed`
- * (poll stopped when the next day's quiz goes out).
+ * `posted` (live quiz polls in the configured groups — one {@see QuizPost}
+ * per group) → `closed` (polls stopped when the next day's quiz goes out).
  */
 class DailyQuiz extends Model
 {
@@ -33,9 +33,6 @@ class DailyQuiz extends Model
         'correct_option',
         'explanation',
         'status',
-        'telegram_poll_id',
-        'chat_id',
-        'message_id',
         'posted_at',
         'closed_at',
     ];
@@ -46,8 +43,6 @@ class DailyQuiz extends Model
             'quiz_date' => 'date',
             'options' => 'array',
             'correct_option' => 'integer',
-            'chat_id' => 'integer',
-            'message_id' => 'integer',
             'posted_at' => 'datetime',
             'closed_at' => 'datetime',
         ];
@@ -61,6 +56,11 @@ class DailyQuiz extends Model
     public function answers(): HasMany
     {
         return $this->hasMany(QuizAnswer::class);
+    }
+
+    public function posts(): HasMany
+    {
+        return $this->hasMany(QuizPost::class);
     }
 
     public function isReady(): bool
@@ -78,9 +78,13 @@ class DailyQuiz extends Model
         return static::query()->whereDate('quiz_date', $date)->first();
     }
 
+    /**
+     * Resolve a Telegram poll id to its quiz. Every group's poll has its own
+     * id, so the lookup goes through the per-group posts.
+     */
     public static function findByPollId(string $pollId): ?self
     {
-        return static::query()->where('telegram_poll_id', $pollId)->first();
+        return QuizPost::query()->where('telegram_poll_id', $pollId)->first()?->quiz;
     }
 
     /**

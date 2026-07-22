@@ -8,8 +8,14 @@ class QuizSettings extends Settings
 {
     public bool $enabled;
 
-    /** Telegram chat id of the group the daily quiz is posted to (negative for groups). */
-    public ?string $chat_id;
+    /**
+     * Telegram chat ids of the groups the daily quiz is posted to (negative
+     * for groups). One shared quiz and one shared leaderboard across all of
+     * them — a member's first vote in any group is the one that counts.
+     *
+     * @var array<int, string>
+     */
+    public array $chat_ids;
 
     public static function group(): string
     {
@@ -17,10 +23,11 @@ class QuizSettings extends Settings
     }
 
     /**
-     * The quiz can only run with the feature on and a target group configured.
+     * The quiz can only run with the feature on and at least one target
+     * group configured.
      */
     public function isConfigured(): bool
     {
-        return $this->enabled && filled($this->chat_id);
+        return $this->enabled && $this->chat_ids !== [];
     }
 }

@@ -17,7 +17,7 @@ beforeEach(function () {
 
     $quiz = app(QuizSettings::class);
     $quiz->enabled = true;
-    $quiz->chat_id = '-100200300';
+    $quiz->chat_ids = ['-100200300'];
     $quiz->save();
 });
 

@@ -14,12 +14,20 @@ class UpdateQuizSettingsRequest extends FormRequest
         return true;
     }
 
+    /**
+     * Normalize scalar chat IDs to trimmed strings so numeric payloads validate consistently.
+     */
     protected function prepareForValidation(): void
     {
-        $chatId = $this->input('chat_id');
+        $chatIds = $this->input('chat_ids');
 
-        if (is_scalar($chatId)) {
-            $this->merge(['chat_id' => trim((string) $chatId) === '' ? null : trim((string) $chatId)]);
+        if (is_array($chatIds)) {
+            $this->merge([
+                'chat_ids' => array_map(
+                    fn (mixed $chatId) => is_scalar($chatId) ? trim((string) $chatId) : $chatId,
+                    $chatIds,
+                ),
+            ]);
         }
     }
 
@@ -30,7 +38,8 @@ class UpdateQuizSettingsRequest extends FormRequest
     {
         return [
             'enabled' => ['required', 'boolean'],
-            'chat_id' => ['nullable', 'string', 'regex:/^-?\d+$/'],
+            'chat_ids' => ['present', 'array'],
+            'chat_ids.*' => ['string', 'regex:/^-?\d+$/', 'distinct'],
         ];
     }
 
@@ -42,7 +51,11 @@ class UpdateQuizSettingsRequest extends FormRequest
         return [
             'enabled.required' => 'حقل التفعيل مطلوب.',
             'enabled.boolean' => 'قيمة التفعيل غير صالحة.',
-            'chat_id.regex' => 'معرّف المجموعة يجب أن يكون رقماً صحيحاً (يبدأ بإشارة سالبة للمجموعات).',
+            'chat_ids.present' => 'حقل المجموعات مطلوب.',
+            'chat_ids.array' => 'قائمة المجموعات غير صالحة.',
+            'chat_ids.*.string' => 'معرّف المجموعة غير صالح.',
+            'chat_ids.*.regex' => 'معرّف المجموعة يجب أن يكون رقماً صحيحاً (يبدأ بإشارة سالبة للمجموعات).',
+            'chat_ids.*.distinct' => 'معرّف المجموعة مكرر.',
         ];
     }
 }

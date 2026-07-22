@@ -59,7 +59,7 @@ class PostDailyQuiz extends Command
             return self::FAILURE;
         }
 
-        $this->info("Posted quiz #{$quiz->id} (poll {$quiz->telegram_poll_id}) to chat {$quiz->chat_id}.");
+        $this->info("Posted quiz #{$quiz->id} to {$quiz->posts()->count()} chat(s).");
 
         return self::SUCCESS;
     }

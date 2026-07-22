@@ -2,6 +2,7 @@
 
 namespace App\Services\Telegram\Handlers;
 
+use App\Helpers\ArabicPlural;
 use App\Models\QuizPlayer;
 use Telegram\Bot\Objects\Message;
 
@@ -118,10 +119,10 @@ class QuizLeaderboardHandler extends BaseHandler
         return $players
             ->values()
             ->map(fn (QuizPlayer $player, int $index): string => sprintf(
-                '%s %s — %d نقطة',
+                '%s %s — %s',
                 $medals[$index] ?? ($index + 1).'.',
                 $this->escapeHtml($player->displayName()),
-                $points($player),
+                ArabicPlural::points($points($player)),
             ))
             ->implode("\n");
     }

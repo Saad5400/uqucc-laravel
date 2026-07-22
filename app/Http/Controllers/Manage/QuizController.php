@@ -32,7 +32,7 @@ class QuizController extends Controller
         return Inertia::render('manage/quiz/Index', [
             'settings' => [
                 'enabled' => $settings->enabled,
-                'chat_id' => $settings->chat_id,
+                'chat_ids' => $settings->chat_ids,
             ],
             'groupChats' => TelegramChatSetting::query()
                 ->whereIn('type', ['group', 'supergroup'])
@@ -86,7 +86,7 @@ class QuizController extends Controller
     public function updateSettings(UpdateQuizSettingsRequest $request, QuizSettings $settings): RedirectResponse
     {
         $settings->enabled = $request->boolean('enabled');
-        $settings->chat_id = $request->validated('chat_id');
+        $settings->chat_ids = array_values($request->validated('chat_ids'));
         $settings->save();
 
         return back()->with('success', 'تم حفظ إعدادات سؤال اليوم.');
