@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Str;
 
 class PageViewStat extends Model
 {
@@ -62,7 +63,7 @@ class PageViewStat extends Model
                 'page_id' => $pageId,
                 'user_id' => $userId,
                 'ip_address' => $ipAddress,
-                'user_agent' => $userAgent,
+                'user_agent' => $userAgent === null ? null : Str::limit($userAgent, 255, ''),
                 'view_count' => 1,
                 'last_viewed_at' => now(),
             ]);
