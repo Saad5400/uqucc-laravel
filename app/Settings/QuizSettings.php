@@ -10,6 +10,12 @@ class QuizSettings extends Settings
     public bool $enabled;
 
     /**
+     * Whether the bot posts periodic "answer the question of the day"
+     * reminders while a quiz is live (see {@see \App\Services\Quiz\QuizReminder}).
+     */
+    public bool $reminders_enabled;
+
+    /**
      * Where the daily quiz is posted. Each entry is a Telegram chat id
      * (negative for groups), optionally with a forum topic as «chat_id:thread_id»
      * for groups that use Telegram topics. One shared quiz and one shared

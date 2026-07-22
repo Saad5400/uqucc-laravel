@@ -25,6 +25,7 @@ defineOptions({ layout: ManageLayout });
 
 interface QuizSettingsValues {
     enabled: boolean;
+    reminders_enabled: boolean;
     chat_ids: string[];
 }
 
@@ -49,6 +50,7 @@ interface Quiz {
     options: string[];
     correct_option: number;
     explanation: string | null;
+    hint: string | null;
     status: 'ready' | 'posted' | 'closed';
     topic: string | null;
     posted_at: string | null;
@@ -269,6 +271,7 @@ function deleteTopic(): void {
 
 const settingsForm = useForm({
     enabled: props.settings.enabled,
+    reminders_enabled: props.settings.reminders_enabled,
     chat_ids: [...props.settings.chat_ids],
 });
 
@@ -382,6 +385,7 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                         </ol>
 
                         <p v-if="quiz.explanation" class="text-xs text-muted-foreground">الشرح: {{ quiz.explanation }}</p>
+                        <p v-if="quiz.hint" class="text-xs text-muted-foreground">🧩 تلميح التذكير: {{ quiz.hint }}</p>
                     </li>
                 </ul>
             </CardContent>
@@ -506,6 +510,16 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                         <Switch id="quiz-enabled" v-model="settingsForm.enabled" />
                     </div>
                     <p v-if="settingsForm.errors.enabled" class="text-sm text-destructive-foreground">{{ settingsForm.errors.enabled }}</p>
+
+                    <div class="flex items-start justify-between gap-4">
+                        <div class="space-y-1">
+                            <Label for="quiz-reminders">تذكيرات المشاركة</Label>
+                            <p class="text-xs text-muted-foreground">
+                                تذكير لطيف بالردّ على السؤال المفتوح: مرة مساءً إن كانت المشاركة قليلة، ومرة أخيرة قبل الإغلاق مع تلميح. يردّ على رسالة السؤال نفسها كي لا يزعج المجموعة.
+                            </p>
+                        </div>
+                        <Switch id="quiz-reminders" v-model="settingsForm.reminders_enabled" />
+                    </div>
 
                     <div class="space-y-2">
                         <Label for="quiz-chat-ids">المجموعات المستهدفة</Label>

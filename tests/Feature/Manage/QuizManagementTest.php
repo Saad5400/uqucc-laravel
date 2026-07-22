@@ -30,7 +30,7 @@ it('renders the quiz page with settings, topics, quizzes and leaderboards', func
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('manage/quiz/Index')
-            ->has('settings', fn (Assert $settings) => $settings->has('enabled')->has('chat_ids'))
+            ->has('settings', fn (Assert $settings) => $settings->has('enabled')->has('reminders_enabled')->has('chat_ids'))
             ->has('topics', 2)
             ->has('quizzes', 1)
             ->where('hasTodayQuiz', true)

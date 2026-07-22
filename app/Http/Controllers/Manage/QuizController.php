@@ -32,6 +32,7 @@ class QuizController extends Controller
         return Inertia::render('manage/quiz/Index', [
             'settings' => [
                 'enabled' => $settings->enabled,
+                'reminders_enabled' => $settings->reminders_enabled,
                 'chat_ids' => $settings->chat_ids,
             ],
             'groupChats' => TelegramChatSetting::query()
@@ -71,6 +72,7 @@ class QuizController extends Controller
                     'options' => $quiz->options,
                     'correct_option' => $quiz->correct_option,
                     'explanation' => $quiz->explanation,
+                    'hint' => $quiz->hint,
                     'status' => $quiz->status,
                     'topic' => $quiz->topic?->name,
                     'posted_at' => $quiz->posted_at?->toISOString(),
@@ -87,6 +89,11 @@ class QuizController extends Controller
     {
         $settings->enabled = $request->boolean('enabled');
         $settings->chat_ids = array_values($request->validated('chat_ids'));
+
+        if ($request->has('reminders_enabled')) {
+            $settings->reminders_enabled = $request->boolean('reminders_enabled');
+        }
+
         $settings->save();
 
         return back()->with('success', 'تم حفظ إعدادات سؤال اليوم.');

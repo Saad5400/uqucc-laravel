@@ -43,3 +43,17 @@ Schedule::command('quiz:announce-weekly')
     ->at('21:00')
     ->withoutOverlapping()
     ->runInBackground();
+
+// Mid-window re-float (only fires while turnout is still low). Skips Thursday
+// (day 4) so it never collides with the 21:00 weekly-winners announcement.
+Schedule::command('quiz:remind refloat')
+    ->days([0, 1, 2, 3, 5, 6])
+    ->at('21:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Last call before the live quiz closes at 16:00.
+Schedule::command('quiz:remind lastcall')
+    ->dailyAt('14:30')
+    ->withoutOverlapping()
+    ->runInBackground();

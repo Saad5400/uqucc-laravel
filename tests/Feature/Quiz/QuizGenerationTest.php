@@ -28,6 +28,7 @@ function quizJson(array $overrides = []): string
         'options' => ['AND', 'OR', 'NOT', 'XOR'],
         'correct_option' => 2,
         'explanation' => 'بوابة NOT تُخرج عكس قيمة المدخل دائماً.',
+        'hint' => 'فكّر في العملية التي تقلب القيمة.',
         ...$overrides,
     ], JSON_UNESCAPED_UNICODE);
 }
@@ -49,6 +50,7 @@ it('generates a ready quiz from the least-recently-used active topic', function 
         ->and($quiz->options)->toBe(['AND', 'OR', 'NOT', 'XOR'])
         ->and($quiz->correct_option)->toBe(2)
         ->and($quiz->explanation)->not->toBeNull()
+        ->and($quiz->hint)->toBe('فكّر في العملية التي تقلب القيمة.')
         ->and($neverUsed->refresh()->last_used_at)->not->toBeNull()
         ->and($stale->refresh()->last_used_at->isSameDay(now()->subDays(2)))->toBeTrue();
 });

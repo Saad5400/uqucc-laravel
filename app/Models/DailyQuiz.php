@@ -32,6 +32,7 @@ class DailyQuiz extends Model
         'options',
         'correct_option',
         'explanation',
+        'hint',
         'status',
         'posted_at',
         'closed_at',

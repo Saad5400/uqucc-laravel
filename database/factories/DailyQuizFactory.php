@@ -20,6 +20,7 @@ class DailyQuizFactory extends Factory
             'options' => ['3', '4', '5', '22'],
             'correct_option' => 1,
             'explanation' => 'الجمع الحسابي البسيط: 2 + 2 = 4.',
+            'hint' => 'فكّر في أبسط عملية جمع.',
             'status' => DailyQuiz::STATUS_READY,
         ];
     }

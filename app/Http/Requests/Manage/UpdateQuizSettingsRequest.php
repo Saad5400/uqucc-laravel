@@ -38,6 +38,7 @@ class UpdateQuizSettingsRequest extends FormRequest
     {
         return [
             'enabled' => ['required', 'boolean'],
+            'reminders_enabled' => ['sometimes', 'boolean'],
             'chat_ids' => ['present', 'array'],
             'chat_ids.*' => ['string', 'regex:/^-?\d+(?::\d+)?$/', 'distinct'],
         ];

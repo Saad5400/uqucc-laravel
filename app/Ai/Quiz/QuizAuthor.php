@@ -35,6 +35,9 @@ class QuizAuthor
 
     public const MAX_EXPLANATION_CHARS = 200;
 
+    /** A short non-spoiler teaser used in the "answer today's question" reminders. */
+    public const MAX_HINT_CHARS = 120;
+
     /** How many structured-generation attempts before giving up for the day. */
     private const MAX_ATTEMPTS = 2;
 
@@ -58,11 +61,15 @@ class QuizAuthor
         - أبقِ أسماء الدوال والأوامر والأكواد بالإنجليزية كما هي.
         - لا تعتمد على معلومات قد تتغير مع الزمن (إصدارات حديثة، أسعار، أشخاص).
 
+        التلميح (hint):
+        - جملة قصيرة واحدة تُوجّه التفكير نحو الإجابة دون كشفها إطلاقاً — تُستخدم في تذكير «جاوب سؤال اليوم» قبل إغلاقه، فاجعلها مشوّقة لا فاضحة.
+        - مثال جيد: «فكّر في وحدات القياس والفرق بينها» — لا تذكر الإجابة الصحيحة ولا رقم الخيار.
+
         الحدود الصارمة:
-        - السؤال 300 حرف كحد أقصى، كل خيار 100 حرف كحد أقصى، الشرح 200 حرف كحد أقصى.
+        - السؤال 300 حرف كحد أقصى، كل خيار 100 حرف كحد أقصى، الشرح 200 حرف كحد أقصى، التلميح 120 حرف كحد أقصى.
         - الشرح جملة أو جملتان تشرحان لماذا الإجابة صحيحة — يظهر للطالب بعد إجابته.
         - أعد الناتج بصيغة JSON فقط بهذا الشكل بالضبط، بدون أي نص آخر وبدون أسوار أكواد:
-          {"question": "...", "options": ["...", "...", "...", "..."], "correct_option": 0, "explanation": "..."}
+          {"question": "...", "options": ["...", "...", "...", "..."], "correct_option": 0, "explanation": "...", "hint": "..."}
         - correct_option هو ترتيب الإجابة الصحيحة في المصفوفة (من 0 إلى 3)، ونوّع موضعها.
         PROMPT;
 
@@ -121,6 +128,7 @@ class QuizAuthor
             'options' => $decoded['options'],
             'correct_option' => $decoded['correct_option'],
             'explanation' => $decoded['explanation'],
+            'hint' => $decoded['hint'],
             'status' => DailyQuiz::STATUS_READY,
         ]);
 
@@ -212,7 +220,7 @@ class QuizAuthor
      * Parse and validate the question JSON against Telegram's poll limits,
      * tolerating a stray markdown code fence but nothing else.
      *
-     * @return array{question: string, options: array<int, string>, correct_option: int, explanation: string|null}
+     * @return array{question: string, options: array<int, string>, correct_option: int, explanation: string|null, hint: string|null}
      */
     private function decodeQuestion(string $raw): array
     {
@@ -228,6 +236,7 @@ class QuizAuthor
         $options = $decoded['options'] ?? null;
         $correct = $decoded['correct_option'] ?? null;
         $explanation = trim((string) ($decoded['explanation'] ?? ''));
+        $hint = trim((string) ($decoded['hint'] ?? ''));
 
         if ($question === '' || mb_strlen($question) > self::MAX_QUESTION_CHARS) {
             throw new RuntimeException('السؤال فارغ أو أطول من حد تيليجرام (300 حرف).');
@@ -258,6 +267,7 @@ class QuizAuthor
             'options' => $options,
             'correct_option' => (int) $correct,
             'explanation' => $explanation === '' ? null : Str::limit($explanation, self::MAX_EXPLANATION_CHARS, ''),
+            'hint' => $hint === '' ? null : Str::limit($hint, self::MAX_HINT_CHARS, ''),
         ];
     }
 }
