@@ -31,6 +31,12 @@ class FakeTelegramApi extends Api
     /** @var array<int, array<string, mixed>> */
     public array $stoppedPolls = [];
 
+    /** @var array<int, array<string, mixed>> */
+    public array $pinnedMessages = [];
+
+    /** @var array<int, array<string, mixed>> */
+    public array $unpinnedMessages = [];
+
     /** Chat-member status per telegram user id (default 'member'). */
     /** @var array<int|string, string> */
     public array $chatMemberStatuses = [];
@@ -79,6 +85,20 @@ class FakeTelegramApi extends Api
         $this->stoppedPolls[] = $params;
 
         return new \Telegram\Bot\Objects\Poll(['id' => (string) ($params['message_id'] ?? 0), 'is_closed' => true]);
+    }
+
+    public function pinChatMessage(array $params): bool
+    {
+        $this->pinnedMessages[] = $params;
+
+        return true;
+    }
+
+    public function unpinChatMessage(array $params): bool
+    {
+        $this->unpinnedMessages[] = $params;
+
+        return true;
     }
 
     public function editMessageText(array $params): Message

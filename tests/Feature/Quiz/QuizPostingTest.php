@@ -72,6 +72,44 @@ it('stops the previous open poll before posting the new one', function () {
         ->and($previous->closed_at)->not->toBeNull();
 });
 
+it('pins the new quiz quietly and unpins exactly the previous quiz message', function () {
+    DailyQuiz::factory()->posted()->create([
+        'quiz_date' => today()->subDay(),
+        'chat_id' => -100200300,
+        'message_id' => 777,
+    ]);
+    $quiz = DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    $this->artisan('quiz:post')->assertExitCode(0);
+
+    expect($this->fake->unpinnedMessages)->toHaveCount(1)
+        ->and($this->fake->unpinnedMessages[0])->toBe(['chat_id' => -100200300, 'message_id' => 777]);
+
+    expect($this->fake->pinnedMessages)->toHaveCount(1)
+        ->and($this->fake->pinnedMessages[0]['chat_id'])->toBe(-100200300)
+        ->and($this->fake->pinnedMessages[0]['message_id'])->toBe($quiz->refresh()->message_id)
+        ->and($this->fake->pinnedMessages[0]['disable_notification'])->toBeTrue();
+});
+
+it('still posts when pinning is not permitted', function () {
+    $noPinRights = new class extends FakeTelegramApi
+    {
+        public function pinChatMessage(array $params): bool
+        {
+            throw new RuntimeException('Bad Request: not enough rights to manage pinned messages');
+        }
+    };
+
+    $this->app->bind(QuizPoster::class, fn (): QuizPoster => new QuizPoster(app(QuizSettings::class), $noPinRights));
+
+    $quiz = DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    $this->artisan('quiz:post')->assertExitCode(0);
+
+    expect($noPinRights->sentPolls)->toHaveCount(1)
+        ->and($quiz->refresh()->status)->toBe(DailyQuiz::STATUS_POSTED);
+});
+
 it('marks the previous poll closed even when stopping it fails on Telegram', function () {
     $failing = new class extends FakeTelegramApi
     {

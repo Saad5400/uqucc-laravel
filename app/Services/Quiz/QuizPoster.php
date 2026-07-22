@@ -71,7 +71,30 @@ class QuizPoster
             'posted_at' => now(),
         ]);
 
-        return $quiz->refresh();
+        $this->pinQuietly($quiz->refresh());
+
+        return $quiz;
+    }
+
+    /**
+     * Pin the quiz for the day without notifying 10k members (the poll
+     * itself is the announcement). Best-effort: the bot may lack the "pin
+     * messages" admin right, and the quiz works fine unpinned.
+     */
+    private function pinQuietly(DailyQuiz $quiz): void
+    {
+        try {
+            $this->telegram()->pinChatMessage([
+                'chat_id' => $quiz->chat_id,
+                'message_id' => $quiz->message_id,
+                'disable_notification' => true,
+            ]);
+        } catch (\Throwable $exception) {
+            Log::warning('Failed to pin quiz message', [
+                'quiz_id' => $quiz->id,
+                'message' => $exception->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -99,9 +122,31 @@ class QuizPoster
                 ]);
             }
 
+            $this->unpinQuietly($quiz);
+
             $quiz->update([
                 'status' => DailyQuiz::STATUS_CLOSED,
                 'closed_at' => now(),
+            ]);
+        }
+    }
+
+    /**
+     * Unpin exactly this quiz's message — passing message_id makes Telegram
+     * leave every other pinned message in the group untouched. Best-effort,
+     * like the pin.
+     */
+    private function unpinQuietly(DailyQuiz $quiz): void
+    {
+        try {
+            $this->telegram()->unpinChatMessage([
+                'chat_id' => $quiz->chat_id,
+                'message_id' => $quiz->message_id,
+            ]);
+        } catch (\Throwable $exception) {
+            Log::warning('Failed to unpin quiz message', [
+                'quiz_id' => $quiz->id,
+                'message' => $exception->getMessage(),
             ]);
         }
     }
