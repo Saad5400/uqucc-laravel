@@ -20,7 +20,7 @@ use Telegram\Bot\Api;
 class QuizPoster
 {
     /** How many players the weekly winners announcement names. */
-    public const WEEKLY_WINNERS = 3;
+    public const WEEKLY_WINNERS = 20;
 
     private ?Api $telegram;
 
@@ -177,9 +177,10 @@ class QuizPoster
         $medals = ['🥇', '🥈', '🥉'];
 
         $lines = $winners
+            ->values()
             ->map(fn (QuizPlayer $player, int $index): string => sprintf(
                 '%s %s — %d نقطة',
-                $medals[$index] ?? '🏅',
+                $medals[$index] ?? ($index + 1).'.',
                 htmlspecialchars($player->displayName(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
                 $player->weekly_points,
             ))

@@ -15,7 +15,7 @@ beforeEach(function () {
     $this->app->bind(QuizPoster::class, fn (): QuizPoster => new QuizPoster(app(QuizSettings::class), $this->fake));
 });
 
-it('announces the weekly top three and resets weekly points only', function () {
+it('announces the weekly top players and resets weekly points only', function () {
     $first = QuizPlayer::factory()->create(['first_name' => 'أحمد', 'weekly_points' => 50, 'total_points' => 300]);
     $second = QuizPlayer::factory()->create(['first_name' => 'نورة', 'weekly_points' => 40, 'total_points' => 60]);
     $third = QuizPlayer::factory()->create(['first_name' => 'خالد', 'weekly_points' => 30, 'total_points' => 30]);
@@ -31,13 +31,27 @@ it('announces the weekly top three and resets weekly points only', function () {
         ->and($text)->toContain('🥇 أحمد — 50 نقطة')
         ->toContain('🥈 نورة — 40 نقطة')
         ->toContain('🥉 خالد — 30 نقطة')
-        ->and($text)->not->toContain('فهد');
+        ->toContain('4. فهد — 10 نقطة');
 
     expect($first->refresh()->weekly_points)->toBe(0)
         ->and($first->total_points)->toBe(300)
         ->and($second->refresh()->weekly_points)->toBe(0)
         ->and($third->refresh()->weekly_points)->toBe(0)
         ->and($fourth->refresh()->weekly_points)->toBe(0);
+});
+
+it('caps the announcement at twenty players', function () {
+    QuizPlayer::factory()->count(25)->sequence(fn ($sequence) => [
+        'first_name' => 'لاعب'.($sequence->index + 1),
+        'weekly_points' => 100 - $sequence->index,
+    ])->create();
+
+    $this->artisan('quiz:announce-weekly')->assertExitCode(0);
+
+    $text = $this->fake->sentMessages[0]['text'];
+
+    expect($text)->toContain('20. لاعب20')
+        ->and($text)->not->toContain('لاعب21');
 });
 
 it('stays silent when nobody scored this week', function () {
