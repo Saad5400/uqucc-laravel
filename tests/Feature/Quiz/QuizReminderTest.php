@@ -45,12 +45,16 @@ it('re-floats a low-turnout quiz by replying to the poll, taunting with the wron
         ->and($msg['text'])->toBe('سؤال اليوم غلطوا فيه 67%، بتقدر عليه؟');
 });
 
-it('stays silent on the re-float once turnout is healthy', function () {
-    liveQuizWith(answers: QuizReminder::REFLOAT_MAX_PARTICIPANTS);
+it('re-floats regardless of how high the turnout is', function () {
+    $quiz = DailyQuiz::factory()->posted()->create();
+    QuizAnswer::factory()->count(30)->wrong()->create(['daily_quiz_id' => $quiz->id]);
+    QuizAnswer::factory()->count(10)->create(['daily_quiz_id' => $quiz->id]);
 
     $this->artisan('quiz:remind refloat')->assertExitCode(0);
 
-    expect($this->fake->sentMessages)->toBeEmpty();
+    // 30 of 40 answers wrong -> 75%.
+    expect($this->fake->sentMessages)->toHaveCount(1)
+        ->and($this->fake->sentMessages[0]['text'])->toBe('سؤال اليوم غلطوا فيه 75%، بتقدر عليه؟');
 });
 
 it('always sends the last call and includes the hint', function () {

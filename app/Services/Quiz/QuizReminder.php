@@ -14,10 +14,9 @@ use Telegram\Bot\Api;
  * the poll) rather than posting a fresh block — the least-annoying way to fight
  * the message getting buried in an active group.
  *
- * Two phases, each conditional so quiet days stay quiet:
- *   - {@see self::REFLOAT}: a mid-window nudge that only fires while turnout is
- *     still low ({@see self::REFLOAT_MAX_PARTICIPANTS}); popular questions are
- *     left alone.
+ * Two phases:
+ *   - {@see self::REFLOAT}: a mid-window nudge that taunts with the share of
+ *     answers that were wrong so far.
  *   - {@see self::LASTCALL}: a "closes soon" nudge before the quiz ends, which
  *     also carries the question's stored non-spoiler hint when it has one.
  */
@@ -26,9 +25,6 @@ class QuizReminder
     public const REFLOAT = 'refloat';
 
     public const LASTCALL = 'lastcall';
-
-    /** Above this many answers the re-float stays silent — the question is doing fine. */
-    public const REFLOAT_MAX_PARTICIPANTS = 25;
 
     private ?Api $telegram;
 
@@ -58,11 +54,6 @@ class QuizReminder
         foreach ($openPosts->groupBy('daily_quiz_id') as $posts) {
             $quiz = $posts->first()->quiz;
             $participants = $quiz->answers()->count();
-
-            if ($phase === self::REFLOAT && $participants >= self::REFLOAT_MAX_PARTICIPANTS) {
-                continue;
-            }
-
             $text = $this->text($phase, $quiz, $participants);
 
             foreach ($posts as $post) {
