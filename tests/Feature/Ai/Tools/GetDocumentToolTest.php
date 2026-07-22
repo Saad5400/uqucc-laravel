@@ -64,18 +64,136 @@ it('answers unknown ids with a not-found message', function () {
     expect($reply)->toContain('لم يتم العثور على مستند بالمعرف "999"');
 });
 
-it('truncates very long documents but keeps the footer', function () {
+it('answers long documents with a table of contents instead of the full text', function () {
+    $markdown = collect(range(1, 30))
+        ->map(fn (int $i): string => "## المادة رقم {$i}\n".str_repeat("نص المادة رقم {$i} في اللائحة. ", 60))
+        ->implode("\n\n");
+
     $document = CorpusDocument::factory()->create([
-        'title' => 'مستند ضخم',
+        'title' => 'لائحة طويلة',
         'status' => CorpusDocument::STATUS_READY,
-        'extracted_markdown' => str_repeat('نص طويل جداً من اللائحة. ', 5000),
+        'extracted_markdown' => $markdown,
     ]);
 
     $reply = (string) app(GetDocumentTool::class)->handle(new Request(['document' => $document->id]));
 
-    expect(mb_strlen($reply))->toBeLessThan(62000)
-        ->and($reply)->toContain('[اقتُطع باقي المستند لطوله]')
-        ->and($reply)->toContain("document: {$document->id}");
+    expect($reply)->toContain('فهرس المستند (30 قسماً)')
+        ->toContain('1. ## المادة رقم 1')
+        ->toContain('30. ## المادة رقم 30')
+        ->toContain("document: {$document->id}")
+        ->not->toContain('نص المادة رقم 7 في اللائحة');
+});
+
+it('returns one requested section of a long document verbatim', function () {
+    $markdown = collect(range(1, 30))
+        ->map(fn (int $i): string => "## المادة رقم {$i}\n".str_repeat("نص المادة رقم {$i} في اللائحة. ", 60))
+        ->implode("\n\n");
+
+    $document = CorpusDocument::factory()->create([
+        'title' => 'لائحة طويلة',
+        'status' => CorpusDocument::STATUS_READY,
+        'extracted_markdown' => $markdown,
+    ]);
+
+    $reply = (string) app(GetDocumentTool::class)->handle(new Request([
+        'document' => $document->id,
+        'section' => 7,
+    ]));
+
+    expect($reply)->toContain('القسم 7 من 30')
+        ->toContain('## المادة رقم 7')
+        ->toContain('نص المادة رقم 7 في اللائحة')
+        ->toContain("document: {$document->id}")
+        ->not->toContain('نص المادة رقم 8 في اللائحة');
+});
+
+it('returns a contiguous range of sections when end_section is given', function () {
+    $markdown = collect(range(1, 30))
+        ->map(fn (int $i): string => "## المادة رقم {$i}\n".str_repeat("نص المادة رقم {$i} في اللائحة. ", 60))
+        ->implode("\n\n");
+
+    $document = CorpusDocument::factory()->create([
+        'status' => CorpusDocument::STATUS_READY,
+        'extracted_markdown' => $markdown,
+    ]);
+
+    $reply = (string) app(GetDocumentTool::class)->handle(new Request([
+        'document' => $document->id,
+        'section' => 5,
+        'end_section' => 6,
+    ]));
+
+    expect($reply)->toContain('الأقسام 5–6 من 30')
+        ->toContain('نص المادة رقم 5 في اللائحة')
+        ->toContain('نص المادة رقم 6 في اللائحة')
+        ->not->toContain('نص المادة رقم 7 في اللائحة');
+});
+
+it('rejects an out-of-range section number with the valid range', function () {
+    $markdown = collect(range(1, 30))
+        ->map(fn (int $i): string => "## المادة رقم {$i}\n".str_repeat("نص المادة رقم {$i} في اللائحة. ", 60))
+        ->implode("\n\n");
+
+    $document = CorpusDocument::factory()->create([
+        'status' => CorpusDocument::STATUS_READY,
+        'extracted_markdown' => $markdown,
+    ]);
+
+    $reply = (string) app(GetDocumentTool::class)->handle(new Request([
+        'document' => $document->id,
+        'section' => 99,
+    ]));
+
+    expect($reply)->toContain('لا يوجد قسم رقم 99')
+        ->toContain('من 1 إلى 30')
+        ->not->toContain('نص المادة رقم');
+});
+
+it('keeps a giant heading-less document fully readable through continuation sections', function () {
+    $document = CorpusDocument::factory()->create([
+        'status' => CorpusDocument::STATUS_READY,
+        'extracted_markdown' => str_repeat('نص طويل جداً من اللائحة. ', 5000),
+    ]);
+
+    $tool = app(GetDocumentTool::class);
+
+    $outline = (string) $tool->handle(new Request(['document' => $document->id]));
+
+    expect($outline)->toContain('فهرس المستند')
+        ->toContain('… تكملة القسم السابق');
+
+    preg_match('/فهرس المستند \((\d+) قسماً\)/u', $outline, $matches);
+    $total = (int) $matches[1];
+
+    expect($total)->toBeGreaterThan(1);
+
+    $lastSection = (string) $tool->handle(new Request([
+        'document' => $document->id,
+        'section' => $total,
+    ]));
+
+    expect($lastSection)->toContain("القسم {$total} من {$total}")
+        ->toContain('نص طويل جداً من اللائحة.');
+});
+
+it('caps an oversized section range and says how to get the rest', function () {
+    $markdown = collect(range(1, 30))
+        ->map(fn (int $i): string => "## المادة رقم {$i}\n".str_repeat("نص المادة رقم {$i} في اللائحة. ", 60))
+        ->implode("\n\n");
+
+    $document = CorpusDocument::factory()->create([
+        'status' => CorpusDocument::STATUS_READY,
+        'extracted_markdown' => $markdown,
+    ]);
+
+    $reply = (string) app(GetDocumentTool::class)->handle(new Request([
+        'document' => $document->id,
+        'section' => 1,
+        'end_section' => 30,
+    ]));
+
+    expect(mb_strlen($reply))->toBeLessThan(32000)
+        ->and($reply)->toContain('اطلب أقساماً أقل');
 });
 
 it('refuses politely while the master ai switch is off', function () {

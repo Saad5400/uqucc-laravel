@@ -39,7 +39,8 @@ class SearchContentTool implements Tool
             .'The content is written in Arabic — prefer Arabic queries (البحث في محتوى دليل طلاب كلية الحاسبات بجامعة أم القرى). '
             .'Returns the most relevant content snippets with their page title, slug and section heading, best match first. '
             .'Use get_page with a returned slug to read a full page; results marked "(document: {id})" come from an uploaded '
-            .'document (regulations/rules PDF) — read those in full with get_document instead. '
+            .'document (regulations/rules PDF) — read those with get_document instead (long documents return a table of '
+            .'contents first; fetch the relevant sections by number). '
             .'The full public URL of a page is '.rtrim((string) config('app.url'), '/').'{slug}. Read-only.';
     }
 
