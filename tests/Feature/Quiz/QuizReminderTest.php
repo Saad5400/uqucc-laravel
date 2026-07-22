@@ -27,8 +27,10 @@ function liveQuizWith(int $answers = 0, array $quizAttributes = []): DailyQuiz
     return $quiz;
 }
 
-it('re-floats a low-turnout quiz by replying to the poll', function () {
-    $quiz = liveQuizWith(answers: 3);
+it('re-floats a low-turnout quiz by replying to the poll, taunting with the wrong-answer share', function () {
+    $quiz = DailyQuiz::factory()->posted()->create();
+    QuizAnswer::factory()->count(2)->wrong()->create(['daily_quiz_id' => $quiz->id]);
+    QuizAnswer::factory()->count(1)->create(['daily_quiz_id' => $quiz->id]);
     $post = $quiz->posts()->first();
 
     $this->artisan('quiz:remind refloat')->assertExitCode(0);
@@ -37,9 +39,10 @@ it('re-floats a low-turnout quiz by replying to the poll', function () {
 
     $msg = $this->fake->sentMessages[0];
 
+    // 2 of 3 answers wrong -> 67%.
     expect($msg['chat_id'])->toBe($post->chat_id)
         ->and($msg['reply_to_message_id'])->toBe($post->message_id)
-        ->and($msg['text'])->toContain('سؤال اليوم');
+        ->and($msg['text'])->toBe('سؤال اليوم غلطوا فيه 67%، بتقدر عليه؟');
 });
 
 it('stays silent on the re-float once turnout is healthy', function () {
@@ -56,8 +59,16 @@ it('always sends the last call and includes the hint', function () {
     $this->artisan('quiz:remind lastcall')->assertExitCode(0);
 
     expect($this->fake->sentMessages)->toHaveCount(1)
-        ->and($this->fake->sentMessages[0]['text'])->toContain('آخر')
-        ->and($this->fake->sentMessages[0]['text'])->toContain('تلميح: فكّر في وحدات القياس.');
+        ->and($this->fake->sentMessages[0]['text'])->toBe('آخر فرصة في سؤال اليوم، تلميح: فكّر في وحدات القياس.');
+});
+
+it('re-floats with a first-timer taunt when nobody has answered yet', function () {
+    liveQuizWith(answers: 0);
+
+    $this->artisan('quiz:remind refloat')->assertExitCode(0);
+
+    expect($this->fake->sentMessages)->toHaveCount(1)
+        ->and($this->fake->sentMessages[0]['text'])->toContain('بتقدر عليه؟');
 });
 
 it('omits the hint line when the quiz has none', function () {

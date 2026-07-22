@@ -2,7 +2,6 @@
 
 namespace App\Services\Quiz;
 
-use App\Helpers\ArabicPlural;
 use App\Models\DailyQuiz;
 use App\Models\QuizPost;
 use App\Settings\QuizSettings;
@@ -101,43 +100,31 @@ class QuizReminder
     }
 
     /**
-     * The reminder body: a playful, rotating nudge (varied by the quiz date so
-     * it isn't the same line every day), plus the stored hint on the last call.
+     * The reminder body. The re-float taunts with the share of answers that
+     * were wrong so far (a difficulty flex, not a headcount); the last call is
+     * a short "your final chance" line that carries the stored hint when there
+     * is one.
      */
     private function text(string $phase, DailyQuiz $quiz, int $participants): string
     {
-        $pick = static fn (array $options): string => $options[(int) $quiz->quiz_date->dayOfYear % count($options)];
-
         if ($phase === self::LASTCALL) {
-            $line = $pick([
-                '⏳ آخر فرصة! سؤال اليوم يُغلق قريباً — جاوب قبل ما يفوتك.',
-                '🏁 ينتهي وقت سؤال اليوم بعد قليل — آخر فرصة للنقاط!',
-                '⏳ لا تفوّت سؤال اليوم — يُغلق خلال وقت قصير.',
-                '🔔 آخر نداء لسؤال اليوم! جاوب الآن قبل الإغلاق.',
-            ]);
+            $line = 'آخر فرصة في سؤال اليوم';
 
             if (filled($quiz->hint)) {
-                $line .= "\n🧩 تلميح: ".$this->escape($quiz->hint);
+                $line .= '، تلميح: '.$this->escape($quiz->hint);
             }
 
             return $line;
         }
 
         if ($participants === 0) {
-            return $pick([
-                '👀 سؤال اليوم مفتوح ولسه ما جاوب أحد — كن أول المتصدرين! 🥇',
-                '🥇 كن أول من يجاوب سؤال اليوم!',
-            ]);
+            return 'سؤال اليوم مطروح ولم يجرّبه أحد بعد — بتقدر عليه؟';
         }
 
-        $people = ArabicPlural::people($participants);
+        $wrong = $quiz->answers()->where('is_correct', false)->count();
+        $percent = (int) round($wrong / $participants * 100);
 
-        return $pick([
-            "👀 سؤال اليوم لا يزال مفتوحاً — {$people} جاوبوا حتى الآن، جرّب حظك!",
-            "🏁 لسه ما جاوبت سؤال اليوم؟ {$people} سبقوك!",
-            "🎯 سؤال اليوم بانتظارك — {$people} شاركوا، وأنت؟",
-            "✨ انضم إلى {$people} جاوبوا سؤال اليوم!",
-        ]);
+        return "سؤال اليوم غلطوا فيه {$percent}%، بتقدر عليه؟";
     }
 
     private function escape(string $text): string
