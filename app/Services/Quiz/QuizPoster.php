@@ -65,14 +65,15 @@ class QuizPoster
             $params['explanation'] = $quiz->explanation;
         }
 
-        foreach ($this->settings->chat_ids as $chatId) {
+        foreach ($this->settings->targets() as $target) {
             try {
-                $message = $this->telegram()->sendPoll([...$params, 'chat_id' => (int) $chatId]);
+                $message = $this->telegram()->sendPoll($target->apply($params));
 
                 $post = QuizPost::create([
                     'daily_quiz_id' => $quiz->id,
                     'chat_id' => $message->getChat()->getId(),
                     'message_id' => $message->getMessageId(),
+                    'message_thread_id' => $target->threadId,
                     'telegram_poll_id' => $message->getPoll()?->getId(),
                     'posted_at' => now(),
                 ]);
@@ -81,7 +82,7 @@ class QuizPoster
             } catch (\Throwable $exception) {
                 Log::error('Failed to post quiz to chat', [
                     'quiz_id' => $quiz->id,
-                    'chat_id' => $chatId,
+                    'chat_id' => $target->chatId,
                     'message' => $exception->getMessage(),
                 ]);
             }
@@ -127,7 +128,7 @@ class QuizPoster
      */
     public function closeOpenQuizzes(): void
     {
-        $openPosts = QuizPost::query()->open()->get();
+        $openPosts = QuizPost::query()->open()->with('quiz')->get();
 
         foreach ($openPosts as $post) {
             try {
@@ -142,6 +143,7 @@ class QuizPoster
                 ]);
             }
 
+            $this->sendRecap($post);
             $this->unpinQuietly($post);
 
             $post->update(['closed_at' => now()]);
@@ -174,6 +176,80 @@ class QuizPoster
                 'message' => $exception->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Reply to a just-closed poll with how the day went — turnout, accuracy
+     * and the longest streak in play — so the daily ritual leaves a visible
+     * trace. Best-effort and skipped entirely when nobody answered (an empty
+     * recap is just noise).
+     */
+    private function sendRecap(QuizPost $post): void
+    {
+        $quiz = $post->quiz;
+
+        if ($quiz === null) {
+            return;
+        }
+
+        $text = $this->recapText($quiz);
+
+        if ($text === null) {
+            return;
+        }
+
+        try {
+            $params = [
+                'chat_id' => $post->chat_id,
+                'text' => $text,
+                'parse_mode' => 'HTML',
+                'reply_to_message_id' => $post->message_id,
+            ];
+
+            if ($post->message_thread_id !== null) {
+                $params['message_thread_id'] = $post->message_thread_id;
+            }
+
+            $this->telegram()->sendMessage($params);
+        } catch (\Throwable $exception) {
+            Log::warning('Failed to send quiz recap', [
+                'quiz_post_id' => $post->id,
+                'message' => $exception->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * The recap body for a finished quiz, or null when it had no answers.
+     */
+    private function recapText(DailyQuiz $quiz): ?string
+    {
+        $total = $quiz->answers()->count();
+
+        if ($total === 0) {
+            return null;
+        }
+
+        $correct = $quiz->answers()->where('is_correct', true)->count();
+        $percent = (int) round($correct / $total * 100);
+
+        $lines = [
+            '📊 <b>خلاصة سؤال اليوم</b>',
+            '🧑‍🎓 شارك: '.ArabicPlural::people($total),
+            '✅ إجابات صحيحة: '.$correct.' من '.$total.' ('.$percent.'٪)',
+        ];
+
+        $topStreak = $quiz->answers()
+            ->with('player')
+            ->orderByDesc('streak_at_answer')
+            ->first();
+
+        if ($topStreak !== null && $topStreak->streak_at_answer > 1 && $topStreak->player !== null) {
+            $lines[] = '🔥 أطول سلسلة: '.htmlspecialchars($topStreak->player->displayName(), ENT_QUOTES | ENT_HTML5, 'UTF-8')
+                .' — '.ArabicPlural::days($topStreak->streak_at_answer);
+        }
+
+        return implode("\n", $lines);
     }
 
     /**
@@ -213,16 +289,15 @@ class QuizPoster
 
         $text = "🏆 <b>متصدرو سؤال اليوم هذا الأسبوع</b>\n\n{$lines}\n\nبدأ أسبوع جديد — عدّادات الأسبوع صُفّرت، والفرصة مفتوحة للجميع. لا تفوّتوا سؤال الغد! 👀";
 
-        foreach ($this->settings->chat_ids as $chatId) {
+        foreach ($this->settings->targets() as $target) {
             try {
-                $this->telegram()->sendMessage([
-                    'chat_id' => (int) $chatId,
+                $this->telegram()->sendMessage($target->apply([
                     'text' => $text,
                     'parse_mode' => 'HTML',
-                ]);
+                ]));
             } catch (\Throwable $exception) {
                 Log::warning('Failed to announce weekly winners in chat', [
-                    'chat_id' => $chatId,
+                    'chat_id' => $target->chatId,
                     'message' => $exception->getMessage(),
                 ]);
             }

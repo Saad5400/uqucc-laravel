@@ -16,6 +16,14 @@ use App\Ai\Admin\Actions\Pages\ManagePageStructureAction;
 use App\Ai\Admin\Actions\Pages\RestorePageAction;
 use App\Ai\Admin\Actions\Pages\UpdatePageAction;
 use App\Ai\Admin\Actions\Pages\UpdatePageContentAction;
+use App\Ai\Admin\Actions\Quiz\CreateQuizTopicAction;
+use App\Ai\Admin\Actions\Quiz\DeleteQuizTopicAction;
+use App\Ai\Admin\Actions\Quiz\GetDailyQuizAction;
+use App\Ai\Admin\Actions\Quiz\GetQuizLeaderboardAction;
+use App\Ai\Admin\Actions\Quiz\ListQuizTopicsAction;
+use App\Ai\Admin\Actions\Quiz\RegenerateDailyQuizAction;
+use App\Ai\Admin\Actions\Quiz\UpdateDailyQuizAction;
+use App\Ai\Admin\Actions\Quiz\UpdateQuizTopicAction;
 use App\Ai\Admin\Actions\Reviews\ApprovePageChangeAction;
 use App\Ai\Admin\Actions\Reviews\ListPendingChangesAction;
 use App\Ai\Admin\Actions\Reviews\RejectPageChangeAction;
@@ -91,6 +99,15 @@ class AdminActionRegistry
         SetTelegramChatAiAction::class,
         ResetTelegramChatAction::class,
         DeleteTelegramChatAction::class,
+        // Daily quiz (topics + questions + leaderboard)
+        ListQuizTopicsAction::class,
+        CreateQuizTopicAction::class,
+        UpdateQuizTopicAction::class,
+        DeleteQuizTopicAction::class,
+        GetDailyQuizAction::class,
+        UpdateDailyQuizAction::class,
+        RegenerateDailyQuizAction::class,
+        GetQuizLeaderboardAction::class,
         // Corpus / knowledge base
         ListCorpusDocumentsAction::class,
         GetCorpusDocumentAction::class,

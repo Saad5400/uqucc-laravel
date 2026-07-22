@@ -2,7 +2,7 @@
 import type { AssistantProposal } from '@/components/manage/assistant/types';
 import { Button } from '@/components/ui/button';
 import { confirm as confirmProposal, reject as rejectProposal } from '@/routes/manage/assistant/proposals';
-import { BookOpen, Check, CircleAlert, CircleCheck, CircleX, FileText, Loader2, Send, Settings2, Users, X } from 'lucide-vue-next';
+import { BookOpen, Check, CircleAlert, CircleCheck, CircleX, FileText, HelpCircle, Loader2, Send, Settings2, Users, X } from 'lucide-vue-next';
 import type { Component } from 'vue';
 import { computed, ref } from 'vue';
 
@@ -34,6 +34,7 @@ const categoryMeta: Record<string, { icon: Component; label: string }> = {
     reviews: { icon: FileText, label: 'إجراء مقترح على المراجعات' },
     telegram: { icon: Send, label: 'تغيير مقترح على إعدادات تيليجرام' },
     corpus: { icon: BookOpen, label: 'إجراء مقترح على قاعدة المعرفة' },
+    quiz: { icon: HelpCircle, label: 'إجراء مقترح على سؤال اليوم' },
     system: { icon: Settings2, label: 'إجراء مقترح على النظام' },
 };
 

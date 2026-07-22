@@ -2,6 +2,7 @@
 
 namespace App\Settings;
 
+use App\Services\Quiz\QuizTarget;
 use Spatie\LaravelSettings\Settings;
 
 class QuizSettings extends Settings
@@ -9,9 +10,11 @@ class QuizSettings extends Settings
     public bool $enabled;
 
     /**
-     * Telegram chat ids of the groups the daily quiz is posted to (negative
-     * for groups). One shared quiz and one shared leaderboard across all of
-     * them — a member's first vote in any group is the one that counts.
+     * Where the daily quiz is posted. Each entry is a Telegram chat id
+     * (negative for groups), optionally with a forum topic as «chat_id:thread_id»
+     * for groups that use Telegram topics. One shared quiz and one shared
+     * leaderboard across all of them — a member's first vote in any group is
+     * the one that counts.
      *
      * @var array<int, string>
      */
@@ -29,5 +32,15 @@ class QuizSettings extends Settings
     public function isConfigured(): bool
     {
         return $this->enabled && $this->chat_ids !== [];
+    }
+
+    /**
+     * The configured destinations as parsed chat/topic targets.
+     *
+     * @return array<int, QuizTarget>
+     */
+    public function targets(): array
+    {
+        return array_map(QuizTarget::parse(...), array_values($this->chat_ids));
     }
 }

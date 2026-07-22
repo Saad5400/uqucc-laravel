@@ -22,6 +22,7 @@ class QuizPost extends Model
         'daily_quiz_id',
         'chat_id',
         'message_id',
+        'message_thread_id',
         'telegram_poll_id',
         'posted_at',
         'closed_at',
@@ -32,6 +33,7 @@ class QuizPost extends Model
         return [
             'chat_id' => 'integer',
             'message_id' => 'integer',
+            'message_thread_id' => 'integer',
             'posted_at' => 'datetime',
             'closed_at' => 'datetime',
         ];

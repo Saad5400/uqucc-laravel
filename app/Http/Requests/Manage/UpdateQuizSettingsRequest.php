@@ -39,7 +39,7 @@ class UpdateQuizSettingsRequest extends FormRequest
         return [
             'enabled' => ['required', 'boolean'],
             'chat_ids' => ['present', 'array'],
-            'chat_ids.*' => ['string', 'regex:/^-?\d+$/', 'distinct'],
+            'chat_ids.*' => ['string', 'regex:/^-?\d+(?::\d+)?$/', 'distinct'],
         ];
     }
 
@@ -54,7 +54,7 @@ class UpdateQuizSettingsRequest extends FormRequest
             'chat_ids.present' => 'حقل المجموعات مطلوب.',
             'chat_ids.array' => 'قائمة المجموعات غير صالحة.',
             'chat_ids.*.string' => 'معرّف المجموعة غير صالح.',
-            'chat_ids.*.regex' => 'معرّف المجموعة يجب أن يكون رقماً صحيحاً (يبدأ بإشارة سالبة للمجموعات).',
+            'chat_ids.*.regex' => 'معرّف المجموعة يجب أن يكون رقماً صحيحاً (يبدأ بإشارة سالبة للمجموعات)، ويمكن إضافة معرّف موضوع بعد نقطتين مثل ‎-100…:42‎.',
             'chat_ids.*.distinct' => 'معرّف المجموعة مكرر.',
         ];
     }

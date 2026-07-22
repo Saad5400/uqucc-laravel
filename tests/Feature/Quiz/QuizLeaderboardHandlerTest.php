@@ -2,15 +2,18 @@
 
 use App\Models\QuizPlayer;
 use App\Services\Telegram\Handlers\QuizLeaderboardHandler;
+use Illuminate\Support\Facades\Cache;
 use Telegram\Bot\Objects\Message;
 use Tests\Fakes\FakeTelegramApi;
 
-function leaderboardMessage(string $text, int $userId = 111): Message
+beforeEach(fn () => Cache::flush());
+
+function leaderboardMessage(string $text, int $userId = 111, int $chatId = -100200300): Message
 {
     return new Message([
         'message_id' => 10,
         'text' => $text,
-        'chat' => ['id' => -100200300, 'type' => 'supergroup'],
+        'chat' => ['id' => $chatId, 'type' => 'supergroup'],
         'from' => ['id' => $userId, 'is_bot' => false, 'first_name' => 'سعد'],
     ]);
 }
@@ -63,6 +66,23 @@ it('omits the personal section for someone who never played', function () {
     (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين', userId: 999));
 
     expect($api->sentMessages[0]['text'])->not->toContain('نتيجتك');
+});
+
+it('rate-limits repeated leaderboard requests in the same chat', function () {
+    QuizPlayer::factory()->create(['weekly_points' => 40, 'total_points' => 200, 'answers_count' => 20]);
+
+    $api = new FakeTelegramApi;
+    $handler = new QuizLeaderboardHandler($api);
+
+    $handler->handle(leaderboardMessage('المتصدرين'));
+    $handler->handle(leaderboardMessage('المتصدرين'));
+
+    expect($api->sentMessages)->toHaveCount(1);
+
+    // A different chat is on its own cooldown.
+    $handler->handle(leaderboardMessage('المتصدرين', chatId: -100999888));
+
+    expect($api->sentMessages)->toHaveCount(2);
 });
 
 it('ignores unrelated messages', function () {

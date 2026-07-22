@@ -4,6 +4,7 @@ namespace App\Services\Telegram\Handlers;
 
 use App\Helpers\ArabicPlural;
 use App\Models\QuizPlayer;
+use Illuminate\Support\Facades\Cache;
 use Telegram\Bot\Objects\Message;
 
 /**
@@ -16,9 +17,16 @@ class QuizLeaderboardHandler extends BaseHandler
 
     private const ALL_TIME_LIMIT = 5;
 
+    /** Minimum seconds between leaderboard posts in the same chat. */
+    private const COOLDOWN_SECONDS = 60;
+
     public function handle(Message $message): void
     {
         if (! $this->matches($message, '/^(?:\/(?:leaderboard|top)(?:@\w+)?|المتصدرين|المتصدرون)$/u')) {
+            return;
+        }
+
+        if ($this->onCooldown($message)) {
             return;
         }
 
@@ -37,6 +45,23 @@ class QuizLeaderboardHandler extends BaseHandler
         ];
 
         $this->replyHtml($message, implode("\n\n", array_filter($sections)));
+    }
+
+    /**
+     * True when the leaderboard was already posted in this chat within the
+     * cooldown window — keeps «المتصدرين» from being spammed into the group.
+     * The first call in the window reserves the slot; the rest fall through
+     * silently.
+     */
+    private function onCooldown(Message $message): bool
+    {
+        $chatId = $message->getChat()?->getId();
+
+        if ($chatId === null) {
+            return false;
+        }
+
+        return ! Cache::add('quiz:leaderboard:cooldown:'.$chatId, true, self::COOLDOWN_SECONDS);
     }
 
     private function weeklySection(): ?string

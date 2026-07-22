@@ -514,11 +514,12 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                                 <TagsInputItemText />
                                 <TagsInputItemDelete class="-m-1.5 p-1.5" :aria-label="`إزالة ${chatId}`" />
                             </TagsInputItem>
-                            <TagsInputInput placeholder="أضف معرّف مجموعة…" dir="auto" class="text-start" inputmode="numeric" />
+                            <TagsInputInput placeholder="أضف معرّف مجموعة…" dir="auto" class="text-start" />
                         </TagsInput>
                         <p class="text-xs text-muted-foreground">
                             يُنشر السؤال نفسه في كل مجموعة، والنقاط واللوحة مشتركة — أول إجابة للعضو في أي مجموعة هي التي تُحتسب. معرّفات المجموعات
-                            تبدأ بإشارة سالبة.
+                            تبدأ بإشارة سالبة. لمجموعة تستخدم المواضيع (Topics) أضف معرّف الموضوع بعد نقطتين، مثل
+                            <span dir="ltr" class="font-mono tabular-nums">-100…:42</span>.
                         </p>
                         <div v-if="groupChats.length" class="flex flex-wrap items-center gap-1.5">
                             <span class="text-xs text-muted-foreground">مجموعات يعرفها البوت:</span>

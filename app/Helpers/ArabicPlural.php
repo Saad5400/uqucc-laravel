@@ -27,4 +27,19 @@ class ArabicPlural
     {
         return self::of($count, 'نقطة', 'نقطتان', 'نقاط');
     }
+
+    public static function days(int $count): string
+    {
+        return self::of($count, 'يوم', 'يومان', 'أيام', 'واحد');
+    }
+
+    public static function people(int $count): string
+    {
+        return self::of($count, 'مشارك', 'مشاركان', 'مشاركين', 'واحد');
+    }
+
+    public static function answers(int $count): string
+    {
+        return self::of($count, 'إجابة', 'إجابتان', 'إجابات');
+    }
 }

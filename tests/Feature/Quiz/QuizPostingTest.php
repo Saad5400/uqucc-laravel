@@ -2,6 +2,8 @@
 
 use App\Ai\Quiz\QuizAuthoringAgent;
 use App\Models\DailyQuiz;
+use App\Models\QuizAnswer;
+use App\Models\QuizPlayer;
 use App\Models\QuizPost;
 use App\Models\QuizTopic;
 use App\Services\Quiz\QuizPoster;
@@ -155,6 +157,49 @@ it('stops and unpins the previous open polls in every group before posting', fun
         ->and(collect($this->fake->unpinnedMessages)->pluck('message_id')->sort()->values()->all())->toBe([777, 888])
         ->and($previous->refresh()->status)->toBe(DailyQuiz::STATUS_CLOSED)
         ->and($previous->posts()->open()->count())->toBe(0);
+});
+
+it('replies to the previous poll with a recap of how it went', function () {
+    $previous = livePostedQuiz(['quiz_date' => today()->subDay()], ['message_id' => 555]);
+
+    $players = QuizPlayer::factory()->count(3)->create();
+    QuizAnswer::factory()->create(['daily_quiz_id' => $previous->id, 'quiz_player_id' => $players[0]->id, 'is_correct' => true, 'streak_at_answer' => 4]);
+    QuizAnswer::factory()->create(['daily_quiz_id' => $previous->id, 'quiz_player_id' => $players[1]->id, 'is_correct' => true, 'streak_at_answer' => 1]);
+    QuizAnswer::factory()->create(['daily_quiz_id' => $previous->id, 'quiz_player_id' => $players[2]->id, 'is_correct' => false, 'streak_at_answer' => 1]);
+
+    DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    $this->artisan('quiz:post')->assertExitCode(0);
+
+    $recap = collect($this->fake->sentMessages)->firstWhere('reply_to_message_id', 555);
+
+    expect($recap)->not->toBeNull()
+        ->and($recap['text'])->toContain('خلاصة سؤال اليوم')
+        ->and($recap['text'])->toContain('2 من 3')
+        ->and($recap['text'])->toContain('أطول سلسلة')
+        ->and($recap['text'])->toContain('4 أيام');
+});
+
+it('sends no recap when the previous quiz had no answers', function () {
+    livePostedQuiz(['quiz_date' => today()->subDay()]);
+    DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    $this->artisan('quiz:post')->assertExitCode(0);
+
+    expect($this->fake->sentMessages)->toBeEmpty();
+});
+
+it('posts into a forum topic when a target specifies one', function () {
+    $settings = app(QuizSettings::class);
+    $settings->chat_ids = ['-100200300:42'];
+    $settings->save();
+
+    DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    $this->artisan('quiz:post')->assertExitCode(0);
+
+    expect($this->fake->sentPolls[0]['message_thread_id'])->toBe(42)
+        ->and(DailyQuiz::forDate(today())->posts()->first()->message_thread_id)->toBe(42);
 });
 
 it('pins the new quiz quietly', function () {

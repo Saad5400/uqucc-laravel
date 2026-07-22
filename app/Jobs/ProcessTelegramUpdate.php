@@ -24,6 +24,7 @@ use App\Services\Telegram\Handlers\PageManagementHandler;
 use App\Services\Telegram\Handlers\PrivateForwardHandler;
 use App\Services\Telegram\Handlers\PythonExecutionHandler;
 use App\Services\Telegram\Handlers\QuizLeaderboardHandler;
+use App\Services\Telegram\Handlers\QuizMyScoreHandler;
 use App\Services\Telegram\Handlers\TruthTableHandler;
 use App\Services\Telegram\Handlers\UquccListHandler;
 use App\Services\Telegram\Handlers\UquccSearchHandler;
@@ -89,93 +90,6 @@ class ProcessTelegramUpdate implements ShouldQueue
     }
 
     /**
-     * How old (in seconds) the reply target must be to be flagged as suspicious.
-     */
-    protected const OLD_REPLY_THRESHOLD_SECONDS = 1800; // 30 minutes
-
-    /**
-     * TEMPORARY diagnostic. Determine which message the bot would attach its
-     * reply to (the quoted original for a reply, otherwise the message itself),
-     * and if that target was sent more than 30 minutes ago, dump the complete
-     * update plus the computed signals to the `telegram_old_reply` channel.
-     *
-     * This is what pins down why the bot replies to month-old messages: it tells
-     * us whether the trigger was a normal reply to an old message, an edited old
-     * message, a channel post, and exactly what text/chat/sender caused it.
-     */
-    protected function logOldReplyTarget(Update $update, \Telegram\Bot\Objects\Message $message): void
-    {
-        try {
-            $replyTo = $message->getReplyToMessage();
-            $isReply = $replyTo instanceof \Telegram\Bot\Objects\Message;
-
-            // Mirror BaseHandler/UquccSearchHandler: reply to the quoted original
-            // when present, otherwise to the incoming message itself.
-            $target = $isReply ? $replyTo : $message;
-            $targetDate = (int) $target->getDate();
-
-            if ($targetDate <= 0) {
-                return;
-            }
-
-            $ageSeconds = now()->getTimestamp() - $targetDate;
-
-            if ($ageSeconds < self::OLD_REPLY_THRESHOLD_SECONDS) {
-                return;
-            }
-
-            $updateType = collect(['message', 'edited_message', 'channel_post', 'edited_channel_post'])
-                ->first(fn (string $key): bool => isset($this->updateData[$key])) ?? 'unknown';
-
-            $text = $message->getText() ?? $message->getCaption();
-
-            Log::channel('telegram_old_reply')->warning('Bot processed an update targeting an old message', [
-                'update_id' => $this->updateData['update_id'] ?? null,
-                'update_type' => $updateType,
-                'reply_target_age_seconds' => $ageSeconds,
-                'reply_target_age_human' => now()->setTimestamp($targetDate)->diffForHumans(),
-                'reply_target_message_id' => $target->getMessageId(),
-                'reply_target_sent_at' => now()->setTimestamp($targetDate)->toIso8601String(),
-                'is_reply_to_older_message' => $isReply,
-                'incoming' => [
-                    'message_id' => $message->getMessageId(),
-                    'sent_at' => $targetDate === (int) $message->getDate()
-                        ? null
-                        : now()->setTimestamp((int) $message->getDate())->toIso8601String(),
-                    'edited_at' => $message->getEditDate()
-                        ? now()->setTimestamp((int) $message->getEditDate())->toIso8601String()
-                        : null,
-                    'text' => is_string($text) ? $text : null,
-                ],
-                'chat' => [
-                    'id' => $message->getChat()?->getId(),
-                    'type' => $message->getChat()?->getType(),
-                    'title' => $message->getChat()?->getTitle(),
-                    'username' => $message->getChat()?->getUsername(),
-                ],
-                'from' => [
-                    'id' => $message->getFrom()?->getId(),
-                    'is_bot' => $message->getFrom()?->getIsBot(),
-                    'username' => $message->getFrom()?->getUsername(),
-                    'first_name' => $message->getFrom()?->getFirstName(),
-                ],
-                'reply_to' => $isReply ? [
-                    'message_id' => $replyTo->getMessageId(),
-                    'from_id' => $replyTo->getFrom()?->getId(),
-                    'from_first_name' => $replyTo->getFrom()?->getFirstName(),
-                    'text' => is_string($replyTo->getText()) ? $replyTo->getText() : $replyTo->getCaption(),
-                ] : null,
-                'raw_update' => $this->updateData,
-            ]);
-        } catch (\Throwable $e) {
-            Log::error('logOldReplyTarget failed', [
-                'message' => $e->getMessage(),
-                'file' => $e->getFile().':'.$e->getLine(),
-            ]);
-        }
-    }
-
-    /**
      * Process a single Telegram update.
      */
     protected function processUpdate(Api $telegram, Update $update): void
@@ -218,11 +132,6 @@ class ProcessTelegramUpdate implements ShouldQueue
             return;
         }
 
-        // TEMPORARY diagnostic: record any update whose reply target is an old
-        // message. Placed before the edit guard on purpose so edits are captured
-        // too. Remove together with the `telegram_old_reply` log channel.
-        $this->logOldReplyTarget($update, $message);
-
         // Ignore message edits. An `edited_message` update carries the original
         // message's id and date, and its object extends Message — so without this
         // guard, editing a month-old message re-runs every handler and makes the
@@ -251,6 +160,7 @@ class ProcessTelegramUpdate implements ShouldQueue
             new InviteLinkHandler($telegram),
             new AiToggleHandler($telegram),
             new QuizLeaderboardHandler($telegram),
+            new QuizMyScoreHandler($telegram),
             // Last on purpose: the assistant only answers messages no other handler owns.
             new AiChatHandler(
                 $telegram,
