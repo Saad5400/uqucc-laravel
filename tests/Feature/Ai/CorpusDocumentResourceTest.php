@@ -1,8 +1,10 @@
 <?php
 
+use App\Ai\Corpus\CorpusSourceType;
 use App\Jobs\Ai\ExtractCorpusDocumentJob;
 use App\Jobs\Ai\IngestDocumentJob;
 use App\Models\Corpus\CorpusDocument;
+use App\Models\Corpus\CorpusItem;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Http\UploadedFile;
@@ -62,6 +64,24 @@ describe('corpus documents manage area', function () {
             ->assertInertia(fn (Assert $page) => $page
                 ->count('documents.data', 1)
                 ->where('documents.data.0.title', 'دليل مستعمل')
+            );
+    });
+
+    it('exposes the retrieval state in the list payload', function () {
+        $indexed = CorpusDocument::factory()->ready()->create();
+        CorpusItem::factory()->disabled()->create([
+            'source_type' => CorpusSourceType::Document,
+            'source_id' => $indexed->id,
+        ]);
+        CorpusDocument::factory()->ready()->create();
+
+        $this->actingAs($this->admin)
+            ->get('/manage/corpus')
+            ->assertInertia(fn (Assert $page) => $page
+                ->where('documents.data.1.is_indexed', true)
+                ->where('documents.data.1.retrieval_enabled', false)
+                ->where('documents.data.0.is_indexed', false)
+                ->where('documents.data.0.retrieval_enabled', false)
             );
     });
 
@@ -340,6 +360,40 @@ describe('corpus document actions', function () {
             ->assertSessionHas('error');
 
         Queue::assertNothingPushed();
+    });
+
+    it('toggles a document off then on again, flipping its corpus item enabled flag', function () {
+        $document = CorpusDocument::factory()->ready()->create();
+        $item = CorpusItem::factory()->create([
+            'source_type' => CorpusSourceType::Document,
+            'source_id' => $document->id,
+        ]);
+
+        expect($item->enabled)->toBeTrue();
+
+        $this->actingAs($this->admin)
+            ->from("/manage/corpus/{$document->id}/edit")
+            ->post("/manage/corpus/{$document->id}/toggle")
+            ->assertRedirect("/manage/corpus/{$document->id}/edit")
+            ->assertSessionHas('success');
+
+        expect($item->refresh()->enabled)->toBeFalse();
+
+        $this->actingAs($this->admin)
+            ->post("/manage/corpus/{$document->id}/toggle")
+            ->assertSessionHas('success');
+
+        expect($item->refresh()->enabled)->toBeTrue();
+    });
+
+    it('errors cleanly when toggling a document that has no corpus item', function () {
+        $document = CorpusDocument::factory()->ready()->create();
+
+        $this->actingAs($this->admin)
+            ->post("/manage/corpus/{$document->id}/toggle")
+            ->assertSessionHas('error');
+
+        expect(CorpusItem::query()->count())->toBe(0);
     });
 
     it('deletes a document', function () {

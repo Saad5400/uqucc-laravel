@@ -6,6 +6,7 @@ import {
     canAuthor,
     fileKindLabels,
     proposalStatusLabels,
+    retrievalToggleDisabledReason,
     type AuthoringGate,
     type CorpusDocumentWorkspace,
 } from '@/components/manage/corpus/types';
@@ -15,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { formatDateTime, formatFileSize } from '@/lib/formatters';
 import { Head, Link, router, useForm, usePoll } from '@inertiajs/vue3';
@@ -82,6 +84,35 @@ function runConfirmedAction(): void {
     } else {
         router.post(`/manage/corpus/${props.document.id}/${confirmingAction.value}`, {}, options);
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* Retrieval switch (cheap, reversible — applies immediately)          */
+/* ------------------------------------------------------------------ */
+
+const togglingRetrieval = ref(false);
+
+const retrievalDisabledReason = computed(() => retrievalToggleDisabledReason(props.document));
+
+function toggleRetrieval(): void {
+    if (!props.document.is_indexed || togglingRetrieval.value) {
+        return;
+    }
+
+    togglingRetrieval.value = true;
+
+    router.post(
+        `/manage/corpus/${props.document.id}/toggle`,
+        {},
+        {
+            preserveScroll: true,
+            preserveState: true,
+            only: ['document'],
+            onFinish: () => {
+                togglingRetrieval.value = false;
+            },
+        },
+    );
 }
 
 /* ------------------------------------------------------------------ */
@@ -153,6 +184,31 @@ const authoringDisabledReason = computed<string | null>(() => {
                 <Trash2 class="size-4" />
                 حذف
             </Button>
+        </div>
+
+        <div class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-4">
+            <div class="min-w-0 space-y-1">
+                <div class="flex items-center gap-2">
+                    <span class="font-medium">التفعيل في البحث الذكي</span>
+                    <Badge :variant="document.retrieval_enabled ? 'secondary' : 'outline'">
+                        {{ document.retrieval_enabled ? 'مفعّل' : 'معطّل' }}
+                    </Badge>
+                </div>
+                <p class="text-xs text-muted-foreground">
+                    {{
+                        retrievalDisabledReason ??
+                        'عند التعطيل يبقى المستند وملفه ونصه المفهرس كما هي، لكن لا يستخدمه المساعد الذكي في إجاباته حتى تعيد تفعيله.'
+                    }}
+                </p>
+            </div>
+            <div class="shrink-0" :title="retrievalDisabledReason ?? undefined">
+                <Switch
+                    :model-value="document.retrieval_enabled"
+                    :disabled="!document.is_indexed || togglingRetrieval"
+                    aria-label="تفعيل المستند في البحث الذكي"
+                    @update:model-value="toggleRetrieval"
+                />
+            </div>
         </div>
 
         <Card>

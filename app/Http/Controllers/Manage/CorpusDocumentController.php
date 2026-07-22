@@ -46,6 +46,8 @@ class CorpusDocumentController extends Controller
                 'status' => $document->status,
                 'error' => $document->error,
                 'index_status' => $document->corpusItem?->status,
+                'is_indexed' => $document->corpusItem !== null,
+                'retrieval_enabled' => $document->isRetrievalEnabled(),
                 'has_markdown' => filled($document->extracted_markdown),
                 'uploader_name' => $document->uploader?->name,
                 'created_at' => $document->created_at?->toISOString(),
@@ -143,6 +145,8 @@ class CorpusDocumentController extends Controller
                 'status' => $document->status,
                 'error' => $document->error,
                 'index_status' => $document->corpusItem?->status,
+                'is_indexed' => $document->corpusItem !== null,
+                'retrieval_enabled' => $document->isRetrievalEnabled(),
                 'extracted_markdown' => $document->extracted_markdown,
                 'reference_url' => $document->reference_url,
                 'uploader_name' => $document->uploader?->name,
@@ -228,6 +232,27 @@ class CorpusDocumentController extends Controller
         IngestDocumentJob::dispatch($document->id);
 
         return back()->with('success', 'تمت جدولة إعادة الفهرسة.');
+    }
+
+    /**
+     * Flip the document's retrieval switch — enable or disable it in the AI
+     * corpus WITHOUT deleting anything. Only meaningful once the document has
+     * been indexed (owns a corpus_item); a document with no item has nothing
+     * to toggle, so we redirect back with an error rather than fake a state.
+     */
+    public function toggle(CorpusDocument $document): RedirectResponse
+    {
+        $item = $document->corpusItem;
+
+        if ($item === null) {
+            return back()->with('error', 'لا يمكن تفعيل المستند أو تعطيله قبل فهرسته في البحث الذكي.');
+        }
+
+        $item->update(['enabled' => ! $item->enabled]);
+
+        return back()->with('success', $item->enabled
+            ? 'تم تفعيل المستند في البحث الذكي.'
+            : 'تم تعطيل المستند، ولن يظهر في البحث الذكي حتى تعيد تفعيله.');
     }
 
     /**

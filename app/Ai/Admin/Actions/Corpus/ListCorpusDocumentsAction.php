@@ -60,6 +60,7 @@ class ListCorpusDocumentsAction extends AdminAction
     protected function run(array $normalized, User $user): ActionResult
     {
         $documents = CorpusDocument::query()
+            ->with('corpusItem')
             ->latest('created_at')
             ->latest('id')
             ->get();
@@ -69,20 +70,34 @@ class ListCorpusDocumentsAction extends AdminAction
         }
 
         $lines = $documents->map(fn (CorpusDocument $document): string => sprintf(
-            '- [%d] %s | النوع: %s | الحجم: %s | الحالة: %s | التوليد: %s | مرجع: %s | صفحة مولّدة: %s',
+            '- [%d] %s | النوع: %s | الحجم: %s | الحالة: %s | البحث الذكي: %s | التوليد: %s | مرجع: %s | صفحة مولّدة: %s',
             $document->id,
             $document->title,
             $document->fileKind(),
             $document->size !== null ? $document->size.' بايت' : '—',
             $document->status,
+            $this->retrievalLabel($document),
             $document->authoring_status ?? '—',
             filled($document->reference_url) ? $document->reference_url : '—',
             $document->authored_page_id !== null ? '#'.$document->authored_page_id : '—',
         ));
 
         return ActionResult::text(
-            "مستندات قاعدة المعرفة (id | العنوان | النوع | الحجم | الحالة | التوليد | المرجع | الصفحة المولّدة):\n"
+            "مستندات قاعدة المعرفة (id | العنوان | النوع | الحجم | الحالة | البحث الذكي | التوليد | المرجع | الصفحة المولّدة):\n"
             .$lines->implode("\n"),
         );
+    }
+
+    /**
+     * How this document currently participates in AI retrieval: enabled,
+     * disabled, or not indexed yet (no corpus item to toggle).
+     */
+    private function retrievalLabel(CorpusDocument $document): string
+    {
+        return match (true) {
+            $document->corpusItem === null => 'غير مفهرس',
+            $document->corpusItem->enabled => 'مفعّل',
+            default => 'معطّل',
+        };
     }
 }

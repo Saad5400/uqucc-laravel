@@ -29,9 +29,12 @@ use Throwable;
  *    plain LIKE suffices on pgsql and sqlite alike), ranked by how many
  *    distinct query tokens a chunk contains, then by total occurrences.
  *
- * Only chunks of `ready` items are searched, so a half-ingested page never
- * surfaces. Degrades gracefully: if the embedding call fails at query time
- * the keyword leg still answers.
+ * Only chunks of `ready` AND `enabled` items are searched, so a half-ingested
+ * page never surfaces and a document the admin has switched off is excluded
+ * from every retrieval path at once (this endpoint, the MCP search_content
+ * tool, and the in-app StudentAssistant) — its file, text and embeddings are
+ * kept, so re-enabling it restores retrieval instantly. Degrades gracefully:
+ * if the embedding call fails at query time the keyword leg still answers.
  */
 class CorpusRetriever
 {
@@ -205,7 +208,9 @@ class CorpusRetriever
     {
         return CorpusChunk::query()
             ->with('item')
-            ->whereHas('item', fn (Builder $items) => $items->where('status', CorpusItem::STATUS_READY));
+            ->whereHas('item', fn (Builder $items) => $items
+                ->where('status', CorpusItem::STATUS_READY)
+                ->where('enabled', true));
     }
 
     private function onPostgres(): bool

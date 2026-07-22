@@ -368,6 +368,30 @@ describe('document ingestion', function () {
             ->and($item->source_updated_at->getTimestamp())->toBe($document->fresh()->updated_at->getTimestamp());
     });
 
+    it('preserves a disabled retrieval switch across a re-ingest of changed markdown', function () {
+        enableDocumentAiSearch();
+
+        $document = makeCorpusDocument('text-layer.pdf', 'application/pdf', [
+            'status' => CorpusDocument::STATUS_READY,
+            'extracted_markdown' => 'محتوى أولي عن التسجيل.',
+        ]);
+
+        app(IngestDocument::class)->ingest($document);
+
+        $item = documentCorpusItem($document);
+        $item->update(['enabled' => false]);
+
+        $document->update(['extracted_markdown' => 'محتوى جديد كلياً عن الحذف والإضافة بعد التعطيل.']);
+
+        app(IngestDocument::class)->ingest($document->fresh());
+
+        $item->refresh();
+
+        expect($item->enabled)->toBeFalse()
+            ->and($item->status)->toBe(CorpusItem::STATUS_READY)
+            ->and($item->chunks()->pluck('normalized_content')->join(' '))->toContain('جديد');
+    });
+
     it('does nothing while AI search is disabled', function () {
         $document = CorpusDocument::factory()->ready()->create();
 

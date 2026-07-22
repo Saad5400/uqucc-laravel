@@ -25,6 +25,7 @@ class CorpusItemFactory extends Factory
             'slug' => '/'.fake()->unique()->slug(3),
             'lang' => 'ar',
             'status' => CorpusItem::STATUS_READY,
+            'enabled' => true,
             'checksum' => hash('sha256', fake()->unique()->uuid()),
             'meta' => null,
         ];
@@ -38,6 +39,17 @@ class CorpusItemFactory extends Factory
         return $this->state(fn (array $attributes): array => [
             'status' => CorpusItem::STATUS_PENDING,
             'checksum' => null,
+        ]);
+    }
+
+    /**
+     * A ready item the admin has switched off — kept whole but excluded from
+     * every AI retrieval path.
+     */
+    public function disabled(): static
+    {
+        return $this->state(fn (array $attributes): array => [
+            'enabled' => false,
         ]);
     }
 }

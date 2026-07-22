@@ -10,6 +10,7 @@ import {
     canReingest,
     extractionStatusLabels,
     fileKindLabels,
+    retrievalToggleDisabledReason,
     type AuthoringGate,
     type CorpusDocumentRow,
     type CorpusFilters,
@@ -23,6 +24,7 @@ import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { formatFileSize, formatRelativeTime } from '@/lib/formatters';
 import { Head, Link, router, usePoll } from '@inertiajs/vue3';
 import {
@@ -155,6 +157,33 @@ function runConfirmedAction(): void {
     }
 }
 
+/* ------------------------------------------------------------------ */
+/* Retrieval switch (cheap, reversible — applies immediately)          */
+/* ------------------------------------------------------------------ */
+
+const togglingId = ref<number | null>(null);
+
+function toggleRetrieval(document: CorpusDocumentRow): void {
+    if (!document.is_indexed || togglingId.value !== null) {
+        return;
+    }
+
+    togglingId.value = document.id;
+
+    router.post(
+        `/manage/corpus/${document.id}/toggle`,
+        {},
+        {
+            preserveScroll: true,
+            preserveState: true,
+            only: ['documents'],
+            onFinish: () => {
+                togglingId.value = null;
+            },
+        },
+    );
+}
+
 /** Why the authoring action is unavailable for a row — null when it can run. */
 function authoringDisabledReason(document: CorpusDocumentRow): string | null {
     if (!props.authoring.enabled) {
@@ -267,6 +296,17 @@ function authoringDisabledReason(document: CorpusDocumentRow): string | null {
                         <span v-if="document.uploader_name">رفعه {{ document.uploader_name }}</span>
                         <span v-if="document.created_at">{{ formatRelativeTime(document.created_at) }}</span>
                     </div>
+                </div>
+                <div class="flex shrink-0 items-center gap-2" :title="retrievalToggleDisabledReason(document) ?? undefined">
+                    <Switch
+                        :model-value="document.retrieval_enabled"
+                        :disabled="!document.is_indexed || togglingId === document.id"
+                        :aria-label="`تفعيل «${document.title}» في البحث الذكي`"
+                        @update:model-value="() => toggleRetrieval(document)"
+                    />
+                    <span class="hidden text-xs text-muted-foreground sm:inline">
+                        {{ document.retrieval_enabled ? 'مفعّل' : 'معطّل' }}
+                    </span>
                 </div>
                 <DropdownMenu>
                     <DropdownMenuTrigger as-child>

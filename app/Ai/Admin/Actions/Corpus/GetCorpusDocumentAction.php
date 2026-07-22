@@ -69,11 +69,17 @@ class GetCorpusDocumentAction extends AdminAction
      */
     protected function run(array $normalized, User $user): ActionResult
     {
-        $document = CorpusDocument::query()->find((int) $normalized['document_id']);
+        $document = CorpusDocument::query()->with('corpusItem')->find((int) $normalized['document_id']);
 
         if ($document === null) {
             throw new AdminActionException('المستند المطلوب لم يعد موجوداً.');
         }
+
+        $retrieval = match (true) {
+            $document->corpusItem === null => 'غير مفهرس',
+            $document->corpusItem->enabled => 'مفعّل في البحث الذكي',
+            default => 'معطّل (لن يظهر في البحث الذكي)',
+        };
 
         $markdown = trim((string) $document->extracted_markdown);
 
@@ -88,6 +94,7 @@ class GetCorpusDocumentAction extends AdminAction
             'النوع: '.$document->fileKind(),
             'الحجم: '.($document->size !== null ? $document->size.' بايت' : '—'),
             'حالة الاستخراج: '.$document->status,
+            'حالة البحث الذكي: '.$retrieval,
             'حالة التوليد: '.($document->authoring_status ?? '—'),
             'خطأ الاستخراج: '.(filled($document->error) ? $document->error : '—'),
             'خطأ التوليد: '.(filled($document->authoring_error) ? $document->authoring_error : '—'),

@@ -126,6 +126,17 @@ class CorpusDocument extends Model
     }
 
     /**
+     * Whether this document is currently retrievable by the AI: it must have
+     * been indexed (own a corpus_item) and that item's retrieval switch must
+     * be on. A document with no item yet (extraction failed, or search was
+     * off at ingest time) is not retrievable and cannot be toggled.
+     */
+    public function isRetrievalEnabled(): bool
+    {
+        return $this->corpusItem?->enabled ?? false;
+    }
+
+    /**
      * The unpublished draft page the authoring AI created from this document
      * (NEW-content outcome), trashed included so the panel can still link a
      * since-trashed draft.

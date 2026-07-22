@@ -23,6 +23,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property string|null $slug
  * @property string|null $lang
  * @property string $status
+ * @property bool $enabled
  * @property string|null $checksum
  * @property array<string, mixed>|null $meta
  * @property \Illuminate\Support\Carbon|null $source_updated_at
@@ -47,6 +48,7 @@ class CorpusItem extends Model
         'slug',
         'lang',
         'status',
+        'enabled',
         'checksum',
         'meta',
         'source_updated_at',
@@ -59,6 +61,7 @@ class CorpusItem extends Model
     {
         return [
             'source_type' => CorpusSourceType::class,
+            'enabled' => 'boolean',
             'meta' => 'array',
             'source_updated_at' => 'datetime',
         ];

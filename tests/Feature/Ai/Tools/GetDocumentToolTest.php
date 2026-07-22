@@ -1,7 +1,9 @@
 <?php
 
+use App\Ai\Corpus\CorpusSourceType;
 use App\Ai\Tools\GetDocumentTool;
 use App\Models\Corpus\CorpusDocument;
+use App\Models\Corpus\CorpusItem;
 use App\Settings\AiSettings;
 use Laravel\Ai\Tools\Request;
 
@@ -57,6 +59,41 @@ it('never exposes documents that are not ready', function (string $status) {
     'extracting' => CorpusDocument::STATUS_EXTRACTING,
     'failed' => CorpusDocument::STATUS_FAILED,
 ]);
+
+it('refuses a ready document whose corpus item is disabled', function () {
+    $document = CorpusDocument::factory()->create([
+        'title' => 'لائحة معطّلة',
+        'status' => CorpusDocument::STATUS_READY,
+        'extracted_markdown' => 'محتوى المستند المعطّل الذي يجب ألا يظهر.',
+    ]);
+
+    CorpusItem::factory()->disabled()->create([
+        'source_type' => CorpusSourceType::Document,
+        'source_id' => $document->id,
+    ]);
+
+    $reply = (string) app(GetDocumentTool::class)->handle(new Request(['document' => $document->id]));
+
+    expect($reply)->toContain('لم يتم العثور')
+        ->not->toContain('محتوى المستند المعطّل');
+});
+
+it('reads a ready document whose corpus item is enabled', function () {
+    $document = CorpusDocument::factory()->create([
+        'title' => 'لائحة مفعّلة',
+        'status' => CorpusDocument::STATUS_READY,
+        'extracted_markdown' => 'محتوى المستند المفعّل الذي يجب أن يظهر.',
+    ]);
+
+    CorpusItem::factory()->create([
+        'source_type' => CorpusSourceType::Document,
+        'source_id' => $document->id,
+    ]);
+
+    $reply = (string) app(GetDocumentTool::class)->handle(new Request(['document' => $document->id]));
+
+    expect($reply)->toContain('محتوى المستند المفعّل');
+});
 
 it('answers unknown ids with a not-found message', function () {
     $reply = (string) app(GetDocumentTool::class)->handle(new Request(['document' => 999]));

@@ -8,6 +8,10 @@ export interface CorpusDocumentRow {
     status: CorpusDocumentStatus;
     error: string | null;
     index_status: CorpusIndexStatus | null;
+    /** Whether the document owns a corpus item — the retrieval switch is only meaningful when true. */
+    is_indexed: boolean;
+    /** Whether the AI may currently retrieve this document (its corpus item's switch is on). */
+    retrieval_enabled: boolean;
     has_markdown: boolean;
     uploader_name: string | null;
     created_at: string | null;
@@ -84,6 +88,14 @@ export const proposalStatusLabels: Record<ProposalStatus, string> = {
 /** A document can be re-ingested once its text has been extracted. */
 export function canReingest(document: Pick<CorpusDocumentRow, 'status' | 'has_markdown'>): boolean {
     return document.status === 'ready' && document.has_markdown;
+}
+
+/**
+ * Why the retrieval switch is unavailable — null when it can be toggled. Only
+ * an indexed document (one that owns a corpus item) has a state to flip.
+ */
+export function retrievalToggleDisabledReason(document: Pick<CorpusDocumentRow, 'is_indexed'>): string | null {
+    return document.is_indexed ? null : 'يُفعَّل البحث الذكي بعد فهرسة المستند — أكمل الاستخراج ثم الفهرسة أولاً.';
 }
 
 /** Page authoring can run once extraction is done and no run is in flight. */

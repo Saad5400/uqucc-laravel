@@ -65,6 +65,7 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::put('/corpus/{document}', [CorpusDocumentController::class, 'update'])->name('corpus.update');
         Route::post('/corpus/{document}/reextract', [CorpusDocumentController::class, 'reextract'])->name('corpus.reextract');
         Route::post('/corpus/{document}/reingest', [CorpusDocumentController::class, 'reingest'])->name('corpus.reingest');
+        Route::post('/corpus/{document}/toggle', [CorpusDocumentController::class, 'toggle'])->name('corpus.toggle');
         Route::delete('/corpus/{document}', [CorpusDocumentController::class, 'destroy'])->name('corpus.destroy');
 
         Route::get('/quiz', [QuizController::class, 'index'])->name('quiz.index');

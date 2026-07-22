@@ -75,6 +75,23 @@ it('never surfaces chunks of items that are not ready', function () {
     expect(app(CorpusRetriever::class)->search('فريدة'))->toBeEmpty();
 });
 
+it('excludes chunks of a disabled item and surfaces them again once re-enabled', function () {
+    $item = CorpusItem::factory()->disabled()->create();
+    CorpusChunk::factory()
+        ->for($item, 'item')
+        ->withContent('كلمة فريدة جدا للاختبار المعطل')
+        ->create();
+
+    expect(app(CorpusRetriever::class)->search('فريدة'))->toBeEmpty();
+
+    $item->update(['enabled' => true]);
+
+    $results = app(CorpusRetriever::class)->search('فريدة');
+
+    expect($results)->not->toBeEmpty()
+        ->and($results->first()->content)->toContain('فريدة');
+});
+
 it('respects the result limit', function () {
     foreach (range(1, 5) as $i) {
         seedArabicPage("صفحة رقم {$i}", "شرح البرمجة والتطوير في الصفحة رقم {$i}");

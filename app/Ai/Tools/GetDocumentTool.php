@@ -56,6 +56,7 @@ class GetDocumentTool implements Tool
         $document = CorpusDocument::query()
             ->whereKey($id)
             ->where('status', CorpusDocument::STATUS_READY)
+            ->whereDoesntHave('corpusItem', fn ($item) => $item->where('enabled', false))
             ->first();
 
         if ($document === null) {
