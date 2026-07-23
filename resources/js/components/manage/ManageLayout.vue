@@ -83,7 +83,7 @@ watch(
                     <Sun />
                 </Button>
             </header>
-            <main class="w-full rounded-lg border border-sidebar-border bg-sidebar p-4 shadow-sm">
+            <main class="w-full rounded-lg border border-sidebar-border bg-sidebar p-2 shadow-sm sm:p-4">
                 <slot />
             </main>
             <Toaster :theme="toasterTheme" dir="rtl" position="bottom-left" />

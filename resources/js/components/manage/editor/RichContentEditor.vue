@@ -168,7 +168,7 @@ const editor = useEditor({
     editorProps: {
         attributes: {
             dir: 'rtl',
-            class: 'typography min-h-64 px-4 py-3 focus:outline-none',
+            class: 'typography min-h-64 px-3 py-3 focus:outline-none sm:px-4',
         },
         handlePaste: (_view, event) => handleImagePaste(event),
         handleDrop: (view, event, _slice, moved) => handleImageDrop(view, event, moved),
@@ -447,7 +447,7 @@ const triggerClass = `${triggerBaseClass} size-8 pointer-coarse:size-11`;
 
         <div v-else class="relative rounded-md border border-input">
             <div
-                class="sticky top-17 z-10 flex items-center gap-0.5 overflow-x-auto rounded-t-md border-b border-input bg-card/95 p-1 backdrop-blur md:flex-wrap md:overflow-x-visible"
+                class="sticky top-17 z-10 flex items-center gap-0.5 overflow-x-auto overscroll-x-contain rounded-t-md border-b border-input bg-card/95 p-1 backdrop-blur md:flex-wrap md:overflow-x-visible"
             >
                 <ToolbarButton :icon="Undo2" title="تراجع" :disabled="!editor?.can().undo()" @click="editor?.chain().focus().undo().run()" />
                 <ToolbarButton :icon="Redo2" title="إعادة" :disabled="!editor?.can().redo()" @click="editor?.chain().focus().redo().run()" />
@@ -675,7 +675,7 @@ const triggerClass = `${triggerBaseClass} size-8 pointer-coarse:size-11`;
 
             <p v-if="uploadError" class="border-b p-2 text-xs text-destructive">{{ uploadError }}</p>
 
-            <EditorContent :editor="editor" class="editor-content-well overflow-x-auto" />
+            <EditorContent :editor="editor" class="editor-content-well" />
 
             <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onFileInputChange" />
         </div>
@@ -683,7 +683,12 @@ const triggerClass = `${triggerBaseClass} size-8 pointer-coarse:size-11`;
 </template>
 
 <style scoped>
-/* Wide content (tables, long lists) must scroll inside the well, never widen the page. */
+/* Wide content scrolls inside its own wrapper (tableWrapper, pre) — the well itself never
+   scrolls horizontally, so touch panning over the editor stays a plain page scroll. */
+.editor-content-well {
+    overflow-x: clip;
+}
+
 .editor-content-well :deep(.ProseMirror) {
     max-width: 100%;
 }
