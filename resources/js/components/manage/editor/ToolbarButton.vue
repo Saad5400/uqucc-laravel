@@ -28,13 +28,13 @@ const emit = defineEmits<{
                 'inline-flex items-center justify-center rounded-md text-muted-foreground transition-colors',
                 'hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none',
                 'disabled:pointer-events-none disabled:opacity-50',
-                props.size === 'sm' ? 'size-6' : 'size-8',
+                props.size === 'sm' ? 'size-6' : 'size-8 shrink-0 pointer-coarse:size-11',
                 active && 'bg-accent text-accent-foreground',
             )
         "
         @mousedown.prevent
         @click="emit('click')"
     >
-        <component :is="icon" :class="props.size === 'sm' ? 'size-3.5' : 'size-4'" />
+        <component :is="icon" :class="props.size === 'sm' ? 'size-3.5' : 'size-4 pointer-coarse:size-5'" />
     </button>
 </template>

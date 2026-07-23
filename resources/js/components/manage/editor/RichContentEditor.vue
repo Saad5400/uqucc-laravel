@@ -10,8 +10,10 @@ import {
     AlignRight,
     Bold,
     Check,
+    ChevronDown,
     ChevronsUpDown,
     Code2,
+    Ellipsis,
     Heading2,
     Heading3,
     Heading4,
@@ -23,6 +25,7 @@ import {
     Loader2,
     Minus,
     Pilcrow,
+    Plus,
     Redo2,
     Strikethrough,
     Table as TableIcon,
@@ -32,7 +35,7 @@ import {
     Undo2,
     Unlink,
 } from 'lucide-vue-next';
-import { computed, ref, watch } from 'vue';
+import { computed, ref, watch, type Component } from 'vue';
 
 import Alert from '@/components/ui/alert/Alert.vue';
 import AlertDescription from '@/components/ui/alert/AlertDescription.vue';
@@ -379,6 +382,46 @@ function toggleTextAlign(alignment: Alignment): void {
         editor.value.chain().focus().setTextAlign(alignment).run();
     }
 }
+
+const blockTypes = [
+    { label: 'فقرة', icon: Pilcrow, level: null },
+    { label: 'عنوان 2', icon: Heading2, level: 2 },
+    { label: 'عنوان 3', icon: Heading3, level: 3 },
+    { label: 'عنوان 4', icon: Heading4, level: 4 },
+] as const;
+
+const activeBlockType = computed(() => {
+    for (const blockType of blockTypes) {
+        if (blockType.level !== null && editor.value?.isActive('heading', { level: blockType.level })) {
+            return blockType;
+        }
+    }
+    return blockTypes[0];
+});
+
+function setBlockType(level: 2 | 3 | 4 | null): void {
+    if (!editor.value) {
+        return;
+    }
+    if (level === null) {
+        editor.value.chain().focus().setParagraph().run();
+    } else {
+        editor.value.chain().focus().toggleHeading({ level }).run();
+    }
+}
+
+const alignments: { label: string; icon: Component; value: Alignment }[] = [
+    { label: 'محاذاة لليمين', icon: AlignRight, value: 'right' },
+    { label: 'توسيط', icon: AlignCenter, value: 'center' },
+    { label: 'محاذاة لليسار', icon: AlignLeft, value: 'left' },
+    { label: 'ضبط', icon: AlignJustify, value: 'justify' },
+];
+
+/** Shared look for the dropdown trigger buttons so they match ToolbarButton (sizing applied per-trigger). */
+const triggerBaseClass =
+    'inline-flex shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors ' +
+    'hover:bg-accent hover:text-accent-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none';
+const triggerClass = `${triggerBaseClass} size-8 pointer-coarse:size-11`;
 </script>
 
 <template>
@@ -396,39 +439,39 @@ function toggleTextAlign(alignment: Alignment): void {
         </div>
 
         <div v-else class="relative rounded-md border border-input">
-            <div class="sticky top-0 z-10 flex flex-wrap items-center gap-0.5 rounded-t-md border-b border-input bg-card/95 p-1 backdrop-blur">
+            <div
+                class="sticky top-17 z-10 flex items-center gap-0.5 overflow-x-auto rounded-t-md border-b border-input bg-card/95 p-1 backdrop-blur md:flex-wrap md:overflow-x-visible"
+            >
                 <ToolbarButton :icon="Undo2" title="تراجع" :disabled="!editor?.can().undo()" @click="editor?.chain().focus().undo().run()" />
                 <ToolbarButton :icon="Redo2" title="إعادة" :disabled="!editor?.can().redo()" @click="editor?.chain().focus().redo().run()" />
 
-                <div class="mx-1 h-5 w-px bg-border" />
+                <div class="mx-1 h-5 w-px shrink-0 bg-border" />
 
                 <template v-if="variant === 'full'">
-                    <ToolbarButton
-                        :icon="Pilcrow"
-                        title="فقرة"
-                        :active="editor?.isActive('paragraph')"
-                        @click="editor?.chain().focus().setParagraph().run()"
-                    />
-                    <ToolbarButton
-                        :icon="Heading2"
-                        title="عنوان 2"
-                        :active="editor?.isActive('heading', { level: 2 })"
-                        @click="editor?.chain().focus().toggleHeading({ level: 2 }).run()"
-                    />
-                    <ToolbarButton
-                        :icon="Heading3"
-                        title="عنوان 3"
-                        :active="editor?.isActive('heading', { level: 3 })"
-                        @click="editor?.chain().focus().toggleHeading({ level: 3 }).run()"
-                    />
-                    <ToolbarButton
-                        :icon="Heading4"
-                        title="عنوان 4"
-                        :active="editor?.isActive('heading', { level: 4 })"
-                        @click="editor?.chain().focus().toggleHeading({ level: 4 }).run()"
-                    />
+                    <DropdownMenu>
+                        <DropdownMenuTrigger as-child>
+                            <button
+                                type="button"
+                                title="نوع الفقرة"
+                                aria-label="نوع الفقرة"
+                                :class="[triggerBaseClass, 'h-8 gap-1 px-2 text-sm whitespace-nowrap pointer-coarse:h-11']"
+                                @mousedown.prevent
+                            >
+                                <component :is="activeBlockType.icon" class="size-4" />
+                                <span class="hidden sm:inline">{{ activeBlockType.label }}</span>
+                                <ChevronDown class="size-3.5 opacity-60" />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                            <DropdownMenuItem v-for="blockType in blockTypes" :key="blockType.label" @select="setBlockType(blockType.level)">
+                                <component :is="blockType.icon" class="size-4" />
+                                {{ blockType.label }}
+                                <Check v-if="activeBlockType.label === blockType.label" class="ms-auto size-4" />
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
 
-                    <div class="mx-1 h-5 w-px bg-border" />
+                    <div class="mx-1 h-5 w-px shrink-0 bg-border" />
                 </template>
 
                 <ToolbarButton :icon="Bold" title="عريض" :active="editor?.isActive('bold')" @click="editor?.chain().focus().toggleBold().run()" />
@@ -438,21 +481,6 @@ function toggleTextAlign(alignment: Alignment): void {
                     :active="editor?.isActive('italic')"
                     @click="editor?.chain().focus().toggleItalic().run()"
                 />
-                <ToolbarButton
-                    :icon="UnderlineIcon"
-                    title="تسطير"
-                    :active="editor?.isActive('underline')"
-                    @click="editor?.chain().focus().toggleUnderline().run()"
-                />
-                <ToolbarButton
-                    :icon="Strikethrough"
-                    title="شطب"
-                    :active="editor?.isActive('strike')"
-                    @click="editor?.chain().focus().toggleStrike().run()"
-                />
-
-                <div class="mx-1 h-5 w-px bg-border" />
-
                 <ToolbarButton :icon="LinkIcon" title="رابط" :active="editor?.isActive('link')" @click="toggleLinkPanel" />
                 <ToolbarButton
                     v-if="editor?.isActive('link')"
@@ -461,8 +489,32 @@ function toggleTextAlign(alignment: Alignment): void {
                     @click="editor?.chain().focus().extendMarkRange('link').unsetLink().run()"
                 />
 
+                <template v-if="variant === 'message'">
+                    <ToolbarButton
+                        :icon="UnderlineIcon"
+                        title="تسطير"
+                        :active="editor?.isActive('underline')"
+                        @click="editor?.chain().focus().toggleUnderline().run()"
+                    />
+                    <ToolbarButton
+                        :icon="Strikethrough"
+                        title="شطب"
+                        :active="editor?.isActive('strike')"
+                        @click="editor?.chain().focus().toggleStrike().run()"
+                    />
+
+                    <div class="mx-1 h-5 w-px shrink-0 bg-border" />
+
+                    <ToolbarButton
+                        :icon="Code2"
+                        title="كتلة كود"
+                        :active="editor?.isActive('codeBlock')"
+                        @click="editor?.chain().focus().toggleCodeBlock().run()"
+                    />
+                </template>
+
                 <template v-if="variant === 'full'">
-                    <div class="mx-1 h-5 w-px bg-border" />
+                    <div class="mx-1 h-5 w-px shrink-0 bg-border" />
 
                     <ToolbarButton
                         :icon="List"
@@ -483,81 +535,57 @@ function toggleTextAlign(alignment: Alignment): void {
                         @click="editor?.chain().focus().toggleBlockquote().run()"
                     />
 
-                    <div class="mx-1 h-5 w-px bg-border" />
-
-                    <ToolbarButton
-                        :icon="AlignRight"
-                        title="محاذاة لليمين"
-                        :active="editor?.isActive({ textAlign: 'right' })"
-                        @click="toggleTextAlign('right')"
-                    />
-                    <ToolbarButton
-                        :icon="AlignCenter"
-                        title="توسيط"
-                        :active="editor?.isActive({ textAlign: 'center' })"
-                        @click="toggleTextAlign('center')"
-                    />
-                    <ToolbarButton
-                        :icon="AlignLeft"
-                        title="محاذاة لليسار"
-                        :active="editor?.isActive({ textAlign: 'left' })"
-                        @click="toggleTextAlign('left')"
-                    />
-                    <ToolbarButton
-                        :icon="AlignJustify"
-                        title="ضبط"
-                        :active="editor?.isActive({ textAlign: 'justify' })"
-                        @click="toggleTextAlign('justify')"
-                    />
-
-                    <div class="mx-1 h-5 w-px bg-border" />
-                </template>
-                <div v-else class="mx-1 h-5 w-px bg-border" />
-
-                <ToolbarButton
-                    :icon="Code2"
-                    title="كتلة كود"
-                    :active="editor?.isActive('codeBlock')"
-                    @click="editor?.chain().focus().toggleCodeBlock().run()"
-                />
-                <Input
-                    v-if="editor?.isActive('codeBlock')"
-                    :model-value="codeBlockLanguage"
-                    dir="ltr"
-                    placeholder="lang"
-                    title="لغة الكود"
-                    aria-label="لغة الكود"
-                    class="h-7 w-24 font-mono text-xs"
-                    @change="setCodeBlockLanguage(($event.target as HTMLInputElement).value)"
-                />
-
-                <template v-if="variant === 'full'">
-                    <ToolbarButton
-                        v-if="uploadUrl"
-                        :icon="uploading ? Loader2 : ImageIcon"
-                        title="إدراج صورة"
-                        :disabled="uploading"
-                        @click="fileInput?.click()"
-                    />
+                    <div class="mx-1 h-5 w-px shrink-0 bg-border" />
 
                     <DropdownMenu>
+                        <DropdownMenuTrigger as-child>
+                            <button type="button" title="إدراج" aria-label="إدراج" :class="triggerClass" @mousedown.prevent>
+                                <Plus class="size-4 pointer-coarse:size-5" />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                            <DropdownMenuLabel>إدراج</DropdownMenuLabel>
+                            <DropdownMenuItem v-if="uploadUrl" :disabled="uploading" @select="fileInput?.click()">
+                                <component :is="uploading ? Loader2 : ImageIcon" class="size-4" :class="uploading && 'animate-spin'" />
+                                صورة
+                            </DropdownMenuItem>
+                            <DropdownMenuItem @select="editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()">
+                                <TableIcon class="size-4" />
+                                جدول
+                            </DropdownMenuItem>
+                            <DropdownMenuItem @select="insertAlertBlock">
+                                <TriangleAlert class="size-4" />
+                                كتلة تنبيه
+                            </DropdownMenuItem>
+                            <DropdownMenuItem @select="insertCollapsibleBlock">
+                                <ChevronsUpDown class="size-4" />
+                                قسم قابل للطي
+                            </DropdownMenuItem>
+                            <DropdownMenuItem @select="editor?.chain().focus().toggleCodeBlock().run()">
+                                <Code2 class="size-4" />
+                                كتلة كود
+                            </DropdownMenuItem>
+                            <DropdownMenuItem @select="editor?.chain().focus().setHorizontalRule().run()">
+                                <Minus class="size-4" />
+                                خط فاصل
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
+
+                    <DropdownMenu v-if="editor?.isActive('table')">
                         <DropdownMenuTrigger as-child>
                             <button
                                 type="button"
                                 title="جدول"
                                 aria-label="جدول"
-                                class="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                                :class="editor?.isActive('table') && 'bg-accent text-accent-foreground'"
+                                :class="[triggerClass, 'bg-accent text-accent-foreground']"
+                                @mousedown.prevent
                             >
-                                <TableIcon class="size-4" />
+                                <TableIcon class="size-4 pointer-coarse:size-5" />
                             </button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="start">
                             <DropdownMenuLabel>الجدول</DropdownMenuLabel>
-                            <DropdownMenuItem @select="editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()">
-                                إدراج جدول 3×3
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
                             <DropdownMenuItem :disabled="!editor?.can().addRowBefore()" @select="editor?.chain().focus().addRowBefore().run()">
                                 إضافة صف قبل
                             </DropdownMenuItem>
@@ -587,12 +615,43 @@ function toggleTextAlign(alignment: Alignment): void {
                         </DropdownMenuContent>
                     </DropdownMenu>
 
-                    <div class="mx-1 h-5 w-px bg-border" />
-
-                    <ToolbarButton :icon="TriangleAlert" title="كتلة تنبيه" @click="insertAlertBlock" />
-                    <ToolbarButton :icon="ChevronsUpDown" title="قسم قابل للطي" @click="insertCollapsibleBlock" />
-                    <ToolbarButton :icon="Minus" title="خط فاصل" @click="editor?.chain().focus().setHorizontalRule().run()" />
+                    <DropdownMenu>
+                        <DropdownMenuTrigger as-child>
+                            <button type="button" title="تنسيقات إضافية" aria-label="تنسيقات إضافية" :class="triggerClass" @mousedown.prevent>
+                                <Ellipsis class="size-4 pointer-coarse:size-5" />
+                            </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="start">
+                            <DropdownMenuItem @select="editor?.chain().focus().toggleUnderline().run()">
+                                <UnderlineIcon class="size-4" />
+                                تسطير
+                                <Check v-if="editor?.isActive('underline')" class="ms-auto size-4" />
+                            </DropdownMenuItem>
+                            <DropdownMenuItem @select="editor?.chain().focus().toggleStrike().run()">
+                                <Strikethrough class="size-4" />
+                                شطب
+                                <Check v-if="editor?.isActive('strike')" class="ms-auto size-4" />
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem v-for="alignment in alignments" :key="alignment.value" @select="toggleTextAlign(alignment.value)">
+                                <component :is="alignment.icon" class="size-4" />
+                                {{ alignment.label }}
+                                <Check v-if="editor?.isActive({ textAlign: alignment.value })" class="ms-auto size-4" />
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </template>
+
+                <Input
+                    v-if="editor?.isActive('codeBlock')"
+                    :model-value="codeBlockLanguage"
+                    dir="ltr"
+                    placeholder="lang"
+                    title="لغة الكود"
+                    aria-label="لغة الكود"
+                    class="h-7 w-24 shrink-0 font-mono text-xs"
+                    @change="setCodeBlockLanguage(($event.target as HTMLInputElement).value)"
+                />
             </div>
 
             <div v-if="linkPanelOpen" class="flex items-center gap-1 border-b p-1">
@@ -601,7 +660,7 @@ function toggleTextAlign(alignment: Alignment): void {
                     dir="ltr"
                     type="url"
                     placeholder="https://"
-                    class="h-7 max-w-96 text-xs"
+                    class="h-8 flex-1 text-sm md:max-w-96 pointer-coarse:h-11"
                     @keydown.enter.prevent="applyLink"
                 />
                 <ToolbarButton :icon="Check" title="تطبيق الرابط" @click="applyLink" />
