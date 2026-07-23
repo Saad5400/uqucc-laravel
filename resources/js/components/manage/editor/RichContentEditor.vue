@@ -228,6 +228,13 @@ function applyLink(): void {
     const url = linkUrl.value.trim();
     if (url === '') {
         editor.value.chain().focus().extendMarkRange('link').unsetLink().run();
+    } else if (editor.value.state.selection.empty && !editor.value.isActive('link')) {
+        editor.value
+            .chain()
+            .focus()
+            .insertContent({ type: 'text', text: url, marks: [{ type: 'link', attrs: { href: url } }] })
+            .unsetMark('link')
+            .run();
     } else {
         editor.value.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
     }
