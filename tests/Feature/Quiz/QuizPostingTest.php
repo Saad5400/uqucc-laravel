@@ -93,7 +93,7 @@ it('posts a quiz without a body as a poll only, with the question as the poll qu
         ->and($this->fake->sentMessages)->toBeEmpty();
 });
 
-it('sends the body as a formatted HTML message above the poll and gives the poll a lead-in question', function () {
+it('sends the body as a formatted HTML message above the poll and keeps the question on the poll', function () {
     DailyQuiz::factory()->withCode()->create(['quiz_date' => today()]);
 
     $this->artisan('quiz:post')->assertExitCode(0);
@@ -105,11 +105,11 @@ it('sends the body as a formatted HTML message above the poll and gives the poll
     expect($content['chat_id'])->toBe(-100200300)
         ->and($content['parse_mode'])->toBe('HTML')
         ->and($content['text'])->toContain('<pre>print(2 ** 3)</pre>')
-        ->and($content['text'])->toContain('ماذا يُطبع؟')
+        ->and($content['text'])->not->toContain('ماذا يُطبع؟')
         ->and($content['text'])->not->toContain('```');
 
     expect($this->fake->sentPolls)->toHaveCount(1)
-        ->and($this->fake->sentPolls[0]['question'])->toBe(QuizPoster::POLL_LEAD_IN);
+        ->and($this->fake->sentPolls[0]['question'])->toBe('ماذا يُطبع؟');
 });
 
 it('does not post a contextless poll when the body message fails to send', function () {

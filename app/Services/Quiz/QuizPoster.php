@@ -26,15 +26,6 @@ class QuizPoster
     /** How many players the weekly winners announcement names. */
     public const WEEKLY_WINNERS = 20;
 
-    /**
-     * The poll question used when the quiz carries a {@see DailyQuiz::$body} —
-     * the real wording and any code live in the formatted message sent just
-     * above the poll, so the poll itself only points the reader up to it. Poll
-     * questions are plain text with no monospace, which is exactly why code
-     * cannot live here.
-     */
-    public const POLL_LEAD_IN = '👆 السؤال في الرسالة أعلاه — اختر إجابتك:';
-
     private ?Api $telegram;
 
     public function __construct(
@@ -66,7 +57,7 @@ class QuizPoster
         $content = $this->contentHtml($quiz);
 
         $params = [
-            'question' => $this->pollQuestion($quiz),
+            'question' => $quiz->question,
             'options' => array_values($quiz->options),
             'type' => 'quiz',
             'is_anonymous' => false,
@@ -121,23 +112,13 @@ class QuizPoster
     }
 
     /**
-     * The poll's question line. When the quiz has a {@see DailyQuiz::$body}
-     * (code or a scenario that must render as formatted text), the wording
-     * lives in the message posted above the poll and the poll only carries a
-     * generic lead-in; otherwise the question itself is the poll question.
-     */
-    private function pollQuestion(DailyQuiz $quiz): string
-    {
-        return filled($quiz->body) ? self::POLL_LEAD_IN : $quiz->question;
-    }
-
-    /**
-     * The formatted HTML message shown just above the poll, or null when the
-     * quiz needs none. The body's markdown (fenced code included) and the
-     * question are rendered through the same converter the «سيك» assistant
-     * uses — so code becomes a real monospace <pre> block, sidestepping the
-     * bidi mangling a plain-text poll question suffers — but deliberately
-     * without the expandable-blockquote wrapper, so the question reads openly.
+     * The formatted scenario/code message shown just above the poll, or null
+     * when the quiz needs none. The body's markdown (fenced code included) is
+     * rendered through the same converter the «سيك» assistant uses — so code
+     * becomes a real monospace <pre> block, sidestepping the bidi mangling a
+     * plain-text poll question suffers — but deliberately without the
+     * expandable-blockquote wrapper, so it reads openly. The question itself
+     * stays on the poll, so it is visible in notifications and previews.
      */
     private function contentHtml(DailyQuiz $quiz): ?string
     {
@@ -145,9 +126,7 @@ class QuizPoster
             return null;
         }
 
-        $markdown = trim((string) $quiz->body)."\n\n".trim($quiz->question);
-
-        return (new TelegramMarkdownService)->toTelegramHtml($markdown);
+        return (new TelegramMarkdownService)->toTelegramHtml(trim((string) $quiz->body));
     }
 
     /**
