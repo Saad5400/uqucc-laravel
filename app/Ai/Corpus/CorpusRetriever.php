@@ -5,6 +5,7 @@ namespace App\Ai\Corpus;
 use App\Ai\Embeddings\TextEmbedder;
 use App\Models\Corpus\CorpusChunk;
 use App\Models\Corpus\CorpusItem;
+use App\Models\Page;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -50,9 +51,14 @@ class CorpusRetriever
     /**
      * Retrieve the chunks most relevant to $query, best first.
      *
+     * $includeHidden governs the audience: the public search endpoint leaves
+     * it false so pages hidden from the site nav never surface, while the AI
+     * assistant's search_content passes true so it can reach AI-visible pages
+     * that are hidden from the site. Documents are unaffected either way.
+     *
      * @return Collection<int, CorpusSearchResult>
      */
-    public function search(string $query, int $limit = 8): Collection
+    public function search(string $query, int $limit = 8, bool $includeHidden = false): Collection
     {
         $limit = max(1, $limit);
         $query = trim($query);
@@ -64,8 +70,8 @@ class CorpusRetriever
         $pool = max($limit * 4, 20);
 
         $legs = array_values(array_filter([
-            $this->keywordLeg($query, $pool),
-            $this->vectorLeg($query, $pool),
+            $this->keywordLeg($query, $pool, $includeHidden),
+            $this->vectorLeg($query, $pool, $includeHidden),
         ], fn (Collection $leg): bool => $leg->isNotEmpty()));
 
         return $this->fuse($legs)
@@ -81,7 +87,7 @@ class CorpusRetriever
      *
      * @return Collection<int, CorpusChunk>
      */
-    private function keywordLeg(string $query, int $pool): Collection
+    private function keywordLeg(string $query, int $pool, bool $includeHidden): Collection
     {
         $tokens = $this->normalizer->tokenize($query);
 
@@ -89,7 +95,7 @@ class CorpusRetriever
             return new Collection;
         }
 
-        $candidates = $this->readyChunks()
+        $candidates = $this->readyChunks($includeHidden)
             ->where(function (Builder $builder) use ($tokens): void {
                 foreach ($tokens as $token) {
                     $builder->orWhere('normalized_content', 'like', '%'.$token.'%');
@@ -127,7 +133,7 @@ class CorpusRetriever
      *
      * @return Collection<int, CorpusChunk>
      */
-    private function vectorLeg(string $query, int $pool): Collection
+    private function vectorLeg(string $query, int $pool, bool $includeHidden): Collection
     {
         if (! $this->onPostgres() || ! $this->embedderIsConfigured()) {
             return new Collection;
@@ -143,7 +149,7 @@ class CorpusRetriever
             return new Collection;
         }
 
-        return $this->readyChunks()
+        return $this->readyChunks($includeHidden)
             ->nearestNeighbors('embedding', new Vector($embedding), Distance::Cosine)
             ->limit($pool)
             ->get();
@@ -202,15 +208,28 @@ class CorpusRetriever
     }
 
     /**
+     * Ready + enabled chunks. Unless $includeHidden is set, page-sourced items
+     * whose page is hidden from the site nav are excluded — that keeps AI-only
+     * pages (ingested for the assistant) out of the public search endpoint,
+     * while the AI leg opts in. Documents are never nav-scoped.
+     *
      * @return Builder<CorpusChunk>
      */
-    private function readyChunks(): Builder
+    private function readyChunks(bool $includeHidden = false): Builder
     {
         return CorpusChunk::query()
             ->with('item')
-            ->whereHas('item', fn (Builder $items) => $items
-                ->where('status', CorpusItem::STATUS_READY)
-                ->where('enabled', true));
+            ->whereHas('item', function (Builder $items) use ($includeHidden): void {
+                $items
+                    ->where('status', CorpusItem::STATUS_READY)
+                    ->where('enabled', true);
+
+                if (! $includeHidden) {
+                    $items->whereNot(fn (Builder $hidden) => $hidden
+                        ->where('source_type', CorpusSourceType::Page)
+                        ->whereIn('source_id', Page::query()->where('hidden', true)->select('id')));
+                }
+            });
     }
 
     private function onPostgres(): bool

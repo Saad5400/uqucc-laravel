@@ -35,7 +35,11 @@ class IngestPages extends Command
             return self::FAILURE;
         }
 
-        $pages = Page::visible()->visibleToAi()->get();
+        // Gate on hidden_from_ai only, NOT website visibility: a page hidden
+        // from the site nav but exposed to the AI must still enter the corpus
+        // so search_content can surface it. CorpusRetriever keeps such pages
+        // out of the public search leg.
+        $pages = Page::visibleToAi()->get();
 
         $pruned = $this->pruneStaleItems($pages->pluck('id'));
 

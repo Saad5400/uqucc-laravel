@@ -60,10 +60,23 @@ it('renders nested content pages with breadcrumbs up to the root', function () {
     );
 });
 
-it('returns 404 for a hidden content page', function () {
-    PageFactory::new()->hidden()->create(['slug' => '/mkhfy']);
+it('returns 404 for a page hidden from both the site and the AI', function () {
+    PageFactory::new()->hidden()->hiddenFromAi()->create(['slug' => '/mkhfy']);
 
     $this->get('/mkhfy')->assertNotFound();
+});
+
+it('serves a page hidden from the site nav but visible to the AI', function () {
+    // Nav-hidden pages stay reachable by direct URL so an AI citation link
+    // does not 404 — they are simply absent from the navigation tree.
+    PageFactory::new()->hidden()->create(['slug' => '/dlyl-almstgdyn', 'title' => 'دليل المستجدين']);
+
+    $this->get('/dlyl-almstgdyn')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('ContentPage')
+            ->where('page.slug', '/dlyl-almstgdyn')
+        );
 });
 
 it('returns 404 for a missing content page', function () {

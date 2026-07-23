@@ -92,6 +92,32 @@ it('excludes chunks of a disabled item and surfaces them again once re-enabled',
         ->and($results->first()->content)->toContain('فريدة');
 });
 
+it('scopes nav-hidden pages out of public search but keeps them for the AI', function () {
+    $public = seedArabicPage('صفحة عامة', 'محتوى عام يذكر كلمة زقفول الفريدة');
+    $navHidden = Page::factory()->create([
+        'title' => 'دليل المستجدين',
+        'hidden' => true,
+        'hidden_from_ai' => false,
+        'html_content' => [
+            'type' => 'doc',
+            'content' => [
+                ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'محتوى المستجدين يذكر كلمة زقفول الفريدة']]],
+            ],
+        ],
+    ]);
+
+    // Public leg (the default the site search endpoint uses).
+    $publicResults = app(CorpusRetriever::class)->search('زقفول');
+
+    expect($publicResults->pluck('slug'))->toContain($public->slug)
+        ->not->toContain($navHidden->slug);
+
+    // AI leg opts in — the nav-hidden but AI-visible page is reachable.
+    $aiResults = app(CorpusRetriever::class)->search('زقفول', includeHidden: true);
+
+    expect($aiResults->pluck('slug'))->toContain($navHidden->slug);
+});
+
 it('respects the result limit', function () {
     foreach (range(1, 5) as $i) {
         seedArabicPage("صفحة رقم {$i}", "شرح البرمجة والتطوير في الصفحة رقم {$i}");

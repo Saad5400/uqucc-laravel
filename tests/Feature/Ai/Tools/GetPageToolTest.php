@@ -46,17 +46,18 @@ it('accepts the slug without a leading slash', function () {
     expect($reply)->toContain('# دليل التحويل');
 });
 
-it('never exposes hidden pages', function () {
+it('serves a page hidden from the site nav but visible to the AI', function () {
     Page::factory()->create([
-        'slug' => '/srri',
-        'title' => 'صفحة مخفية',
+        'slug' => '/dlyl-almstgdyn',
+        'title' => 'دليل المستجدين',
         'hidden' => true,
+        'hidden_from_ai' => false,
     ]);
 
-    $reply = (string) app(GetPageTool::class)->handle(new Request(['slug' => '/srri']));
+    $reply = (string) app(GetPageTool::class)->handle(new Request(['slug' => '/dlyl-almstgdyn']));
 
-    expect($reply)->toContain('لم يتم العثور')
-        ->not->toContain('صفحة مخفية');
+    expect($reply)->toContain('# دليل المستجدين')
+        ->toContain('slug: /dlyl-almstgdyn');
 });
 
 it('never exposes pages hidden from the AI assistant', function () {

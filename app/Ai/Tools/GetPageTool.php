@@ -43,7 +43,6 @@ class GetPageTool implements Tool
         $normalizedSlug = '/'.trim($slug, '/');
 
         $page = Page::query()
-            ->visible()
             ->visibleToAi()
             ->where('slug', $normalizedSlug)
             ->first();

@@ -151,17 +151,17 @@ describe('page ingestion', function () {
         expect(CorpusItem::query()->count())->toBe(0);
     });
 
-    it('evicts a page from the corpus when it becomes hidden', function () {
+    it('keeps a page in the corpus when it is hidden from the site nav only', function () {
         enableAiSearch();
 
-        $page = makeArabicPage('صفحة مخفية لاحقا', 'محتوى ظاهر');
+        $page = makeArabicPage('صفحة مخفية عن الموقع', 'محتوى ظاهر للذكاء');
 
         expect(CorpusItem::query()->forPage($page)->exists())->toBeTrue();
 
         $page->update(['hidden' => true]);
 
-        expect(CorpusItem::query()->forPage($page)->exists())->toBeFalse()
-            ->and(CorpusChunk::query()->count())->toBe(0);
+        expect(CorpusItem::query()->forPage($page)->exists())->toBeTrue()
+            ->and(CorpusChunk::query()->count())->toBeGreaterThan(0);
     });
 
     it('never ingests a page that is hidden from the AI assistant', function () {
@@ -199,19 +199,20 @@ describe('page ingestion', function () {
 });
 
 describe('ai:ingest-pages command', function () {
-    it('ingests all published pages and prunes stale corpus items', function () {
+    it('ingests every AI-visible page (including nav-hidden) and prunes stale corpus items', function () {
         enableAiSearch();
 
         $visible = makeArabicPage('صفحة ظاهرة', 'محتوى ظاهر');
-        makeArabicPage('صفحة مخفية', 'محتوى مخفي', ['hidden' => true]);
+        $navHidden = makeArabicPage('صفحة مخفية عن الموقع', 'محتوى مخفي عن الموقع', ['hidden' => true]);
 
         $stale = CorpusItem::factory()->create(['source_id' => 999999]);
 
         $this->artisan('ai:ingest-pages')->assertSuccessful();
 
         expect(CorpusItem::query()->forPage($visible)->exists())->toBeTrue()
+            ->and(CorpusItem::query()->forPage($navHidden)->exists())->toBeTrue()
             ->and(CorpusItem::query()->whereKey($stale->id)->exists())->toBeFalse()
-            ->and(CorpusItem::query()->count())->toBe(1);
+            ->and(CorpusItem::query()->count())->toBe(2);
     });
 
     it('excludes and prunes pages hidden from the AI assistant', function () {

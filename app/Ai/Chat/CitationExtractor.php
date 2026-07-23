@@ -77,8 +77,8 @@ class CitationExtractor
     /**
      * A successful get_page result ends with a "---" footer whose last line
      * is "slug: {slug}" (an optional freshness-date line sits in between);
-     * resolve the page title from the database (the tool only serves visible
-     * pages).
+     * resolve the page title from the database (the tool only serves
+     * AI-visible pages, which may be hidden from the site nav).
      *
      * @return list<array{title: string, slug: string, heading: string|null}>
      */
@@ -91,7 +91,7 @@ class CitationExtractor
         }
 
         $title = Page::query()
-            ->visible()
+            ->visibleToAi()
             ->where('slug', $matches[1])
             ->value('title');
 

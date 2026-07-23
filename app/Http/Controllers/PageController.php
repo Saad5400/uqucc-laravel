@@ -44,6 +44,13 @@ class PageController extends Controller
 
     /**
      * Get a cached page by slug with visibility check and eager loading.
+     *
+     * A page reachable by direct URL if it is either shown on the site
+     * (hidden = false) OR exposed to the AI (hidden_from_ai = false): the
+     * latter keeps AI-cited pages that are hidden from the nav from 404ing
+     * when a user clicks the citation. A page hidden from both stays private.
+     * Nav-only surfaces (children/siblings/breadcrumbs) still filter on
+     * `hidden` alone, so such pages never appear in navigation.
      */
     private function getCachedPageBySlug(string $slug): ?Page
     {
@@ -53,7 +60,7 @@ class PageController extends Controller
             $cacheKey,
             config('app-cache.pages.ttl', 1800),
             fn () => Page::where('slug', $slug)
-                ->where('hidden', false)
+                ->where(fn ($query) => $query->where('hidden', false)->orWhere('hidden_from_ai', false))
                 ->with(['users', 'children' => function ($query) {
                     $query->where('hidden', false)->orderBy('order');
                 }])

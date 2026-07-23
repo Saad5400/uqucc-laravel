@@ -58,7 +58,7 @@ class SearchContentTool implements Tool
 
         $limit = min(self::MAX_LIMIT, max(1, $request->integer('limit', 8)));
 
-        $results = $this->retriever->search($query, $limit);
+        $results = $this->retriever->search($query, $limit, includeHidden: true);
 
         if ($results->isEmpty()) {
             return "لا توجد نتائج مطابقة لـ \"{$query}\". No results matched.";
