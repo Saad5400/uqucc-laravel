@@ -24,7 +24,7 @@ function mcpJsonRpc(array $overrides = []): array
     ], $overrides);
 }
 
-it('lists all ten tools over the http transport', function () {
+it('lists all nine tools over the http transport', function () {
     $response = $this->postJson('/mcp', mcpJsonRpc(['method' => 'tools/list']));
 
     $response->assertOk();
@@ -40,7 +40,6 @@ it('lists all ten tools over the http transport', function () {
         'calculate_transfer',
         'truth_table',
         'date_time',
-        'find_tutors',
         'list_stale_pages',
     ]);
 

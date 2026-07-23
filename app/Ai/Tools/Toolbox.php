@@ -29,7 +29,7 @@ class Toolbox
             CalculateTransferTool::class,
             TruthTableTool::class,
             DateTimeTool::class,
-            FindTutorsTool::class,
+            // FindTutorsTool::class, // Private tutors temporarily disabled from the student-facing AI.
             ListStalePagesTool::class,
         ];
     }
