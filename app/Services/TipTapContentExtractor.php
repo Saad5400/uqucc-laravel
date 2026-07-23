@@ -10,6 +10,11 @@ use Illuminate\Support\Facades\Cache;
 class TipTapContentExtractor
 {
     /**
+     * Whether traversal is currently inside a blockquote (Telegram forbids nested quotes).
+     */
+    protected bool $insideBlockquote = false;
+
+    /**
      * Get extracted content for a page with caching.
      *
      * @return array{message: string|null, buttons: array, attachments: array}
@@ -155,9 +160,24 @@ class TipTapContentExtractor
                     break;
 
                 case 'blockquote':
-                    $textParts[] = '> ';
+                    if ($this->insideBlockquote) {
+                        if (! empty($node['content'])) {
+                            $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, $inList);
+                        }
+                        break;
+                    }
+
+                    $this->insideBlockquote = true;
+                    $quoteParts = [];
                     if (! empty($node['content'])) {
-                        $this->traverseNodes($node['content'], $textParts, $links, $attachments, $marks, $inList);
+                        $this->traverseNodes($node['content'], $quoteParts, $links, $attachments, $marks, $inList);
+                    }
+                    $this->insideBlockquote = false;
+
+                    $quoteText = trim(implode('', $quoteParts));
+                    if ($quoteText !== '') {
+                        $textParts[] = '<blockquote expandable>'.$quoteText.'</blockquote>';
+                        $textParts[] = "\n\n";
                     }
                     break;
 
@@ -371,7 +391,7 @@ class TipTapContentExtractor
      */
     protected function extractFromHtmlString(string $html, array &$textParts, array &$links, array &$attachments, bool $inList = false): void
     {
-        $dom = new DOMDocument();
+        $dom = new DOMDocument;
         libxml_use_internal_errors(true);
         $loaded = $dom->loadHTML('<?xml encoding="UTF-8">'.$html, LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD);
         libxml_clear_errors();

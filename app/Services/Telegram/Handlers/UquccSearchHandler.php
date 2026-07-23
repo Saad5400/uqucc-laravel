@@ -331,12 +331,23 @@ class UquccSearchHandler extends BaseHandler
 
         // Check if we need to truncate
         $resultWithoutLink = implode("\n\n", array_filter($lines));
+
+        // Collapsed quotes keep the message visually short, so allow the full custom limit
+        if (! $isCaption && str_contains($resultWithoutLink, '<blockquote')) {
+            $limit = self::CUSTOM_MESSAGE_LIMIT;
+        }
+
         $needsTruncation = mb_strlen(strip_tags($resultWithoutLink)) > $limit;
 
         if ($needsTruncation) {
             // Reserve space for the "read more" link
             $readMoreLength = mb_strlen("\n\n...\n\n".strip_tags($readMoreLink));
             $truncated = $this->truncateHtmlSafe($resultWithoutLink, $limit - $readMoreLength - 50);
+
+            // A hidden page's URL 404s publicly, so skip the read-more link for it
+            if ($page->hidden) {
+                return $truncated."\n\n...";
+            }
 
             return $truncated."\n\n...\n\n".$readMoreLink;
         }
@@ -373,8 +384,8 @@ class UquccSearchHandler extends BaseHandler
         // Convert br tags to newlines
         $html = preg_replace('/<br\s*\/?>/i', "\n", $html);
 
-        // Keep only Telegram-supported HTML tags
-        $html = strip_tags($html, '<b><strong><i><em><u><s><strike><del><code><pre><a>');
+        // Keep only Telegram-supported HTML tags (blockquote keeps its expandable attribute)
+        $html = strip_tags($html, '<b><strong><i><em><u><s><strike><del><code><pre><a><blockquote>');
 
         // Normalize strong to b, em to i for consistency
         $html = preg_replace('/<strong>/i', '<b>', $html);

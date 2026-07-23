@@ -5,6 +5,8 @@ namespace App\Ai\Copilot;
 use App\Ai\Corpus\PageContentExtractor;
 use Illuminate\Support\Str;
 use Tiptap\Editor;
+use Tiptap\Extensions\StarterKit;
+use Tiptap\Marks\Link;
 
 /**
  * Converts between the Page editor's TipTap JSON document and the markdown
@@ -36,7 +38,7 @@ class TipTapContent
     {
         $html = (string) Str::markdown($markdown);
 
-        return self::normalize((new Editor)->setContent($html)->getDocument());
+        return self::normalize(self::editor()->setContent($html)->getDocument());
     }
 
     /**
@@ -80,7 +82,18 @@ class TipTapContent
 
         $html = str_contains($text, '<') ? $text : (string) Str::markdown($text);
 
-        return self::normalize((new Editor)->setContent($html)->getDocument());
+        return self::normalize(self::editor()->setContent($html)->getDocument());
+    }
+
+    /**
+     * The default tiptap-php StarterKit has no Link mark, which silently
+     * strips every anchor on markdown → document conversion.
+     */
+    private static function editor(): Editor
+    {
+        return new Editor([
+            'extensions' => [new StarterKit, new Link],
+        ]);
     }
 
     /**

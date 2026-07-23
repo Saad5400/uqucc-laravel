@@ -68,3 +68,19 @@ it('appends onto legacy string content', function () {
     expect($json)->toContain('نص قديم')
         ->and($json)->toContain('قسم جديد');
 });
+
+it('preserves markdown links as link marks in the document', function () {
+    $document = TipTapContent::toDocument('راجع [الشرح](https://t.me/uqucc_chat/445565) هنا.');
+
+    $json = json_encode($document, JSON_UNESCAPED_UNICODE);
+
+    expect($json)->toContain('"type":"link"')
+        ->toContain('https:\/\/t.me\/uqucc_chat\/445565');
+});
+
+it('preserves links inside blockquotes', function () {
+    $document = TipTapContent::toDocument("> الجواب مع [رابط](https://example.com/a)\n");
+
+    expect($document['content'][0]['type'])->toBe('blockquote')
+        ->and(json_encode($document))->toContain('https:\/\/example.com\/a');
+});
