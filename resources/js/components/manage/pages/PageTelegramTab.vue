@@ -231,8 +231,8 @@ function submit(): void {
                 </div>
 
                 <div class="flex justify-end">
-                    <span :title="!form.isDirty && !form.processing ? 'لا توجد تغييرات لحفظها' : undefined">
-                        <Button type="submit" :disabled="!form.isDirty || form.processing">
+                    <span :title="!isDirty && !form.processing ? 'لا توجد تغييرات لحفظها' : undefined">
+                        <Button type="submit" :disabled="!isDirty || form.processing">
                             <Loader2 v-if="form.processing" class="size-4 animate-spin" />
                             حفظ إعدادات تيليجرام
                         </Button>
