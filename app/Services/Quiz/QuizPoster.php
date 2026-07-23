@@ -6,6 +6,7 @@ use App\Helpers\ArabicPlural;
 use App\Models\DailyQuiz;
 use App\Models\QuizPlayer;
 use App\Models\QuizPost;
+use App\Services\TelegramMarkdownService;
 use App\Settings\QuizSettings;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -24,6 +25,15 @@ class QuizPoster
 {
     /** How many players the weekly winners announcement names. */
     public const WEEKLY_WINNERS = 20;
+
+    /**
+     * The poll question used when the quiz carries a {@see DailyQuiz::$body} —
+     * the real wording and any code live in the formatted message sent just
+     * above the poll, so the poll itself only points the reader up to it. Poll
+     * questions are plain text with no monospace, which is exactly why code
+     * cannot live here.
+     */
+    public const POLL_LEAD_IN = '👆 السؤال في الرسالة أعلاه — اختر إجابتك:';
 
     private ?Api $telegram;
 
@@ -53,8 +63,10 @@ class QuizPoster
 
         $this->closeOpenQuizzes();
 
+        $content = $this->contentHtml($quiz);
+
         $params = [
-            'question' => $quiz->question,
+            'question' => $this->pollQuestion($quiz),
             'options' => array_values($quiz->options),
             'type' => 'quiz',
             'is_anonymous' => false,
@@ -67,6 +79,14 @@ class QuizPoster
 
         foreach ($this->settings->targets() as $target) {
             try {
+                if ($content !== null) {
+                    $this->telegram()->sendMessage($target->apply([
+                        'text' => $content,
+                        'parse_mode' => 'HTML',
+                        'disable_web_page_preview' => true,
+                    ]));
+                }
+
                 $message = $this->telegram()->sendPoll($target->apply($params));
 
                 $post = QuizPost::create([
@@ -98,6 +118,36 @@ class QuizPoster
         ]);
 
         return $quiz->refresh();
+    }
+
+    /**
+     * The poll's question line. When the quiz has a {@see DailyQuiz::$body}
+     * (code or a scenario that must render as formatted text), the wording
+     * lives in the message posted above the poll and the poll only carries a
+     * generic lead-in; otherwise the question itself is the poll question.
+     */
+    private function pollQuestion(DailyQuiz $quiz): string
+    {
+        return filled($quiz->body) ? self::POLL_LEAD_IN : $quiz->question;
+    }
+
+    /**
+     * The formatted HTML message shown just above the poll, or null when the
+     * quiz needs none. The body's markdown (fenced code included) and the
+     * question are rendered through the same converter the «سيك» assistant
+     * uses — so code becomes a real monospace <pre> block, sidestepping the
+     * bidi mangling a plain-text poll question suffers — but deliberately
+     * without the expandable-blockquote wrapper, so the question reads openly.
+     */
+    private function contentHtml(DailyQuiz $quiz): ?string
+    {
+        if (! filled($quiz->body)) {
+            return null;
+        }
+
+        $markdown = trim((string) $quiz->body)."\n\n".trim($quiz->question);
+
+        return (new TelegramMarkdownService)->toTelegramHtml($markdown);
     }
 
     /**

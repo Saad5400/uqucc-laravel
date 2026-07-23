@@ -25,6 +25,7 @@ class UpdateDailyQuizRequest extends FormRequest
     {
         return [
             'question' => ['required', 'string', 'max:'.QuizAuthor::MAX_QUESTION_CHARS],
+            'body' => ['nullable', 'string', 'max:'.QuizAuthor::MAX_BODY_CHARS],
             'options' => ['required', 'array', 'size:4'],
             'options.*' => ['required', 'string', 'max:'.QuizAuthor::MAX_OPTION_CHARS, 'distinct'],
             'correct_option' => ['required', 'integer', 'between:0,3'],
@@ -40,6 +41,7 @@ class UpdateDailyQuizRequest extends FormRequest
         return [
             'question.required' => 'نص السؤال مطلوب.',
             'question.max' => 'السؤال أطول من حد تيليجرام (300 حرف).',
+            'body.max' => 'محتوى السؤال (الكود/المقدمة) أطول من الحد ('.QuizAuthor::MAX_BODY_CHARS.' حرف).',
             'options.required' => 'الخيارات مطلوبة.',
             'options.size' => 'يجب أن تكون الخيارات أربعة بالضبط.',
             'options.*.required' => 'لا يمكن ترك خيار فارغاً.',

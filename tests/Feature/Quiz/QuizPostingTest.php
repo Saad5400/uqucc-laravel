@@ -79,6 +79,56 @@ it('posts today\'s ready quiz as a non-anonymous quiz poll and records the post'
         ->and($post->closed_at)->toBeNull();
 });
 
+it('posts a quiz without a body as a poll only, with the question as the poll question', function () {
+    DailyQuiz::factory()->create([
+        'quiz_date' => today(),
+        'question' => 'ما ناتج 1 + 1؟',
+        'body' => null,
+    ]);
+
+    $this->artisan('quiz:post')->assertExitCode(0);
+
+    expect($this->fake->sentPolls)->toHaveCount(1)
+        ->and($this->fake->sentPolls[0]['question'])->toBe('ما ناتج 1 + 1؟')
+        ->and($this->fake->sentMessages)->toBeEmpty();
+});
+
+it('sends the body as a formatted HTML message above the poll and gives the poll a lead-in question', function () {
+    DailyQuiz::factory()->withCode()->create(['quiz_date' => today()]);
+
+    $this->artisan('quiz:post')->assertExitCode(0);
+
+    expect($this->fake->sentMessages)->toHaveCount(1);
+
+    $content = $this->fake->sentMessages[0];
+
+    expect($content['chat_id'])->toBe(-100200300)
+        ->and($content['parse_mode'])->toBe('HTML')
+        ->and($content['text'])->toContain('<pre>print(2 ** 3)</pre>')
+        ->and($content['text'])->toContain('ماذا يُطبع؟')
+        ->and($content['text'])->not->toContain('```');
+
+    expect($this->fake->sentPolls)->toHaveCount(1)
+        ->and($this->fake->sentPolls[0]['question'])->toBe(QuizPoster::POLL_LEAD_IN);
+});
+
+it('does not post a contextless poll when the body message fails to send', function () {
+    $this->fake = new class extends FakeTelegramApi
+    {
+        public function sendMessage(array $params): \Telegram\Bot\Objects\Message
+        {
+            throw new \RuntimeException('body send failed');
+        }
+    };
+    $this->app->bind(QuizPoster::class, fn (): QuizPoster => new QuizPoster(app(QuizSettings::class), $this->fake));
+
+    DailyQuiz::factory()->withCode()->create(['quiz_date' => today()]);
+
+    $this->artisan('quiz:post')->assertExitCode(1);
+
+    expect($this->fake->sentPolls)->toBeEmpty();
+});
+
 it('posts to every configured group and pins each post', function () {
     $settings = app(QuizSettings::class);
     $settings->chat_ids = ['-100200300', '-100400500'];

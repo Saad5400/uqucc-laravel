@@ -17,12 +17,25 @@ class DailyQuizFactory extends Factory
             'quiz_topic_id' => null,
             'quiz_date' => today(),
             'question' => 'ما هي نتيجة 2 + 2 في النظام العشري؟',
+            'body' => null,
             'options' => ['3', '4', '5', '22'],
             'correct_option' => 1,
             'explanation' => 'الجمع الحسابي البسيط: 2 + 2 = 4.',
             'hint' => 'فكّر في أبسط عملية جمع.',
             'status' => DailyQuiz::STATUS_READY,
         ];
+    }
+
+    /**
+     * A quiz whose scenario/code lives in a `body` block — posted as a
+     * formatted message above the poll, which then carries only a lead-in.
+     */
+    public function withCode(): static
+    {
+        return $this->state(fn (): array => [
+            'question' => 'ماذا يُطبع؟',
+            'body' => "في الكود التالي:\n```py\nprint(2 ** 3)\n```",
+        ]);
     }
 
     /**

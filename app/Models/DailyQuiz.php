@@ -29,6 +29,7 @@ class DailyQuiz extends Model
         'quiz_topic_id',
         'quiz_date',
         'question',
+        'body',
         'options',
         'correct_option',
         'explanation',

@@ -35,6 +35,8 @@ class UpdateDailyQuizAction extends AdminAction
         return 'Edit a not-yet-posted daily quiz (تعديل سؤال اليوم قبل نشره). '
             .'Provide quiz_id (from get_daily_quiz), question, exactly four distinct options, '
             .'correct_option (0-3 index into options) and an optional explanation. '
+            .'Put any code or scenario in the optional body field (markdown; fence code with ``` ) — '
+            .'it is posted as a formatted message above the poll, so keep the question a short standalone sentence. '
             .'Only a ready (unposted) quiz can be edited.';
     }
 
@@ -50,6 +52,9 @@ class UpdateDailyQuizAction extends AdminAction
             'question' => $schema->string()
                 ->description('The question text (max '.QuizAuthor::MAX_QUESTION_CHARS.' chars).')
                 ->required(),
+            'body' => $schema->string()
+                ->description('Optional code/scenario shown as a formatted message above the poll (markdown, fence '
+                    .'code with ``` ; max '.QuizAuthor::MAX_BODY_CHARS.' chars). Empty string to clear it.'),
             'options' => $schema->array()
                 ->items($schema->string())
                 ->description('Exactly four distinct answer options (each max '.QuizAuthor::MAX_OPTION_CHARS.' chars).')
@@ -116,10 +121,19 @@ class UpdateDailyQuizAction extends AdminAction
             throw new AdminActionException('الشرح أطول من حد تيليجرام ('.QuizAuthor::MAX_EXPLANATION_CHARS.' حرف).');
         }
 
+        $body = array_key_exists('body', $input) && $input['body'] !== null
+            ? trim((string) $input['body'])
+            : null;
+
+        if ($body !== null && mb_strlen($body) > QuizAuthor::MAX_BODY_CHARS) {
+            throw new AdminActionException('محتوى السؤال (body) أطول من الحد ('.QuizAuthor::MAX_BODY_CHARS.' حرف).');
+        }
+
         return [
             'quiz_id' => $quiz->id,
             'quiz_date' => $quiz->quiz_date->toDateString(),
             'question' => $question,
+            'body' => $body === '' ? null : $body,
             'options' => $options,
             'correct_option' => (int) $correct,
             'explanation' => $explanation === '' ? null : $explanation,
@@ -151,6 +165,7 @@ class UpdateDailyQuizAction extends AdminAction
 
         $quiz->update([
             'question' => $normalized['question'],
+            'body' => $normalized['body'],
             'options' => $normalized['options'],
             'correct_option' => $normalized['correct_option'],
             'explanation' => $normalized['explanation'],

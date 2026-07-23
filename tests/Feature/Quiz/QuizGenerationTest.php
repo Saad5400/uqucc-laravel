@@ -55,6 +55,45 @@ it('generates a ready quiz from the least-recently-used active topic', function 
         ->and($stale->refresh()->last_used_at->isSameDay(now()->subDays(2)))->toBeTrue();
 });
 
+it('stores the optional body block from the generated question', function () {
+    QuizTopic::factory()->create();
+
+    QuizAuthoringAgent::fake([quizJson([
+        'question' => 'ماذا يُطبع؟',
+        'body' => "في الكود التالي:\n```py\nprint(2 ** 3)\n```",
+    ])]);
+
+    $this->artisan('quiz:generate')->assertExitCode(0);
+
+    $quiz = DailyQuiz::forDate(today());
+
+    expect($quiz->question)->toBe('ماذا يُطبع؟')
+        ->and($quiz->body)->toBe("في الكود التالي:\n```py\nprint(2 ** 3)\n```");
+});
+
+it('leaves the body null when the generated question omits it', function () {
+    QuizTopic::factory()->create();
+
+    QuizAuthoringAgent::fake([quizJson()]);
+
+    $this->artisan('quiz:generate')->assertExitCode(0);
+
+    expect(DailyQuiz::forDate(today())->body)->toBeNull();
+});
+
+it('rejects a body longer than the limit', function () {
+    QuizTopic::factory()->create();
+
+    QuizAuthoringAgent::fake([
+        quizJson(['body' => str_repeat('ا', 701)]),
+        quizJson(['body' => str_repeat('ا', 701)]),
+    ]);
+
+    $this->artisan('quiz:generate')->assertExitCode(1);
+
+    expect(DailyQuiz::query()->count())->toBe(0);
+});
+
 it('skips silently while the quiz feature is disabled', function () {
     $settings = app(QuizSettings::class);
     $settings->enabled = false;

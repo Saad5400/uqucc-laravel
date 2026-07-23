@@ -47,6 +47,7 @@ interface Quiz {
     id: number;
     quiz_date: string;
     question: string;
+    body: string | null;
     options: string[];
     correct_option: number;
     explanation: string | null;
@@ -115,6 +116,7 @@ const editingQuiz = ref<Quiz | null>(null);
 
 const quizForm = useForm({
     question: '',
+    body: '' as string | null,
     options: ['', '', '', ''],
     correct_option: '0',
     explanation: '' as string | null,
@@ -124,6 +126,7 @@ function openQuizEditor(quiz: Quiz): void {
     editingQuiz.value = quiz;
     quizForm.clearErrors();
     quizForm.question = quiz.question;
+    quizForm.body = quiz.body ?? '';
     quizForm.options = [...quiz.options];
     quizForm.correct_option = String(quiz.correct_option);
     quizForm.explanation = quiz.explanation ?? '';
@@ -138,6 +141,7 @@ function submitQuizEditor(): void {
         .transform((data) => ({
             ...data,
             correct_option: Number(data.correct_option),
+            body: data.body === '' ? null : data.body,
             explanation: data.explanation === '' ? null : data.explanation,
         }))
         .put(`/manage/quiz/quizzes/${editingQuiz.value.id}`, {
@@ -302,10 +306,7 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
 
 <template>
     <Head title="سؤال اليوم" />
-    <PageHeader
-        title="سؤال اليوم"
-        description="سؤال يومي بالذكاء الاصطناعي يُنشر في مجموعة التليجرام، مع نقاط وسلاسل أيام ولوحة متصدرين"
-    />
+    <PageHeader title="سؤال اليوم" description="سؤال يومي بالذكاء الاصطناعي يُنشر في مجموعة التليجرام، مع نقاط وسلاسل أيام ولوحة متصدرين" />
 
     <div class="space-y-6">
         <div v-if="!configured" class="rounded-lg border border-border bg-muted/50 p-4 text-sm">
@@ -372,6 +373,13 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                             </DropdownMenu>
                         </div>
 
+                        <pre
+                            v-if="quiz.body"
+                            dir="ltr"
+                            class="overflow-x-auto rounded-md border border-border bg-muted/40 p-2 text-start font-mono text-xs whitespace-pre-wrap"
+                            >{{ quiz.body }}</pre
+                        >
+
                         <ol class="grid gap-1 text-sm sm:grid-cols-2">
                             <li
                                 v-for="(option, index) in quiz.options"
@@ -412,9 +420,7 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                     <li v-for="topic in topics" :key="topic.id" class="flex items-center gap-3 border-b border-border p-3 last:border-b-0">
                         <div class="min-w-0 flex-1 space-y-1">
                             <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                <span class="font-medium" :class="topic.is_active ? '' : 'text-muted-foreground line-through'">{{
-                                    topic.name
-                                }}</span>
+                                <span class="font-medium" :class="topic.is_active ? '' : 'text-muted-foreground line-through'">{{ topic.name }}</span>
                                 <Badge v-if="topic.is_spotlight" variant="secondary">يوم التخصص</Badge>
                             </div>
                             <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -459,10 +465,13 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
 
         <!-- Leaderboards -->
         <div class="grid gap-6 lg:grid-cols-2">
-            <Card v-for="board in [
-                { key: 'weekly', title: 'متصدرو الأسبوع', players: weeklyTop },
-                { key: 'allTime', title: 'متصدرو كل الأوقات', players: allTimeTop },
-            ]" :key="board.key">
+            <Card
+                v-for="board in [
+                    { key: 'weekly', title: 'متصدرو الأسبوع', players: weeklyTop },
+                    { key: 'allTime', title: 'متصدرو كل الأوقات', players: allTimeTop },
+                ]"
+                :key="board.key"
+            >
                 <CardHeader>
                     <CardTitle class="text-lg">{{ board.title }}</CardTitle>
                 </CardHeader>
@@ -480,12 +489,14 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                             class="flex items-center gap-3 rounded-md px-2 py-1.5"
                             :class="index < 3 ? 'bg-muted/50' : ''"
                         >
-                            <span class="w-6 text-center text-sm tabular-nums text-muted-foreground">{{ index + 1 }}</span>
+                            <span class="w-6 text-center text-sm text-muted-foreground tabular-nums">{{ index + 1 }}</span>
                             <span class="min-w-0 flex-1 truncate">
                                 {{ player.name }}
                                 <span v-if="player.username" dir="ltr" class="text-xs text-muted-foreground">@{{ player.username }}</span>
                             </span>
-                            <span class="text-xs text-muted-foreground">🔥 <span class="tabular-nums">{{ player.current_streak }}</span></span>
+                            <span class="text-xs text-muted-foreground"
+                                >🔥 <span class="tabular-nums">{{ player.current_streak }}</span></span
+                            >
                             <span class="text-sm font-medium tabular-nums">{{ player.points }}</span>
                         </li>
                     </ol>
@@ -515,7 +526,8 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                         <div class="space-y-1">
                             <Label for="quiz-reminders">تذكيرات المشاركة</Label>
                             <p class="text-xs text-muted-foreground">
-                                تذكير لطيف بالردّ على السؤال المفتوح: مرة مساءً إن كانت المشاركة قليلة، ومرة أخيرة قبل الإغلاق مع تلميح. يردّ على رسالة السؤال نفسها كي لا يزعج المجموعة.
+                                تذكير لطيف بالردّ على السؤال المفتوح: مرة مساءً إن كانت المشاركة قليلة، ومرة أخيرة قبل الإغلاق مع تلميح. يردّ على
+                                رسالة السؤال نفسها كي لا يزعج المجموعة.
                             </p>
                         </div>
                         <Switch id="quiz-reminders" v-model="settingsForm.reminders_enabled" />
@@ -564,7 +576,14 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
     </div>
 
     <!-- Edit quiz dialog -->
-    <Dialog :open="editingQuiz !== null" @update:open="(value) => { if (!value) editingQuiz = null; }">
+    <Dialog
+        :open="editingQuiz !== null"
+        @update:open="
+            (value) => {
+                if (!value) editingQuiz = null;
+            }
+        "
+    >
         <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-lg">
             <DialogHeader>
                 <DialogTitle>تعديل السؤال</DialogTitle>
@@ -578,9 +597,24 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                 </div>
 
                 <div class="space-y-2">
+                    <Label for="quiz-body">الكود / المقدمة (اختياري)</Label>
+                    <Textarea
+                        id="quiz-body"
+                        v-model="quizForm.body"
+                        dir="ltr"
+                        rows="5"
+                        class="font-mono text-sm"
+                        placeholder="ضع الكود داخل سياج ```py … ``` — يُنشر كرسالة منسّقة فوق التصويت، وتُصبح رسالة التصويت مجرد «اختر إجابتك»."
+                        :aria-invalid="quizForm.errors.body ? true : undefined"
+                    />
+                    <p v-if="quizForm.errors.body" class="text-sm text-destructive-foreground">{{ quizForm.errors.body }}</p>
+                    <p v-else class="text-xs text-muted-foreground">يدعم ماركداون. ضع الكود بين ثلاث علامات اقتباس خلفية ليظهر بخط ثابت.</p>
+                </div>
+
+                <div class="space-y-2">
                     <Label>الخيارات</Label>
                     <div v-for="index in [0, 1, 2, 3]" :key="index" class="flex items-center gap-2">
-                        <span class="w-5 text-center text-sm tabular-nums text-muted-foreground">{{ index + 1 }}</span>
+                        <span class="w-5 text-center text-sm text-muted-foreground tabular-nums">{{ index + 1 }}</span>
                         <Input v-model="quizForm.options[index]" :aria-label="`الخيار ${index + 1}`" />
                     </div>
                     <p v-if="optionsError" class="text-sm text-destructive-foreground">{{ optionsError }}</p>
@@ -682,7 +716,11 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
         confirm-label="حذف"
         :processing="deleteProcessing"
         @confirm="deleteQuiz"
-        @update:open="(value) => { if (!value) deletingQuiz = null; }"
+        @update:open="
+            (value) => {
+                if (!value) deletingQuiz = null;
+            }
+        "
     >
         سيُحذف هذا السؤال نهائياً. يمكنك بعدها توليد سؤال جديد لليوم نفسه.
     </ConfirmDialog>
@@ -694,7 +732,11 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
         confirm-label="حذف"
         :processing="topicDeleteProcessing"
         @confirm="deleteTopic"
-        @update:open="(value) => { if (!value) deletingTopic = null; }"
+        @update:open="
+            (value) => {
+                if (!value) deletingTopic = null;
+            }
+        "
     >
         <template v-if="deletingTopic">
             سيُحذف موضوع «{{ deletingTopic.name }}» — الأسئلة السابقة المولّدة منه تبقى كما هي. إن أردت إيقافه مؤقتاً فقط، استخدم مفتاح التفعيل بدلاً

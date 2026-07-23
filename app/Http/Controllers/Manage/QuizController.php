@@ -69,6 +69,7 @@ class QuizController extends Controller
                     'id' => $quiz->id,
                     'quiz_date' => $quiz->quiz_date->toDateString(),
                     'question' => $quiz->question,
+                    'body' => $quiz->body,
                     'options' => $quiz->options,
                     'correct_option' => $quiz->correct_option,
                     'explanation' => $quiz->explanation,

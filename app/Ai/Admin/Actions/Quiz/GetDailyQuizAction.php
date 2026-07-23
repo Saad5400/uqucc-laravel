@@ -112,9 +112,16 @@ class GetDailyQuizAction extends AdminAction
             'الحالة: '.($statuses[$quiz->status] ?? $quiz->status),
             'الموضوع: '.($quiz->topic?->name ?? '—'),
             '',
-            $quiz->question,
-            $options,
         ];
+
+        if (filled($quiz->body)) {
+            $lines[] = 'المحتوى (body — يُنشر فوق التصويت):';
+            $lines[] = $quiz->body;
+            $lines[] = '';
+        }
+
+        $lines[] = $quiz->question;
+        $lines[] = $options;
 
         if (filled($quiz->explanation)) {
             $lines[] = 'الشرح: '.$quiz->explanation;

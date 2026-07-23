@@ -17,8 +17,10 @@ use Throwable;
  * {@see DailyQuiz} row admins may still edit before it is posted.
  *
  * The output must survive Telegram's quiz-poll limits verbatim (question 300
- * chars, options 100, explanation 200), so those limits are part of the
- * contract here: a response that breaks them is rejected and retried once.
+ * chars, options 100, explanation 200) plus the optional `body` (700 chars —
+ * the code/scenario posted as its own formatted message above the poll), so
+ * those limits are part of the contract here: a response that breaks them is
+ * rejected and retried once.
  * Gated like every paid feature: the AI master switch, the OpenRouter key,
  * and the daily spend budget; each call's cost lands on the ledger under the
  * `quiz` feature.
@@ -34,6 +36,14 @@ class QuizAuthor
     public const MAX_OPTION_CHARS = 100;
 
     public const MAX_EXPLANATION_CHARS = 200;
+
+    /**
+     * The optional scenario/code block posted as its own formatted message
+     * above the poll. It is a normal Telegram message (not a poll field), so
+     * the cap is generous — enough for a short code snippet plus framing,
+     * well under Telegram's 4096-char message limit.
+     */
+    public const MAX_BODY_CHARS = 700;
 
     /** A short non-spoiler teaser used in the "answer today's question" reminders. */
     public const MAX_HINT_CHARS = 120;
@@ -53,8 +63,13 @@ class QuizAuthor
         - اجعله سؤالاً يُشغّل التفكير لا الذاكرة: توقّع ناتج كود قصير جداً، اكتشف الخطأ، لغز ثنائي أو منطقي صغير، تطبيق مفهوم على موقف عملي يومي، أو «أيها المختلف عن البقية».
         - ممنوع تماماً أسئلة الحفظ الجاف: «أي قانون/عالم/سنة/اختصار يعني...» والتعاريف المنسوخة — هذا النوع ممل ولن يتفاعل معه أحد.
         - المستوى: يستطيع طالب السنة الأولى أو الثانية الوصول للإجابة بالتفكير أثناء قراءة السؤال، ويستمتع به طالب السنة الرابعة. لا تشترط مادة متقدمة.
-        - إذا استخدمت كوداً فاجعله من سطر إلى أربعة أسطر كحد أقصى، بأسلوب مفهوم لدارسي جافا وبايثون معاً ما أمكن.
         - سؤال واحد واضح له إجابة صحيحة واحدة لا لبس فيها، وثلاثة بدائل خاطئة معقولة يقع فيها المتسرع (ليست هزلية ولا واضحة الخطأ).
+
+        الكود والسيناريو (حقل body):
+        - إذا احتاج السؤال إلى كود أو مقدمة/سيناريو، ضعه في حقل body منفصلاً — لا داخل نص السؤال. يُنشر body كرسالة منسّقة فوق التصويت مباشرة.
+        - ضع أي كود داخل سياج ماركداون بلغته، هكذا: ‏```py … ``` أو ‏```java … ``` — ليظهر بخط ثابت واتجاه سليم. اجعله من سطر إلى أربعة أسطر كحد أقصى، ومفهوماً لدارسي جافا وبايثون معاً ما أمكن.
+        - في هذه الحالة اجعل حقل question جملة استفهامية قصيرة ومستقلة تُقرأ وحدها (مثل «ماذا يُطبع؟» أو «ماذا يحدث عند التنفيذ؟») — لأن التصويت لا يعرض نص body.
+        - إن لم يحتَج السؤال إلى كود ولا مقدمة، اترك body سلسلة فارغة "" واكتب السؤال كاملاً في question.
 
         اللغة:
         - اكتب بالعربية الفصحى المبسطة كما تُشرح المواد في القاعات: المصطلح بالعربية وبجانبه المصطلح الإنجليزي بين قوسين، مثل «المكدس (Stack)» و«الاستدعاء الذاتي (Recursion)».
@@ -66,10 +81,11 @@ class QuizAuthor
         - مثال جيد: «فكّر في وحدات القياس والفرق بينها» — لا تذكر الإجابة الصحيحة ولا رقم الخيار.
 
         الحدود الصارمة:
-        - السؤال 300 حرف كحد أقصى، كل خيار 100 حرف كحد أقصى، الشرح 200 حرف كحد أقصى، التلميح 120 حرف كحد أقصى.
+        - السؤال 300 حرف كحد أقصى، حقل body 700 حرف كحد أقصى، كل خيار 100 حرف كحد أقصى، الشرح 200 حرف كحد أقصى، التلميح 120 حرف كحد أقصى.
         - الشرح جملة أو جملتان تشرحان لماذا الإجابة صحيحة — يظهر للطالب بعد إجابته.
         - أعد الناتج بصيغة JSON فقط بهذا الشكل بالضبط، بدون أي نص آخر وبدون أسوار أكواد:
-          {"question": "...", "options": ["...", "...", "...", "..."], "correct_option": 0, "explanation": "...", "hint": "..."}
+          {"question": "...", "body": "...", "options": ["...", "...", "...", "..."], "correct_option": 0, "explanation": "...", "hint": "..."}
+        - body اختياري: اتركه "" عند عدم الحاجة لكود أو مقدمة.
         - correct_option هو ترتيب الإجابة الصحيحة في المصفوفة (من 0 إلى 3)، ونوّع موضعها.
         PROMPT;
 
@@ -125,6 +141,7 @@ class QuizAuthor
             'quiz_topic_id' => $topic->id,
             'quiz_date' => $date,
             'question' => $decoded['question'],
+            'body' => $decoded['body'],
             'options' => $decoded['options'],
             'correct_option' => $decoded['correct_option'],
             'explanation' => $decoded['explanation'],
@@ -220,7 +237,7 @@ class QuizAuthor
      * Parse and validate the question JSON against Telegram's poll limits,
      * tolerating a stray markdown code fence but nothing else.
      *
-     * @return array{question: string, options: array<int, string>, correct_option: int, explanation: string|null, hint: string|null}
+     * @return array{question: string, body: string|null, options: array<int, string>, correct_option: int, explanation: string|null, hint: string|null}
      */
     private function decodeQuestion(string $raw): array
     {
@@ -233,6 +250,7 @@ class QuizAuthor
         }
 
         $question = trim((string) ($decoded['question'] ?? ''));
+        $body = trim((string) ($decoded['body'] ?? ''));
         $options = $decoded['options'] ?? null;
         $correct = $decoded['correct_option'] ?? null;
         $explanation = trim((string) ($decoded['explanation'] ?? ''));
@@ -240,6 +258,10 @@ class QuizAuthor
 
         if ($question === '' || mb_strlen($question) > self::MAX_QUESTION_CHARS) {
             throw new RuntimeException('السؤال فارغ أو أطول من حد تيليجرام (300 حرف).');
+        }
+
+        if (mb_strlen($body) > self::MAX_BODY_CHARS) {
+            throw new RuntimeException('محتوى السؤال (body) أطول من الحد ('.self::MAX_BODY_CHARS.' حرف).');
         }
 
         if (! is_array($options) || count($options) !== 4) {
@@ -264,6 +286,7 @@ class QuizAuthor
 
         return [
             'question' => $question,
+            'body' => $body === '' ? null : $body,
             'options' => $options,
             'correct_option' => (int) $correct,
             'explanation' => $explanation === '' ? null : Str::limit($explanation, self::MAX_EXPLANATION_CHARS, ''),

@@ -103,6 +103,7 @@ it('edits a ready quiz', function () {
     $this->actingAs($this->admin)
         ->put("/manage/quiz/quizzes/{$quiz->id}", [
             'question' => 'سؤال معدّل؟',
+            'body' => "في الكود:\n```py\nx = 1\n```",
             'options' => ['أ', 'ب', 'ج', 'د'],
             'correct_option' => 3,
             'explanation' => null,
@@ -113,6 +114,7 @@ it('edits a ready quiz', function () {
     $quiz->refresh();
 
     expect($quiz->question)->toBe('سؤال معدّل؟')
+        ->and($quiz->body)->toBe("في الكود:\n```py\nx = 1\n```")
         ->and($quiz->options)->toBe(['أ', 'ب', 'ج', 'د'])
         ->and($quiz->correct_option)->toBe(3)
         ->and($quiz->explanation)->toBeNull();
@@ -157,6 +159,7 @@ it('enforces Telegram length limits when editing a quiz', function (array $paylo
     'three options' => [['options' => ['أ', 'ب', 'ج']], 'options'],
     'duplicate options' => [['options' => ['أ', 'أ', 'ج', 'د']], 'options.0'],
     'long explanation' => [['explanation' => str_repeat('س', 201)], 'explanation'],
+    'long body' => [['body' => str_repeat('س', 701)], 'body'],
     'correct out of range' => [['correct_option' => 4], 'correct_option'],
 ]);
 

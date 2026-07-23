@@ -22,6 +22,7 @@ class DailyQuizController extends Controller
 
         $quiz->update([
             'question' => $request->validated('question'),
+            'body' => $request->validated('body'),
             'options' => array_values($request->validated('options')),
             'correct_option' => (int) $request->validated('correct_option'),
             'explanation' => $request->validated('explanation'),
