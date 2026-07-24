@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Manage;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Manage\GenerateDailyQuizRequest;
 use App\Http\Requests\Manage\UpdateQuizSettingsRequest;
 use App\Jobs\GenerateDailyQuizJob;
 use App\Models\DailyQuiz;
@@ -80,7 +81,7 @@ class QuizController extends Controller
                     'answers_count' => $quiz->answers_count,
                     'correct_answers_count' => $quiz->correct_answers_count,
                 ]),
-            'hasTodayQuiz' => DailyQuiz::forDate(today()) !== null,
+            'todayQuizStatus' => DailyQuiz::forDate(today())?->status,
             'weeklyTop' => $this->leaderboard('weekly_points'),
             'allTimeTop' => $this->leaderboard('total_points'),
         ]);
@@ -103,17 +104,25 @@ class QuizController extends Controller
     /**
      * Generate today's question on demand (queued — the authoring model is
      * slow). The nightly schedule normally does this; the button covers the
-     * first run and regeneration after a failure.
+     * first run and re-rolling: when a not-yet-posted question already exists
+     * it is regenerated in place, optionally from an admin-chosen topic.
      */
-    public function generate(): RedirectResponse
+    public function generate(GenerateDailyQuizRequest $request): RedirectResponse
     {
-        if (DailyQuiz::forDate(today()) !== null) {
-            return back()->withErrors(['generate' => 'يوجد سؤال لهذا اليوم بالفعل — احذفه أولاً إن أردت توليد غيره.']);
+        $existing = DailyQuiz::forDate(today());
+        $replace = $existing !== null;
+
+        if ($existing !== null && ! $existing->isReady()) {
+            return back()->withErrors(['generate' => 'سؤال اليوم منشور بالفعل — لا يمكن إعادة توليده.']);
         }
 
-        GenerateDailyQuizJob::dispatch();
+        $topicId = $request->integer('topic_id') ?: null;
 
-        return back()->with('success', 'بدأ توليد سؤال اليوم — سيظهر في القائمة خلال دقائق.');
+        GenerateDailyQuizJob::dispatch($topicId, $replace);
+
+        return back()->with('success', $replace
+            ? 'بدأ إعادة توليد سؤال اليوم — سيتحدّث في القائمة خلال دقائق.'
+            : 'بدأ توليد سؤال اليوم — سيظهر في القائمة خلال دقائق.');
     }
 
     /**

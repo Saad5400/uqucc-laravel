@@ -33,7 +33,7 @@ it('renders the quiz page with settings, topics, quizzes and leaderboards', func
             ->has('settings', fn (Assert $settings) => $settings->has('enabled')->has('reminders_enabled')->has('chat_ids'))
             ->has('topics', 2)
             ->has('quizzes', 1)
-            ->where('hasTodayQuiz', true)
+            ->where('todayQuizStatus', 'ready')
             ->has('weeklyTop')
             ->has('allTimeTop')
             ->has('groupChats'));
@@ -185,9 +185,44 @@ it('queues on-demand generation for today', function () {
     Queue::assertPushed(GenerateDailyQuizJob::class);
 });
 
-it('refuses on-demand generation while today\'s quiz exists', function () {
+it('queues generation from a chosen topic', function () {
+    Queue::fake();
+    $topic = QuizTopic::factory()->create();
+
+    $this->actingAs($this->admin)
+        ->post('/manage/quiz/generate', ['topic_id' => $topic->id])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    Queue::assertPushed(GenerateDailyQuizJob::class);
+});
+
+it('rejects generation from an inactive topic', function () {
+    Queue::fake();
+    $topic = QuizTopic::factory()->create(['is_active' => false]);
+
+    $this->actingAs($this->admin)
+        ->post('/manage/quiz/generate', ['topic_id' => $topic->id])
+        ->assertSessionHasErrors('topic_id');
+
+    Queue::assertNothingPushed();
+});
+
+it('re-rolls a ready quiz that already exists today', function () {
     Queue::fake();
     DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    $this->actingAs($this->admin)
+        ->post('/manage/quiz/generate')
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    Queue::assertPushed(GenerateDailyQuizJob::class);
+});
+
+it('refuses to regenerate a quiz that is already posted', function () {
+    Queue::fake();
+    DailyQuiz::factory()->posted()->create(['quiz_date' => today()]);
 
     $this->actingAs($this->admin)
         ->post('/manage/quiz/generate')

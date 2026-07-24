@@ -1,5 +1,6 @@
 <?php
 
+use App\Ai\Quiz\QuizAuthor;
 use App\Ai\Quiz\QuizAuthoringAgent;
 use App\Models\DailyQuiz;
 use App\Models\QuizTopic;
@@ -105,6 +106,56 @@ it('skips silently while the quiz feature is disabled', function () {
     $this->artisan('quiz:generate')->assertExitCode(0);
 
     expect(DailyQuiz::query()->count())->toBe(0);
+    QuizAuthoringAgent::assertNeverPrompted();
+});
+
+it('generates from an explicitly chosen topic instead of the auto pick', function () {
+    QuizTopic::factory()->create(['name' => 'الأقل استخداماً', 'last_used_at' => null]);
+    $chosen = QuizTopic::factory()->create(['name' => 'موضوع مختار', 'last_used_at' => now()]);
+
+    QuizAuthoringAgent::fake([quizJson()]);
+
+    $quiz = app(QuizAuthor::class)->generateForDate(today(), $chosen);
+
+    expect($quiz->quiz_topic_id)->toBe($chosen->id)
+        ->and($chosen->refresh()->last_used_at->isToday())->toBeTrue();
+});
+
+it('replaces a ready quiz in place when regenerating', function () {
+    $topic = QuizTopic::factory()->create();
+    $old = DailyQuiz::factory()->create(['quiz_date' => today(), 'question' => 'السؤال القديم؟']);
+
+    QuizAuthoringAgent::fake([quizJson(['question' => 'السؤال الجديد؟'])]);
+
+    $quiz = app(QuizAuthor::class)->generateForDate(today(), $topic, replace: true);
+
+    expect(DailyQuiz::query()->count())->toBe(1)
+        ->and(DailyQuiz::find($old->id))->toBeNull()
+        ->and($quiz->question)->toBe('السؤال الجديد؟');
+});
+
+it('keeps the existing quiz when a replacement generation fails', function () {
+    $topic = QuizTopic::factory()->create();
+    $old = DailyQuiz::factory()->create(['quiz_date' => today(), 'question' => 'السؤال القديم؟']);
+
+    QuizAuthoringAgent::fake(['ناتج ليس JSON', 'ولا هذا JSON']);
+
+    expect(fn () => app(QuizAuthor::class)->generateForDate(today(), $topic, replace: true))
+        ->toThrow(RuntimeException::class);
+
+    expect(DailyQuiz::query()->count())->toBe(1)
+        ->and(DailyQuiz::find($old->id)->question)->toBe('السؤال القديم؟');
+});
+
+it('refuses to replace a quiz that is already posted', function () {
+    $topic = QuizTopic::factory()->create();
+    DailyQuiz::factory()->posted()->create(['quiz_date' => today()]);
+
+    QuizAuthoringAgent::fake([quizJson()]);
+
+    expect(fn () => app(QuizAuthor::class)->generateForDate(today(), $topic, replace: true))
+        ->toThrow(RuntimeException::class);
+
     QuizAuthoringAgent::assertNeverPrompted();
 });
 

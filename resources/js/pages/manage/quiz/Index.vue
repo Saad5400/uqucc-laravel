@@ -73,7 +73,7 @@ const props = defineProps<{
     groupChats: GroupChat[];
     topics: Topic[];
     quizzes: Quiz[];
-    hasTodayQuiz: boolean;
+    todayQuizStatus: Quiz['status'] | null;
     weeklyTop: Player[];
     allTimeTop: Player[];
 }>();
@@ -92,15 +92,35 @@ const statusBadges: Record<Quiz['status'], { label: string; variant: 'secondary'
 /* ------------------------------------------------------------------ */
 
 const generating = ref(false);
+const generateDialogOpen = ref(false);
+
+/** 'auto' means let the author pick; otherwise the chosen active topic id as a string. */
+const generateTopicId = ref('auto');
+
+/** A ready question already exists today — generating replaces it in place. */
+const willReplaceToday = computed(() => props.todayQuizStatus === 'ready');
+
+/** A posted question can never be regenerated. */
+const todayIsPosted = computed(() => props.todayQuizStatus !== null && props.todayQuizStatus !== 'ready');
+
+const activeTopics = computed(() => props.topics.filter((topic) => topic.is_active));
+
+function openGenerateDialog(): void {
+    generateTopicId.value = 'auto';
+    generateDialogOpen.value = true;
+}
 
 function generateNow(): void {
     generating.value = true;
 
     router.post(
         '/manage/quiz/generate',
-        {},
+        { topic_id: generateTopicId.value === 'auto' ? null : Number(generateTopicId.value) },
         {
             preserveScroll: true,
+            onSuccess: () => {
+                generateDialogOpen.value = false;
+            },
             onFinish: () => {
                 generating.value = false;
             },
@@ -318,11 +338,11 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
             <CardHeader class="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
                 <CardTitle class="text-lg">الأسئلة</CardTitle>
                 <div class="flex items-center gap-2">
-                    <p v-if="hasTodayQuiz" class="text-xs text-muted-foreground">سؤال اليوم موجود</p>
-                    <Button size="sm" :disabled="hasTodayQuiz || generating" @click="generateNow">
+                    <p v-if="todayIsPosted" class="text-xs text-muted-foreground">سؤال اليوم منشور</p>
+                    <Button size="sm" :disabled="todayIsPosted || generating" @click="openGenerateDialog">
                         <Loader2 v-if="generating" class="size-4 animate-spin" />
                         <Sparkles v-else class="size-4" />
-                        توليد سؤال اليوم
+                        {{ willReplaceToday ? 'إعادة توليد سؤال اليوم' : 'توليد سؤال اليوم' }}
                     </Button>
                 </div>
             </CardHeader>
@@ -574,6 +594,49 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
             </CardContent>
         </Card>
     </div>
+
+    <!-- Generate / regenerate today's question dialog -->
+    <Dialog v-model:open="generateDialogOpen">
+        <DialogContent class="sm:max-w-lg">
+            <DialogHeader>
+                <DialogTitle>{{ willReplaceToday ? 'إعادة توليد سؤال اليوم' : 'توليد سؤال اليوم' }}</DialogTitle>
+            </DialogHeader>
+
+            <form class="space-y-4" @submit.prevent="generateNow">
+                <p v-if="willReplaceToday" class="rounded-lg border border-border bg-muted/50 p-3 text-sm">
+                    يوجد سؤال «بانتظار النشر» لهذا اليوم — التوليد سيستبدله بسؤال جديد. لن يُحذف السؤال الحالي إلا بعد نجاح التوليد.
+                </p>
+
+                <div class="space-y-2">
+                    <Label for="generate-topic">الموضوع</Label>
+                    <Select id="generate-topic" v-model="generateTopicId">
+                        <SelectTrigger class="w-full" aria-label="موضوع السؤال">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="auto">موضوع عشوائي (يختاره النظام)</SelectItem>
+                            <SelectItem v-for="topic in activeTopics" :key="topic.id" :value="String(topic.id)">
+                                {{ topic.name }}
+                            </SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <p class="text-xs text-muted-foreground">
+                        اترك «موضوع عشوائي» ليختار النظام الموضوع الأقل استخداماً كالمعتاد، أو اختر موضوعاً محدداً لتوليد سؤال منه.
+                    </p>
+                    <p v-if="pageErrors.topic_id" class="text-sm text-destructive-foreground">{{ pageErrors.topic_id }}</p>
+                </div>
+
+                <DialogFooter class="gap-2">
+                    <Button type="button" variant="outline" @click="generateDialogOpen = false">إلغاء</Button>
+                    <Button type="submit" :disabled="generating">
+                        <Loader2 v-if="generating" class="size-4 animate-spin" />
+                        <Sparkles v-else class="size-4" />
+                        {{ willReplaceToday ? 'إعادة التوليد' : 'توليد' }}
+                    </Button>
+                </DialogFooter>
+            </form>
+        </DialogContent>
+    </Dialog>
 
     <!-- Edit quiz dialog -->
     <Dialog

@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Ai\Quiz\QuizAuthor;
+use App\Models\QuizTopic;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -12,6 +13,9 @@ use Throwable;
  * On-demand quiz generation from the panel's «توليد سؤال اليوم» button — the
  * authoring-tier call takes up to a few minutes, far too long for a web
  * request.
+ *
+ * `$topicId` forces a specific topic (null lets the author pick one); when
+ * `$replace` is set, today's `ready` question is regenerated in place.
  */
 class GenerateDailyQuizJob implements ShouldQueue
 {
@@ -21,10 +25,17 @@ class GenerateDailyQuizJob implements ShouldQueue
 
     public int $timeout = 240;
 
+    public function __construct(
+        private readonly ?int $topicId = null,
+        private readonly bool $replace = false,
+    ) {}
+
     public function handle(QuizAuthor $author): void
     {
         try {
-            $author->generateForDate(today());
+            $topic = $this->topicId !== null ? QuizTopic::find($this->topicId) : null;
+
+            $author->generateForDate(today(), $topic, $this->replace);
         } catch (Throwable $exception) {
             report($exception);
 

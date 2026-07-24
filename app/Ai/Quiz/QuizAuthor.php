@@ -114,8 +114,14 @@ class QuizAuthor
     /**
      * Generate the quiz for the given day and store it as `ready`. Throws
      * with an operator-facing Arabic message on any refusal.
+     *
+     * Pass an explicit `$topic` to force that theme; otherwise the topic is
+     * picked automatically (least-recently-used, spotlight-aware). When a
+     * `ready` question already exists for the day, `$replace` regenerates it —
+     * the old one is dropped only after the new question is authored, so a
+     * generation failure leaves the existing question untouched.
      */
-    public function generateForDate(CarbonInterface $date): DailyQuiz
+    public function generateForDate(CarbonInterface $date, ?QuizTopic $topic = null, bool $replace = false): DailyQuiz
     {
         if (($reason = $this->disabledReason()) !== null) {
             throw new RuntimeException($reason);
@@ -125,17 +131,27 @@ class QuizAuthor
             throw new RuntimeException($this->ledger->budgetExhaustedMessage());
         }
 
-        if (DailyQuiz::forDate($date) !== null) {
-            throw new RuntimeException('يوجد سؤال لهذا اليوم بالفعل.');
+        $existing = DailyQuiz::forDate($date);
+
+        if ($existing !== null) {
+            if (! $replace) {
+                throw new RuntimeException('يوجد سؤال لهذا اليوم بالفعل.');
+            }
+
+            if (! $existing->isReady()) {
+                throw new RuntimeException('لا يمكن إعادة توليد سؤال بعد نشره.');
+            }
         }
 
-        $topic = QuizTopic::pickForDate($date);
+        $topic ??= QuizTopic::pickForDate($date);
 
         if ($topic === null) {
             throw new RuntimeException('لا توجد مواضيع مفعّلة — أضف مواضيع من صفحة سؤال اليوم أولاً.');
         }
 
         $decoded = $this->generateQuestion($topic);
+
+        $existing?->delete();
 
         $quiz = DailyQuiz::create([
             'quiz_topic_id' => $topic->id,
