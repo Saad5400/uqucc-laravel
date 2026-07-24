@@ -3,6 +3,7 @@ import ConfirmDialog from '@/components/manage/ConfirmDialog.vue';
 import EmptyState from '@/components/manage/EmptyState.vue';
 import ManageLayout from '@/components/manage/ManageLayout.vue';
 import PageHeader from '@/components/manage/PageHeader.vue';
+import Pagination from '@/components/manage/Pagination.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -17,6 +18,7 @@ import { TagsInput, TagsInputInput, TagsInputItem, TagsInputItemDelete, TagsInpu
 import { Textarea } from '@/components/ui/textarea';
 import { arabicCount } from '@/lib/arabic';
 import { formatDateTime, formatRelativeTime, formatShortDate } from '@/lib/formatters';
+import type { Paginated } from '@/lib/pagination';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import { CheckCircle2, EllipsisVertical, Loader2, Pencil, Plus, Sparkles, Trash2, Trophy } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
@@ -72,7 +74,7 @@ const props = defineProps<{
     settings: QuizSettingsValues;
     groupChats: GroupChat[];
     topics: Topic[];
-    quizzes: Quiz[];
+    quizzes: Paginated<Quiz>;
     todayQuizStatus: Quiz['status'] | null;
     weeklyTop: Player[];
     allTimeTop: Player[];
@@ -124,6 +126,23 @@ function generateNow(): void {
             onFinish: () => {
                 generating.value = false;
             },
+        },
+    );
+}
+
+/* ------------------------------------------------------------------ */
+/* Questions list pagination                                           */
+/* ------------------------------------------------------------------ */
+
+function goToQuizzesPage(page: number): void {
+    router.get(
+        '/manage/quiz',
+        { page },
+        {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+            only: ['quizzes'],
         },
     );
 }
@@ -351,14 +370,14 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                 <p v-if="pageErrors.quiz" class="text-sm text-destructive-foreground">{{ pageErrors.quiz }}</p>
 
                 <EmptyState
-                    v-if="!quizzes.length"
+                    v-if="!quizzes.data.length"
                     :icon="Sparkles"
                     title="لا توجد أسئلة بعد"
                     description="يُولَّد سؤال جديد تلقائياً كل يوم من أحد المواضيع أدناه، ويمكنك توليد سؤال اليوم يدوياً من الزر أعلاه. راجع السؤال وعدّله قبل موعد النشر."
                 />
 
                 <ul v-else class="overflow-hidden rounded-lg border border-border">
-                    <li v-for="quiz in quizzes" :key="quiz.id" class="space-y-2 border-b border-border p-3 last:border-b-0">
+                    <li v-for="quiz in quizzes.data" :key="quiz.id" class="space-y-2 border-b border-border p-3 last:border-b-0">
                         <div class="flex items-start justify-between gap-3">
                             <div class="min-w-0 flex-1 space-y-1">
                                 <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
@@ -416,6 +435,13 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                         <p v-if="quiz.hint" class="text-xs text-muted-foreground">🧩 تلميح التذكير: {{ quiz.hint }}</p>
                     </li>
                 </ul>
+
+                <Pagination
+                    :page="quizzes.current_page"
+                    :pages="quizzes.last_page"
+                    :total="quizzes.total"
+                    @update:page="goToQuizzesPage"
+                />
             </CardContent>
         </Card>
 

@@ -32,11 +32,29 @@ it('renders the quiz page with settings, topics, quizzes and leaderboards', func
             ->component('manage/quiz/Index')
             ->has('settings', fn (Assert $settings) => $settings->has('enabled')->has('reminders_enabled')->has('chat_ids'))
             ->has('topics', 2)
-            ->has('quizzes', 1)
+            ->has('quizzes.data', 1)
             ->where('todayQuizStatus', 'ready')
             ->has('weeklyTop')
             ->has('allTimeTop')
             ->has('groupChats'));
+});
+
+it('paginates the questions list at five per page', function () {
+    DailyQuiz::factory()->count(7)->sequence(fn ($sequence) => ['quiz_date' => today()->subDays($sequence->index)])->create();
+
+    $this->actingAs($this->admin)
+        ->get('/manage/quiz')
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('quizzes.data', 5)
+            ->where('quizzes.total', 7)
+            ->where('quizzes.per_page', 5)
+            ->where('quizzes.last_page', 2));
+
+    $this->actingAs($this->admin)
+        ->get('/manage/quiz?page=2')
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('quizzes.data', 2)
+            ->where('quizzes.current_page', 2));
 });
 
 it('saves the quiz settings with multiple groups', function () {

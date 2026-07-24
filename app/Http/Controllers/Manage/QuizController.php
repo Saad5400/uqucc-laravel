@@ -22,8 +22,8 @@ use Inertia\Response;
  */
 class QuizController extends Controller
 {
-    /** How many recent quizzes the panel lists. */
-    private const RECENT_QUIZZES = 30;
+    /** How many questions each page of the questions list shows. */
+    private const QUIZZES_PER_PAGE = 5;
 
     /** How many players each leaderboard column shows. */
     private const LEADERBOARD_LIMIT = 10;
@@ -64,9 +64,9 @@ class QuizController extends Controller
                     'answers as correct_answers_count' => fn ($query) => $query->where('is_correct', true),
                 ])
                 ->orderByDesc('quiz_date')
-                ->limit(self::RECENT_QUIZZES)
-                ->get()
-                ->map(fn (DailyQuiz $quiz): array => [
+                ->paginate(self::QUIZZES_PER_PAGE)
+                ->withQueryString()
+                ->through(fn (DailyQuiz $quiz): array => [
                     'id' => $quiz->id,
                     'quiz_date' => $quiz->quiz_date->toDateString(),
                     'question' => $quiz->question,
