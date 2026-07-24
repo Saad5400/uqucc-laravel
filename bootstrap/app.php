@@ -6,8 +6,12 @@ use App\Http\Middleware\TrackPageViews;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
+use Laravel\Ai\Exceptions\AiException;
+use Laravel\Ai\Exceptions\InsufficientCreditsException;
+use Psr\Log\LogLevel;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -53,5 +57,18 @@ return Application::configure(basePath: dirname(__DIR__))
         );
     })
     ->withExceptions(function (Exceptions $exceptions): void {
-        //
+        /*
+         * Transient upstream AI failures are infrastructure noise, not code
+         * defects: a request timeout (ConnectionException) or an empty /
+         * rate-limited / overloaded provider response (AiException) should stay
+         * in the daily log for trend-watching but must NOT page the Telegram
+         * error channel, which fires at `error` and above.
+         *
+         * Running out of OpenRouter credits IS actionable, so it is pinned back
+         * to `error` first — mapLogLevel() matches on insertion order, and
+         * InsufficientCreditsException extends AiException.
+         */
+        $exceptions->level(InsufficientCreditsException::class, LogLevel::ERROR);
+        $exceptions->level(ConnectionException::class, LogLevel::WARNING);
+        $exceptions->level(AiException::class, LogLevel::WARNING);
     })->create();

@@ -16,6 +16,11 @@ use Throwable;
  *
  * `$topicId` forces a specific topic (null lets the author pick one); when
  * `$replace` is set, today's `ready` question is regenerated in place.
+ *
+ * Runs on the dedicated "ai" queue alongside the corpus/authoring jobs: the
+ * authoring-tier call is slow (up to a few minutes), and that worker is sized
+ * for it (300s timeout, graceful stop) so a generation never blocks the quick
+ * default-queue jobs behind it.
  */
 class GenerateDailyQuizJob implements ShouldQueue
 {
@@ -28,7 +33,9 @@ class GenerateDailyQuizJob implements ShouldQueue
     public function __construct(
         private readonly ?int $topicId = null,
         private readonly bool $replace = false,
-    ) {}
+    ) {
+        $this->onQueue('ai');
+    }
 
     public function handle(QuizAuthor $author): void
     {

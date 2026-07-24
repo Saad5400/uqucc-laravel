@@ -2,6 +2,7 @@
 
 use App\Ai\Gateway\ReasoningOpenRouterGateway;
 use Laravel\Ai\AiManager;
+use Laravel\Ai\Exceptions\AiException;
 
 it('resolves the openrouter text provider with the reasoning gateway', function () {
     $provider = app(AiManager::class)->textProvider('openrouter');
@@ -22,6 +23,25 @@ it('exposes per-task model config keys', function () {
         ->and(config('ai.embeddings.model'))->toBe('openai/text-embedding-3-small')
         ->and(config('ai.embeddings.dimensions'))->toBe(1536)
         ->and(config('ai.embeddings.driver'))->toBeIn(['fake', 'openrouter']);
+});
+
+it('turns an empty or invalid OpenRouter body into a clean AiException, not a TypeError', function () {
+    $gateway = new class(app('events')) extends ReasoningOpenRouterGateway
+    {
+        /** @param  array<string, mixed>|null  $data */
+        public function validate(?array $data): void
+        {
+            $this->validateTextResponse($data);
+        }
+    };
+
+    // A 2xx whose body decodes to null used to fatal with a TypeError.
+    expect(fn () => $gateway->validate(null))->toThrow(AiException::class);
+    expect(fn () => $gateway->validate([]))->toThrow(AiException::class);
+    expect(fn () => $gateway->validate(['error' => ['message' => 'boom']]))->toThrow(AiException::class);
+
+    // A well-formed body still passes straight through.
+    $gateway->validate(['choices' => [['message' => ['content' => 'hi']]]]);
 });
 
 it('extracts a positive usage cost and rejects missing or zero costs', function () {

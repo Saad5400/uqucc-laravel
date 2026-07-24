@@ -3,7 +3,10 @@
 namespace App\Ai\Gateway;
 
 use Generator;
+use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Context;
+use Laravel\Ai\Exceptions\AiException;
 use Laravel\Ai\Gateway\OpenRouter\OpenRouterGateway;
 use Laravel\Ai\Gateway\StepContext;
 use Laravel\Ai\Gateway\StepResponse;
@@ -23,6 +26,7 @@ use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\Streaming\Events\TextEnd;
 use Laravel\Ai\Streaming\Events\TextStart;
 use Laravel\Ai\Streaming\Events\ToolCall as ToolCallEvent;
+use Throwable;
 
 /**
  * OpenRouter gateway doing the two things the stock laravel/ai 0.9 gateway
@@ -70,6 +74,56 @@ class ReasoningOpenRouterGateway extends OpenRouterGateway
      * an anomaly is drillable to the exact request via the generation API.
      */
     public const GENERATION_IDS_CONTEXT_KEY = 'ai.openrouter_generation_ids';
+
+    /**
+     * HTTP statuses that mean "transient OpenRouter blip, try again": request
+     * timeout, conflict, rate limit, and the 5xx family (gateway/overloaded/
+     * gateway-timeout). Deliberately excludes connection/read timeouts — those
+     * are surfaced as ConnectionException, not RequestException, and retrying a
+     * call that already burned its full timeout budget just multiplies latency.
+     */
+    private const RETRYABLE_STATUSES = [408, 409, 429, 500, 502, 503, 504];
+
+    /** Total request attempts (the original plus retries) before giving up. */
+    private const REQUEST_ATTEMPTS = 3;
+
+    /**
+     * Add automatic, backed-off retries for transient upstream failures on top
+     * of the stock client (which already sets the token, headers, timeout, and
+     * `->throw()`). Only fast-failing HTTP statuses are retried; a hung request
+     * that hits its timeout falls through as a ConnectionException so we never
+     * stack multiple full-timeout waits on one call.
+     */
+    protected function client(Provider $provider, ?int $timeout = null): PendingRequest
+    {
+        return parent::client($provider, $timeout)->retry(
+            self::REQUEST_ATTEMPTS,
+            sleepMilliseconds: fn (int $attempt): int => $attempt * 500,
+            when: fn (Throwable $exception): bool => $exception instanceof RequestException
+                && in_array($exception->response?->status(), self::RETRYABLE_STATUSES, true),
+            throw: true,
+        );
+    }
+
+    /**
+     * The stock trait type-hints `array`, so an empty/invalid upstream body — a
+     * 2xx whose payload decodes to `null`, which OpenRouter occasionally
+     * returns under load — fatals with a TypeError before the trait's own
+     * emptiness guard can run. Widening to `?array` lets that guard turn it into
+     * a clean AiException the callers (and the log-level map) already expect.
+     *
+     * @param  array<string, mixed>|null  $data
+     */
+    protected function validateTextResponse(?array $data): void
+    {
+        if (! $data || isset($data['error'])) {
+            throw new AiException(sprintf(
+                'OpenRouter Error: [%s] %s',
+                $data['error']['type'] ?? $data['error']['code'] ?? 'unknown',
+                $data['error']['message'] ?? 'Empty or invalid OpenRouter response.',
+            ));
+        }
+    }
 
     /**
      * Ask OpenRouter to include `usage` (and therefore `usage.cost`) in the

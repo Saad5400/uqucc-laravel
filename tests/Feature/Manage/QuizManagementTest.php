@@ -200,7 +200,7 @@ it('queues on-demand generation for today', function () {
         ->assertRedirect()
         ->assertSessionHas('success');
 
-    Queue::assertPushed(GenerateDailyQuizJob::class);
+    Queue::assertPushed(GenerateDailyQuizJob::class, fn (GenerateDailyQuizJob $job): bool => $job->queue === 'ai');
 });
 
 it('queues generation from a chosen topic', function () {
