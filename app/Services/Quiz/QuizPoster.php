@@ -88,8 +88,6 @@ class QuizPoster
                     'telegram_poll_id' => $message->getPoll()?->getId(),
                     'posted_at' => now(),
                 ]);
-
-                $this->pinQuietly($post);
             } catch (\Throwable $exception) {
                 Log::error('Failed to post quiz to chat', [
                     'quiz_id' => $quiz->id,
@@ -130,27 +128,6 @@ class QuizPoster
     }
 
     /**
-     * Pin the quiz for the day without notifying the members (the poll
-     * itself is the announcement). Best-effort: the bot may lack the "pin
-     * messages" admin right, and the quiz works fine unpinned.
-     */
-    private function pinQuietly(QuizPost $post): void
-    {
-        try {
-            $this->telegram()->pinChatMessage([
-                'chat_id' => $post->chat_id,
-                'message_id' => $post->message_id,
-                'disable_notification' => true,
-            ]);
-        } catch (\Throwable $exception) {
-            Log::warning('Failed to pin quiz message', [
-                'quiz_post_id' => $post->id,
-                'message' => $exception->getMessage(),
-            ]);
-        }
-    }
-
-    /**
      * Stop every still-open quiz poll (normally yesterday's, one per group).
      * A poll Telegram already closed just makes stopPoll throw; the post is
      * marked closed regardless so scoring stops accepting its votes.
@@ -173,7 +150,6 @@ class QuizPoster
             }
 
             $this->sendRecap($post);
-            $this->unpinQuietly($post);
 
             $post->update(['closed_at' => now()]);
         }
@@ -185,26 +161,6 @@ class QuizPoster
                 'status' => DailyQuiz::STATUS_CLOSED,
                 'closed_at' => now(),
             ]));
-    }
-
-    /**
-     * Unpin exactly this post's message — passing message_id makes Telegram
-     * leave every other pinned message in the group untouched. Best-effort,
-     * like the pin.
-     */
-    private function unpinQuietly(QuizPost $post): void
-    {
-        try {
-            $this->telegram()->unpinChatMessage([
-                'chat_id' => $post->chat_id,
-                'message_id' => $post->message_id,
-            ]);
-        } catch (\Throwable $exception) {
-            Log::warning('Failed to unpin quiz message', [
-                'quiz_post_id' => $post->id,
-                'message' => $exception->getMessage(),
-            ]);
-        }
     }
 
     /**

@@ -27,22 +27,32 @@ function liveQuizWith(int $answers = 0, array $quizAttributes = []): DailyQuiz
     return $quiz;
 }
 
-it('re-floats a low-turnout quiz by replying to the poll, taunting with the wrong-answer share', function () {
-    $quiz = DailyQuiz::factory()->posted()->create();
-    QuizAnswer::factory()->count(2)->wrong()->create(['daily_quiz_id' => $quiz->id]);
-    QuizAnswer::factory()->count(1)->create(['daily_quiz_id' => $quiz->id]);
-    $post = $quiz->posts()->first();
+it('opens the day by quoting how many have answered so far', function () {
+    liveQuizWith(answers: 3);
 
-    $this->artisan('quiz:remind refloat')->assertExitCode(0);
+    $this->artisan('quiz:remind opener')->assertExitCode(0);
+
+    $post = DailyQuiz::first()->posts()->first();
 
     expect($this->fake->sentMessages)->toHaveCount(1);
 
     $msg = $this->fake->sentMessages[0];
 
-    // 2 of 3 answers wrong -> 67%.
     expect($msg['chat_id'])->toBe($post->chat_id)
         ->and($msg['reply_to_message_id'])->toBe($post->message_id)
-        ->and($msg['text'])->toBe('سؤال اليوم غلطوا فيه 67%، بتقدر عليه؟');
+        ->and($msg['text'])->toBe('سؤال اليوم نازل، وجاوب عليه 3 مشاركين — وأنت؟');
+});
+
+it('re-floats by replying to the poll, taunting with the wrong-answer share', function () {
+    $quiz = DailyQuiz::factory()->posted()->create();
+    QuizAnswer::factory()->count(2)->wrong()->create(['daily_quiz_id' => $quiz->id]);
+    QuizAnswer::factory()->count(1)->create(['daily_quiz_id' => $quiz->id]);
+
+    $this->artisan('quiz:remind refloat')->assertExitCode(0);
+
+    // 2 of 3 answers wrong -> 67%.
+    expect($this->fake->sentMessages)->toHaveCount(1)
+        ->and($this->fake->sentMessages[0]['text'])->toBe('سؤال اليوم غلطوا فيه 67%، بتقدر عليه؟');
 });
 
 it('re-floats regardless of how high the turnout is', function () {
@@ -57,30 +67,81 @@ it('re-floats regardless of how high the turnout is', function () {
         ->and($this->fake->sentMessages[0]['text'])->toBe('سؤال اليوم غلطوا فيه 75%، بتقدر عليه؟');
 });
 
-it('always sends the last call and includes the hint', function () {
-    liveQuizWith(answers: 200, quizAttributes: ['hint' => 'فكّر في وحدات القياس.']);
-
-    $this->artisan('quiz:remind lastcall')->assertExitCode(0);
-
-    expect($this->fake->sentMessages)->toHaveCount(1)
-        ->and($this->fake->sentMessages[0]['text'])->toBe('آخر فرصة في سؤال اليوم، تلميح: فكّر في وحدات القياس.');
-});
-
-it('re-floats with a first-timer taunt when nobody has answered yet', function () {
+it('sends the night nudge without needing any turnout', function () {
     liveQuizWith(answers: 0);
 
-    $this->artisan('quiz:remind refloat')->assertExitCode(0);
+    $this->artisan('quiz:remind night')->assertExitCode(0);
 
     expect($this->fake->sentMessages)->toHaveCount(1)
-        ->and($this->fake->sentMessages[0]['text'])->toContain('بتقدر عليه؟');
+        ->and($this->fake->sentMessages[0]['text'])->toBe('قبل ما تنام 🌙 سؤال اليوم لسه مفتوح');
 });
 
-it('omits the hint line when the quiz has none', function () {
-    liveQuizWith(answers: 1, quizAttributes: ['hint' => null]);
+it('re-floats in the morning with the share that got it right', function () {
+    $quiz = DailyQuiz::factory()->posted()->create();
+    QuizAnswer::factory()->count(3)->create(['daily_quiz_id' => $quiz->id]);
+    QuizAnswer::factory()->count(1)->wrong()->create(['daily_quiz_id' => $quiz->id]);
+
+    $this->artisan('quiz:remind morning')->assertExitCode(0);
+
+    // 3 of 4 answers correct -> 75%.
+    expect($this->fake->sentMessages)->toHaveCount(1)
+        ->and($this->fake->sentMessages[0]['text'])->toBe('صباح الخير ☕ نسبة الإجابات الصحيحة في سؤال اليوم 75% — تقدر ترفعها؟');
+});
+
+it('sends the subtle hint mid-window', function () {
+    liveQuizWith(answers: 0, quizAttributes: ['hint' => 'فكّر في وحدات القياس.']);
+
+    $this->artisan('quiz:remind hint')->assertExitCode(0);
+
+    expect($this->fake->sentMessages)->toHaveCount(1)
+        ->and($this->fake->sentMessages[0]['text'])->toBe('تلميح لسؤال اليوم: فكّر في وحدات القياس.');
+});
+
+it('always sends the last call and includes the obvious hint', function () {
+    liveQuizWith(answers: 200, quizAttributes: [
+        'hint' => 'فكّر في وحدات القياس.',
+        'obvious_hint' => 'العلاقة قسمة على 8.',
+    ]);
 
     $this->artisan('quiz:remind lastcall')->assertExitCode(0);
 
-    expect($this->fake->sentMessages[0]['text'])->not->toContain('تلميح');
+    expect($this->fake->sentMessages)->toHaveCount(1)
+        ->and($this->fake->sentMessages[0]['text'])->toBe('آخر فرصة في سؤال اليوم، تلميح: العلاقة قسمة على 8.');
+});
+
+it('falls back to the subtle hint in the last call when a quiz predates the obvious one', function () {
+    liveQuizWith(answers: 1, quizAttributes: [
+        'hint' => 'فكّر في وحدات القياس.',
+        'obvious_hint' => null,
+    ]);
+
+    $this->artisan('quiz:remind lastcall')->assertExitCode(0);
+
+    expect($this->fake->sentMessages[0]['text'])->toBe('آخر فرصة في سؤال اليوم، تلميح: فكّر في وحدات القياس.');
+});
+
+it('omits the hint line when the quiz has neither hint', function () {
+    liveQuizWith(answers: 1, quizAttributes: ['hint' => null, 'obvious_hint' => null]);
+
+    $this->artisan('quiz:remind lastcall')->assertExitCode(0);
+
+    expect($this->fake->sentMessages[0]['text'])->toBe('آخر فرصة في سؤال اليوم');
+});
+
+it('stays silent on a turnout phase while nobody has answered yet', function (string $phase) {
+    liveQuizWith(answers: 0);
+
+    $this->artisan("quiz:remind {$phase}")->assertExitCode(0);
+
+    expect($this->fake->sentMessages)->toBeEmpty();
+})->with(['opener', 'refloat', 'morning']);
+
+it('stays silent on the hint phase when the quiz has no hint', function () {
+    liveQuizWith(answers: 5, quizAttributes: ['hint' => null]);
+
+    $this->artisan('quiz:remind hint')->assertExitCode(0);
+
+    expect($this->fake->sentMessages)->toBeEmpty();
 });
 
 it('reminds every group the quiz is live in', function () {

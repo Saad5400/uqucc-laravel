@@ -44,11 +44,35 @@ Schedule::command('quiz:announce-weekly')
     ->withoutOverlapping()
     ->runInBackground();
 
-// Mid-window re-float (only fires while turnout is still low). Skips Thursday
-// (day 4) so it never collides with the 21:00 weekly-winners announcement.
+// The six nudges spread across the quiz's 16:00 → 16:00 window, in order.
+// Each phase has its own voice (see App\Services\Quiz\QuizReminder) and skips
+// itself when it has nothing to say; the whole family is behind the
+// «reminders_enabled» switch.
+Schedule::command('quiz:remind opener')
+    ->dailyAt('18:30')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Skips Thursday (day 4) so it never collides with the 21:00 weekly-winners
+// announcement.
 Schedule::command('quiz:remind refloat')
     ->days([0, 1, 2, 3, 5, 6])
     ->at('21:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('quiz:remind night')
+    ->dailyAt('23:30')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('quiz:remind morning')
+    ->dailyAt('09:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('quiz:remind hint')
+    ->dailyAt('12:30')
     ->withoutOverlapping()
     ->runInBackground();
 

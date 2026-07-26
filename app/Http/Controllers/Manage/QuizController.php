@@ -75,6 +75,7 @@ class QuizController extends Controller
                     'correct_option' => $quiz->correct_option,
                     'explanation' => $quiz->explanation,
                     'hint' => $quiz->hint,
+                    'obvious_hint' => $quiz->obvious_hint,
                     'status' => $quiz->status,
                     'topic' => $quiz->topic?->name,
                     'posted_at' => $quiz->posted_at?->toISOString(),

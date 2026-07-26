@@ -129,7 +129,7 @@ it('does not post a contextless poll when the body message fails to send', funct
     expect($this->fake->sentPolls)->toBeEmpty();
 });
 
-it('posts to every configured group and pins each post', function () {
+it('posts to every configured group', function () {
     $settings = app(QuizSettings::class);
     $settings->chat_ids = ['-100200300', '-100400500'];
     $settings->save();
@@ -142,7 +142,6 @@ it('posts to every configured group and pins each post', function () {
         ->and(collect($this->fake->sentPolls)->pluck('chat_id')->all())->toBe([-100200300, -100400500])
         ->and($quiz->posts()->count())->toBe(2)
         ->and($quiz->posts()->pluck('telegram_poll_id')->unique())->toHaveCount(2)
-        ->and($this->fake->pinnedMessages)->toHaveCount(2)
         ->and($quiz->refresh()->status)->toBe(DailyQuiz::STATUS_POSTED);
 });
 
@@ -192,7 +191,7 @@ it('fails when every configured group rejects the poll', function () {
     expect($quiz->refresh()->status)->toBe(DailyQuiz::STATUS_READY);
 });
 
-it('stops and unpins the previous open polls in every group before posting', function () {
+it('stops the previous open polls in every group before posting', function () {
     $previous = livePostedQuiz(
         ['quiz_date' => today()->subDay()],
         ['chat_id' => -100200300, 'message_id' => 777],
@@ -204,7 +203,6 @@ it('stops and unpins the previous open polls in every group before posting', fun
     $this->artisan('quiz:post')->assertExitCode(0);
 
     expect(collect($this->fake->stoppedPolls)->pluck('message_id')->sort()->values()->all())->toBe([777, 888])
-        ->and(collect($this->fake->unpinnedMessages)->pluck('message_id')->sort()->values()->all())->toBe([777, 888])
         ->and($previous->refresh()->status)->toBe(DailyQuiz::STATUS_CLOSED)
         ->and($previous->posts()->open()->count())->toBe(0);
 });
@@ -252,34 +250,14 @@ it('posts into a forum topic when a target specifies one', function () {
         ->and(DailyQuiz::forDate(today())->posts()->first()->message_thread_id)->toBe(42);
 });
 
-it('pins the new quiz quietly', function () {
-    $quiz = DailyQuiz::factory()->create(['quiz_date' => today()]);
+it('never touches the group\'s pinned messages', function () {
+    livePostedQuiz(['quiz_date' => today()->subDay()]);
+    DailyQuiz::factory()->create(['quiz_date' => today()]);
 
     $this->artisan('quiz:post')->assertExitCode(0);
 
-    expect($this->fake->pinnedMessages)->toHaveCount(1)
-        ->and($this->fake->pinnedMessages[0]['chat_id'])->toBe(-100200300)
-        ->and($this->fake->pinnedMessages[0]['message_id'])->toBe($quiz->posts()->first()->message_id)
-        ->and($this->fake->pinnedMessages[0]['disable_notification'])->toBeTrue();
-});
-
-it('still posts when pinning is not permitted', function () {
-    $noPinRights = new class extends FakeTelegramApi
-    {
-        public function pinChatMessage(array $params): bool
-        {
-            throw new RuntimeException('Bad Request: not enough rights to manage pinned messages');
-        }
-    };
-
-    $this->app->bind(QuizPoster::class, fn (): QuizPoster => new QuizPoster(app(QuizSettings::class), $noPinRights));
-
-    $quiz = DailyQuiz::factory()->create(['quiz_date' => today()]);
-
-    $this->artisan('quiz:post')->assertExitCode(0);
-
-    expect($noPinRights->sentPolls)->toHaveCount(1)
-        ->and($quiz->refresh()->status)->toBe(DailyQuiz::STATUS_POSTED);
+    expect($this->fake->pinnedMessages)->toBeEmpty()
+        ->and($this->fake->unpinnedMessages)->toBeEmpty();
 });
 
 it('marks the previous poll closed even when stopping it fails on Telegram', function () {

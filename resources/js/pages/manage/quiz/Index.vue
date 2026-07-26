@@ -54,6 +54,7 @@ interface Quiz {
     correct_option: number;
     explanation: string | null;
     hint: string | null;
+    obvious_hint: string | null;
     status: 'ready' | 'posted' | 'closed';
     topic: string | null;
     posted_at: string | null;
@@ -433,6 +434,7 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
 
                         <p v-if="quiz.explanation" class="text-xs text-muted-foreground">الشرح: {{ quiz.explanation }}</p>
                         <p v-if="quiz.hint" class="text-xs text-muted-foreground">🧩 تلميح التذكير: {{ quiz.hint }}</p>
+                        <p v-if="quiz.obvious_hint" class="text-xs text-muted-foreground">💡 تلميح آخر فرصة: {{ quiz.obvious_hint }}</p>
                     </li>
                 </ul>
 

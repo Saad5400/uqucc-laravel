@@ -45,7 +45,11 @@ class QuizAuthor
      */
     public const MAX_BODY_CHARS = 700;
 
-    /** A short non-spoiler teaser used in the "answer today's question" reminders. */
+    /**
+     * A short teaser used in the "answer today's question" reminders — the
+     * same cap for both the subtle mid-window hint and the blunter one that
+     * goes out with the last call.
+     */
     public const MAX_HINT_CHARS = 120;
 
     /** How many structured-generation attempts before giving up for the day. */
@@ -84,15 +88,18 @@ class QuizAuthor
         - أبقِ أسماء الدوال والأوامر والأكواد بالإنجليزية كما هي.
         - لا تعتمد على معلومات قد تتغير مع الزمن (إصدارات حديثة، أسعار، أشخاص).
 
-        التلميح (hint):
-        - جملة قصيرة واحدة تُوجّه التفكير نحو الإجابة دون كشفها إطلاقاً — تُستخدم في تذكير «جاوب سؤال اليوم» قبل إغلاقه، فاجعلها مشوّقة لا فاضحة.
-        - مثال جيد: «فكّر في وحدات القياس والفرق بينها» — لا تذكر الإجابة الصحيحة ولا رقم الخيار.
+        التلميحان (hint و obvious_hint):
+        - التلميح الأول (hint): جملة قصيرة واحدة تُوجّه التفكير نحو الإجابة دون كشفها إطلاقاً — تُرسل في منتصف يوم السؤال، فاجعلها مشوّقة لا فاضحة.
+          مثال جيد: «فكّر في وحدات القياس والفرق بينها» — لا تذكر الإجابة الصحيحة ولا رقم الخيار.
+        - التلميح الثاني (obvious_hint): تلميح أوضح بكثير يُرسل قبل إغلاق السؤال مباشرة — يقرّب القارئ من الإجابة خطوة واحدة فقط: يسمّي العملية أو القاعدة المطلوبة صراحةً، دون كتابة الإجابة حرفياً ولا رقم الخيار.
+          مثال جيد لسؤال «100 ميغابت/ثانية كم ميغابايت؟»: «العلاقة قسمة على 8».
+        - اجعل التلميحين مختلفين فعلاً: الأول يوجّه، والثاني يكاد يكشف.
 
         الحدود الصارمة:
-        - السؤال 300 حرف كحد أقصى، حقل body 700 حرف كحد أقصى، كل خيار 100 حرف كحد أقصى، الشرح 200 حرف كحد أقصى، التلميح 120 حرف كحد أقصى.
+        - السؤال 300 حرف كحد أقصى، حقل body 700 حرف كحد أقصى، كل خيار 100 حرف كحد أقصى، الشرح 200 حرف كحد أقصى، وكل تلميح 120 حرف كحد أقصى.
         - الشرح جملة أو جملتان تشرحان لماذا الإجابة صحيحة — يظهر للطالب بعد إجابته.
         - أعد الناتج بصيغة JSON فقط بهذا الشكل بالضبط، بدون أي نص آخر وبدون أسوار أكواد:
-          {"question": "...", "body": "...", "options": ["...", "...", "...", "..."], "correct_option": 0, "explanation": "...", "hint": "..."}
+          {"question": "...", "body": "...", "options": ["...", "...", "...", "..."], "correct_option": 0, "explanation": "...", "hint": "...", "obvious_hint": "..."}
         - body اختياري: اتركه "" عند عدم الحاجة لكود أو مقدمة.
         - correct_option هو ترتيب الإجابة الصحيحة في المصفوفة (من 0 إلى 3)، ونوّع موضعها.
         PROMPT;
@@ -170,6 +177,7 @@ class QuizAuthor
             'correct_option' => $decoded['correct_option'],
             'explanation' => $decoded['explanation'],
             'hint' => $decoded['hint'],
+            'obvious_hint' => $decoded['obvious_hint'],
             'status' => DailyQuiz::STATUS_READY,
         ]);
 
@@ -261,7 +269,7 @@ class QuizAuthor
      * Parse and validate the question JSON against Telegram's poll limits,
      * tolerating a stray markdown code fence but nothing else.
      *
-     * @return array{question: string, body: string|null, options: array<int, string>, correct_option: int, explanation: string|null, hint: string|null}
+     * @return array{question: string, body: string|null, options: array<int, string>, correct_option: int, explanation: string|null, hint: string|null, obvious_hint: string|null}
      */
     private function decodeQuestion(string $raw): array
     {
@@ -279,6 +287,7 @@ class QuizAuthor
         $correct = $decoded['correct_option'] ?? null;
         $explanation = trim((string) ($decoded['explanation'] ?? ''));
         $hint = trim((string) ($decoded['hint'] ?? ''));
+        $obviousHint = trim((string) ($decoded['obvious_hint'] ?? ''));
 
         if ($question === '' || mb_strlen($question) > self::MAX_QUESTION_CHARS) {
             throw new RuntimeException('السؤال فارغ أو أطول من حد تيليجرام (300 حرف).');
@@ -315,6 +324,7 @@ class QuizAuthor
             'correct_option' => (int) $correct,
             'explanation' => $explanation === '' ? null : Str::limit($explanation, self::MAX_EXPLANATION_CHARS, ''),
             'hint' => $hint === '' ? null : Str::limit($hint, self::MAX_HINT_CHARS, ''),
+            'obvious_hint' => $obviousHint === '' ? null : Str::limit($obviousHint, self::MAX_HINT_CHARS, ''),
         ];
     }
 }
