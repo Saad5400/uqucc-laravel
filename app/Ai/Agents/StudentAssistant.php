@@ -76,12 +76,9 @@ class StudentAssistant implements Agent, Conversational, HasProviderOptions, Has
     }
 
     /**
-     * OpenRouter-specific options. The student-facing surfaces run with
-     * reasoning OFF ('none'): benchmarked against the real {@see Toolbox},
-     * tool selection was exactly as accurate without reasoning as with it,
-     * while the turn got cheaper and much faster. Read from the end-user
-     * `ai.assistant` block, NOT `ai.chat` — the admin assistant keeps its own
-     * reasoning budget. Other providers get no extra options.
+     * OpenRouter-specific options: a small reasoning budget sharpens tool
+     * selection without a full-reasoning cost blow-up. Other providers get
+     * no extra options.
      *
      * @return array<string, mixed>
      */
@@ -92,7 +89,7 @@ class StudentAssistant implements Agent, Conversational, HasProviderOptions, Has
         }
 
         return [
-            'reasoning' => ['effort' => (string) config('ai.assistant.reasoning_effort', 'none')],
+            'reasoning' => ['effort' => (string) config('ai.chat.reasoning_effort', 'medium')],
         ];
     }
 

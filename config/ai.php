@@ -58,20 +58,10 @@ return [
     | truth for the "AI-generated, may be wrong" notice appended to each reply
     | in code — NOT produced by the model — on both surfaces.
     |
-    | `reasoning_effort` is deliberately SEPARATE from `ai.chat.reasoning_effort`
-    | (which the admin assistant still uses): the student-facing surfaces run
-    | with reasoning OFF. Benchmarked 2026-07-26 on deepseek-v4-flash against the
-    | real Toolbox: tool-selection accuracy was identical with and without
-    | reasoning (16/16 both, over GPA / deprivation / transfer / regulations /
-    | date / truth-table / no-tool chit-chat), while a student turn got ~35%
-    | cheaper and markedly faster (chat 65s -> 9s). Raise this back to
-    | 'low'/'high' if a future surface needs deliberation.
-    |
     */
 
     'assistant' => [
         'disclaimer' => env('AI_ASSISTANT_DISCLAIMER', 'المحتوى مولَّد بالذكاء الاصطناعي وقد يحتوي على أخطاء — تحقّق من المصادر عند الحاجة.'),
-        'reasoning_effort' => env('AI_ASSISTANT_REASONING_EFFORT', 'none'),
     ],
 
     /*
