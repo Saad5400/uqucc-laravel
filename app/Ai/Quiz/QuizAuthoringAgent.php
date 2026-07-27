@@ -2,29 +2,52 @@
 
 namespace App\Ai\Quiz;
 
+use Laravel\Ai\Attributes\MaxSteps;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasProviderOptions;
+use Laravel\Ai\Contracts\HasTools;
+use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Enums\Lab;
 use Laravel\Ai\Promptable;
 use Stringable;
 
 /**
- * The tool-less, single-shot agent behind daily quiz question generation.
+ * The tool-driven agent behind daily quiz question generation.
  *
  * Like {@see \App\Ai\Authoring\PageAuthoringAgent} it is pinned to the
  * "smart" authoring tier — one scheduled call per day where question quality
  * beats latency — and exists as a dedicated class so tests get a stable
  * faking handle: `QuizAuthoringAgent::fake([...])`.
+ *
+ * It submits its question through a single {@see SubmitQuizQuestionTool}: the
+ * validator lives behind the tool, so a rejected question is corrected inside
+ * the same conversation (the model sees exactly what failed) rather than via a
+ * blind stateless retry. `MaxSteps` bounds that self-correction loop.
  */
-class QuizAuthoringAgent implements Agent, HasProviderOptions
+#[MaxSteps(8)]
+class QuizAuthoringAgent implements Agent, HasProviderOptions, HasTools
 {
     use Promptable;
 
-    public function __construct(private readonly string $agentInstructions) {}
+    /**
+     * @param  array<int, Tool>  $agentTools
+     */
+    public function __construct(
+        private readonly string $agentInstructions,
+        private readonly array $agentTools = [],
+    ) {}
 
     public function instructions(): Stringable|string
     {
         return $this->agentInstructions;
+    }
+
+    /**
+     * @return iterable<int, Tool>
+     */
+    public function tools(): iterable
+    {
+        return $this->agentTools;
     }
 
     /**

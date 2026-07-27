@@ -16,6 +16,7 @@ use App\Models\QuizPlayer;
 use App\Models\QuizTopic;
 use App\Models\User;
 use App\Settings\AiSettings;
+use Laravel\Ai\Responses\Data\ToolCall;
 
 beforeEach(function () {
     $this->user = User::factory()->create();
@@ -128,12 +129,12 @@ it('regenerates today\'s quiz by replacing the ready one', function () {
     QuizTopic::factory()->create();
     $old = DailyQuiz::factory()->create(['quiz_date' => today(), 'question' => 'سؤال قديم؟']);
 
-    QuizAuthoringAgent::fake([json_encode([
+    QuizAuthoringAgent::fake([new ToolCall('call_1', 'submit_quiz_question', [
         'question' => 'سؤال جديد تماماً؟',
         'options' => ['أ', 'ب', 'ج', 'د'],
         'correct_option' => 0,
         'explanation' => 'شرح.',
-    ], JSON_UNESCAPED_UNICODE)]);
+    ])]);
 
     $result = app(RegenerateDailyQuizAction::class)->handle([], $this->user);
 

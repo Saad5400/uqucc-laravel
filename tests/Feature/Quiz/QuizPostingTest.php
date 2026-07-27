@@ -9,6 +9,7 @@ use App\Models\QuizTopic;
 use App\Services\Quiz\QuizPoster;
 use App\Settings\AiSettings;
 use App\Settings\QuizSettings;
+use Laravel\Ai\Responses\Data\ToolCall;
 use Tests\Fakes\FakeTelegramApi;
 
 beforeEach(function () {
@@ -299,12 +300,12 @@ it('skips while the feature is disabled or has no target groups', function (bool
 it('generates a quiz inline when the nightly generation left none', function () {
     QuizTopic::factory()->create();
 
-    QuizAuthoringAgent::fake([json_encode([
+    QuizAuthoringAgent::fake([new ToolCall('call_1', 'submit_quiz_question', [
         'question' => 'سؤال مولّد عند النشر؟',
         'options' => ['أ', 'ب', 'ج', 'د'],
         'correct_option' => 0,
         'explanation' => 'شرح.',
-    ], JSON_UNESCAPED_UNICODE)]);
+    ])]);
 
     $this->artisan('quiz:post')->assertExitCode(0);
 

@@ -7,20 +7,19 @@ use App\Models\DailyQuiz;
 use App\Models\QuizTopic;
 use App\Settings\AiSettings;
 use Carbon\CarbonInterface;
-use Illuminate\Support\Str;
 use RuntimeException;
 use Throwable;
 
 /**
- * Generates the daily multiple-choice question: one structured authoring-tier
- * call that turns an admin-curated {@see QuizTopic} into a `ready`
- * {@see DailyQuiz} row admins may still edit before it is posted.
+ * Generates the daily multiple-choice question: one authoring-tier agent call
+ * that turns an admin-curated {@see QuizTopic} into a `ready` {@see DailyQuiz}
+ * row admins may still edit before it is posted.
  *
- * The output must survive Telegram's quiz-poll limits verbatim (question 300
- * chars, options 100, explanation 200) plus the optional `body` (700 chars —
- * the code/scenario posted as its own formatted message above the poll), so
- * those limits are part of the contract here: a response that breaks them is
- * rejected and retried once.
+ * The model submits its question through {@see SubmitQuizQuestionTool}, whose
+ * validator enforces Telegram's quiz-poll limits (question 300 chars, options
+ * 100, explanation 200), the optional `body` (700 chars), and the quality
+ * rules. A rejected question is corrected inside the same conversation — the
+ * model is told exactly what failed — so there is no blind stateless retry.
  * Gated like every paid feature: the AI master switch, the OpenRouter key,
  * and the daily spend budget; each call's cost lands on the ledger under the
  * `quiz` feature.
@@ -84,7 +83,7 @@ class QuizAuthor
 
         الشكل:
         - سؤال واحد واضح له إجابة صحيحة واحدة لا لبس فيها، وثلاثة بدائل خاطئة معقولة (ليست هزلية ولا واضحة الخطأ)، لكنها ليست فخاخاً دقيقة تُصمَّم لإسقاط المنتبه.
-        - اجعل الخيارات الأربعة متقاربة الطول وبالأسلوب نفسه؛ لا تجعل الإجابة الصحيحة أطول أو أكثر تفصيلاً من البدائل — فطولها الزائد تلميح يكشفها. (يُرفض الناتج تلقائياً ويُعاد توليده إذا تجاوز طول الإجابة الصحيحة متوسط طول البدائل بأكثر من عشرة أحرف.)
+        - اجعل الخيارات الأربعة متقاربة الطول وبالأسلوب نفسه؛ لا تجعل الإجابة الصحيحة أطول أو أكثر تفصيلاً من البدائل — فطولها الزائد تلميح يكشفها. (سترفض الأداة السؤال إذا تجاوز طول الإجابة الصحيحة متوسط طول البدائل بأكثر من عشرة أحرف، فتعيد صياغة الخيارات.)
 
         الكود أو المقدمة (حقل body):
         - body رسالة منسّقة تُنشر فوق التصويت مباشرة، ولها استخدامان: (أ) كود أو سيناريو يعتمد عليه السؤال، أو (ب) مقدمة تعليمية قصيرة تُمهّد لمفهوم قد لا يعرفه الجميع. لا تضع أياً منهما داخل نص السؤال.
@@ -107,13 +106,11 @@ class QuizAuthor
           مثال جيد لسؤال «100 ميغابت/ثانية كم ميغابايت؟»: «العلاقة قسمة على 8».
         - اجعل التلميحين مختلفين فعلاً: الأول يوجّه، والثاني يكاد يكشف.
 
-        الحدود الصارمة:
-        - السؤال 300 حرف كحد أقصى، حقل body 700 حرف كحد أقصى، كل خيار 100 حرف كحد أقصى، الشرح 200 حرف كحد أقصى، وكل تلميح 120 حرف كحد أقصى.
+        الإرسال والحدود:
+        - أرسل سؤالك باستدعاء الأداة submit_quiz_question فقط — لا تكتب الناتج نصاً عادياً ولا JSON. حقولها: question، body، options (مصفوفة من أربعة خيارات)، correct_option (رقم من 0 إلى 3، ونوّع موضعه)، explanation، hint، obvious_hint.
+        - إن أعادت الأداة قائمة مشاكل فعالجها كلها ثم استدعِها مرة أخرى، وكرّر حتى تُقبل. وبمجرد قبولها توقّف ولا تُجرِ تعديلاً إضافياً.
+        - الحدود القصوى: السؤال 300 حرف، body 700 حرف، كل خيار 100 حرف، الشرح 200 حرف، وكل تلميح 120 حرف. body اختياري: أرسله "" عند عدم الحاجة لكود أو مقدمة.
         - الشرح جملة أو جملتان تشرحان لماذا الإجابة صحيحة — يظهر للطالب بعد إجابته.
-        - أعد الناتج بصيغة JSON فقط بهذا الشكل بالضبط، بدون أي نص آخر وبدون أسوار أكواد:
-          {"question": "...", "body": "...", "options": ["...", "...", "...", "..."], "correct_option": 0, "explanation": "...", "hint": "...", "obvious_hint": "..."}
-        - body اختياري: اتركه "" عند عدم الحاجة لكود أو مقدمة.
-        - correct_option هو ترتيب الإجابة الصحيحة في المصفوفة (من 0 إلى 3)، ونوّع موضعها.
         PROMPT;
 
     public function __construct(
@@ -199,9 +196,11 @@ class QuizAuthor
     }
 
     /**
-     * Run the structured generation, retrying once on an invalid response.
+     * Author one question, retrying the whole agent run only if the model
+     * finishes without ever submitting a valid question through the tool
+     * (in-conversation correction handles ordinary validation failures).
      *
-     * @return array{question: string, options: array<int, string>, correct_option: int, explanation: string|null}
+     * @return array{question: string, body: string|null, options: array<int, string>, correct_option: int, explanation: string|null, hint: string|null, obvious_hint: string|null}
      */
     private function generateQuestion(QuizTopic $topic): array
     {
@@ -210,7 +209,7 @@ class QuizAuthor
 
         for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; $attempt++) {
             try {
-                return $this->decodeQuestion($this->generate($prompt));
+                return $this->generate($prompt);
             } catch (RuntimeException $exception) {
                 $lastError = $exception;
             }
@@ -249,18 +248,33 @@ class QuizAuthor
     /**
      * One authoring-tier generation with its exact provider cost recorded on
      * the spend ledger under the `quiz` feature.
+     *
+     * The question is validated behind {@see SubmitQuizQuestionTool}, so a
+     * rejected candidate is corrected within this same agentic call; we read
+     * the accepted payload back off the tool once the run finishes.
+     *
+     * @return array{question: string, body: string|null, options: array<int, string>, correct_option: int, explanation: string|null, hint: string|null, obvious_hint: string|null}
      */
-    private function generate(string $prompt): string
+    private function generate(string $prompt): array
     {
         $this->ledger->clearContextCosts();
 
+        $tool = new SubmitQuizQuestionTool;
+        $response = null;
+
         try {
-            $response = (new QuizAuthoringAgent(self::INSTRUCTIONS))->prompt($prompt);
+            $response = (new QuizAuthoringAgent(self::INSTRUCTIONS, [$tool]))->prompt($prompt);
         } finally {
-            $this->recordSpend($response ?? null);
+            $this->recordSpend($response);
         }
 
-        return trim((string) $response->text);
+        $accepted = $tool->accepted();
+
+        if ($accepted === null) {
+            throw new RuntimeException('لم يعتمد النموذج سؤالاً صالحاً عبر الأداة.');
+        }
+
+        return $accepted;
     }
 
     private function recordSpend(?\Laravel\Ai\Responses\AgentResponse $response): void
@@ -274,98 +288,6 @@ class QuizAuthor
             );
         } catch (Throwable $exception) {
             report($exception);
-        }
-    }
-
-    /**
-     * Parse and validate the question JSON against Telegram's poll limits,
-     * tolerating a stray markdown code fence but nothing else.
-     *
-     * @return array{question: string, body: string|null, options: array<int, string>, correct_option: int, explanation: string|null, hint: string|null, obvious_hint: string|null}
-     */
-    private function decodeQuestion(string $raw): array
-    {
-        $json = trim((string) preg_replace('/^```(?:json)?\s*|\s*```$/m', '', $raw));
-
-        $decoded = json_decode($json, true);
-
-        if (! is_array($decoded)) {
-            throw new RuntimeException('أعاد النموذج ناتجاً ليس JSON صالحاً.');
-        }
-
-        $question = trim((string) ($decoded['question'] ?? ''));
-        $body = trim((string) ($decoded['body'] ?? ''));
-        $options = $decoded['options'] ?? null;
-        $correct = $decoded['correct_option'] ?? null;
-        $explanation = trim((string) ($decoded['explanation'] ?? ''));
-        $hint = trim((string) ($decoded['hint'] ?? ''));
-        $obviousHint = trim((string) ($decoded['obvious_hint'] ?? ''));
-
-        if ($question === '' || mb_strlen($question) > self::MAX_QUESTION_CHARS) {
-            throw new RuntimeException('السؤال فارغ أو أطول من حد تيليجرام (300 حرف).');
-        }
-
-        if (mb_strlen($body) > self::MAX_BODY_CHARS) {
-            throw new RuntimeException('محتوى السؤال (body) أطول من الحد ('.self::MAX_BODY_CHARS.' حرف).');
-        }
-
-        if (! is_array($options) || count($options) !== 4) {
-            throw new RuntimeException('الخيارات يجب أن تكون أربعة بالضبط.');
-        }
-
-        $options = array_values(array_map(fn (mixed $option): string => trim((string) $option), $options));
-
-        foreach ($options as $option) {
-            if ($option === '' || mb_strlen($option) > self::MAX_OPTION_CHARS) {
-                throw new RuntimeException('أحد الخيارات فارغ أو أطول من حد تيليجرام (100 حرف).');
-            }
-        }
-
-        if (count(array_unique($options)) !== 4) {
-            throw new RuntimeException('الخيارات متكررة.');
-        }
-
-        if (! is_numeric($correct) || (int) $correct < 0 || (int) $correct > 3) {
-            throw new RuntimeException('ترتيب الإجابة الصحيحة يجب أن يكون بين 0 و3.');
-        }
-
-        $this->assertOptionLengthsBalanced($options, (int) $correct);
-
-        return [
-            'question' => $question,
-            'body' => $body === '' ? null : $body,
-            'options' => $options,
-            'correct_option' => (int) $correct,
-            'explanation' => $explanation === '' ? null : Str::limit($explanation, self::MAX_EXPLANATION_CHARS, ''),
-            'hint' => $hint === '' ? null : Str::limit($hint, self::MAX_HINT_CHARS, ''),
-            'obvious_hint' => $obviousHint === '' ? null : Str::limit($obviousHint, self::MAX_HINT_CHARS, ''),
-        ];
-    }
-
-    /**
-     * Reject the classic "longest option is the answer" giveaway: the correct
-     * option must not run noticeably longer than the average of the three
-     * distractors. On failure the generation is retried, so the model is
-     * pushed to rewrite every option to a similar length.
-     *
-     * @param  array<int, string>  $options
-     */
-    private function assertOptionLengthsBalanced(array $options, int $correct): void
-    {
-        $correctLength = mb_strlen($options[$correct]);
-
-        $distractorLengths = [];
-
-        foreach ($options as $index => $option) {
-            if ($index !== $correct) {
-                $distractorLengths[] = mb_strlen($option);
-            }
-        }
-
-        $averageDistractorLength = array_sum($distractorLengths) / count($distractorLengths);
-
-        if ($correctLength - $averageDistractorLength > self::MAX_CORRECT_OPTION_LENGTH_LEAD) {
-            throw new RuntimeException('الإجابة الصحيحة أطول بوضوح من بقية الخيارات (تلميح غير مقصود) — اجعل كل الخيارات متقاربة الطول.');
         }
     }
 }

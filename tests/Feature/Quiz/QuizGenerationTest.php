@@ -7,6 +7,7 @@ use App\Models\QuizTopic;
 use App\Settings\AiSettings;
 use App\Settings\QuizSettings;
 use Carbon\CarbonInterface;
+use Laravel\Ai\Responses\Data\ToolCall;
 
 beforeEach(function () {
     config()->set('ai.providers.openrouter.key', 'test-key');
@@ -22,24 +23,30 @@ beforeEach(function () {
     $quiz->save();
 });
 
-function quizJson(array $overrides = []): string
+/**
+ * A faked model turn that submits a question through the submit_quiz_question
+ * tool. The fake gateway runs the REAL tool, so overriding fields here exercises
+ * the tool's actual validation.
+ */
+function quizToolCall(array $overrides = []): ToolCall
 {
-    return json_encode([
+    return new ToolCall('call_1', 'submit_quiz_question', [
         'question' => 'ما البوابة المنطقية التي تعكس قيمة المدخل؟',
+        'body' => '',
         'options' => ['AND', 'OR', 'NOT', 'XOR'],
         'correct_option' => 2,
         'explanation' => 'بوابة NOT تُخرج عكس قيمة المدخل دائماً.',
         'hint' => 'فكّر في العملية التي تقلب القيمة.',
         'obvious_hint' => 'البوابة التي تحوّل 1 إلى 0.',
         ...$overrides,
-    ], JSON_UNESCAPED_UNICODE);
+    ]);
 }
 
 it('generates a ready quiz from the least-recently-used active topic', function () {
     $stale = QuizTopic::factory()->create(['name' => 'قواعد البيانات', 'last_used_at' => now()->subDays(2)]);
     $neverUsed = QuizTopic::factory()->create(['name' => 'الشبكات', 'last_used_at' => null]);
 
-    QuizAuthoringAgent::fake([quizJson()]);
+    QuizAuthoringAgent::fake([quizToolCall()]);
 
     $this->artisan('quiz:generate')->assertExitCode(0);
 
@@ -61,7 +68,7 @@ it('generates a ready quiz from the least-recently-used active topic', function 
 it('stores the optional body block from the generated question', function () {
     QuizTopic::factory()->create();
 
-    QuizAuthoringAgent::fake([quizJson([
+    QuizAuthoringAgent::fake([quizToolCall([
         'question' => 'ماذا يُطبع؟',
         'body' => "في الكود التالي:\n```py\nprint(2 ** 3)\n```",
     ])]);
@@ -77,24 +84,25 @@ it('stores the optional body block from the generated question', function () {
 it('leaves the body null when the generated question omits it', function () {
     QuizTopic::factory()->create();
 
-    QuizAuthoringAgent::fake([quizJson()]);
+    QuizAuthoringAgent::fake([quizToolCall()]);
 
     $this->artisan('quiz:generate')->assertExitCode(0);
 
     expect(DailyQuiz::forDate(today())->body)->toBeNull();
 });
 
-it('rejects a body longer than the limit', function () {
+it('corrects a too-long body within the same run', function () {
     QuizTopic::factory()->create();
 
     QuizAuthoringAgent::fake([
-        quizJson(['body' => str_repeat('ا', 701)]),
-        quizJson(['body' => str_repeat('ا', 701)]),
+        quizToolCall(['body' => str_repeat('ا', 701)]),
+        quizToolCall(['question' => 'سؤال مصحّح بعد رفض المقدمة الطويلة؟']),
     ]);
 
-    $this->artisan('quiz:generate')->assertExitCode(1);
+    $this->artisan('quiz:generate')->assertExitCode(0);
 
-    expect(DailyQuiz::query()->count())->toBe(0);
+    expect(DailyQuiz::query()->count())->toBe(1)
+        ->and(DailyQuiz::forDate(today())->question)->toBe('سؤال مصحّح بعد رفض المقدمة الطويلة؟');
 });
 
 it('skips silently while the quiz feature is disabled', function () {
@@ -103,7 +111,7 @@ it('skips silently while the quiz feature is disabled', function () {
     $settings->save();
 
     QuizTopic::factory()->create();
-    QuizAuthoringAgent::fake([quizJson()]);
+    QuizAuthoringAgent::fake([quizToolCall()]);
 
     $this->artisan('quiz:generate')->assertExitCode(0);
 
@@ -115,7 +123,7 @@ it('generates from an explicitly chosen topic instead of the auto pick', functio
     QuizTopic::factory()->create(['name' => 'الأقل استخداماً', 'last_used_at' => null]);
     $chosen = QuizTopic::factory()->create(['name' => 'موضوع مختار', 'last_used_at' => now()]);
 
-    QuizAuthoringAgent::fake([quizJson()]);
+    QuizAuthoringAgent::fake([quizToolCall()]);
 
     $quiz = app(QuizAuthor::class)->generateForDate(today(), $chosen);
 
@@ -127,7 +135,7 @@ it('replaces a ready quiz in place when regenerating', function () {
     $topic = QuizTopic::factory()->create();
     $old = DailyQuiz::factory()->create(['quiz_date' => today(), 'question' => 'السؤال القديم؟']);
 
-    QuizAuthoringAgent::fake([quizJson(['question' => 'السؤال الجديد؟'])]);
+    QuizAuthoringAgent::fake([quizToolCall(['question' => 'السؤال الجديد؟'])]);
 
     $quiz = app(QuizAuthor::class)->generateForDate(today(), $topic, replace: true);
 
@@ -140,7 +148,7 @@ it('keeps the existing quiz when a replacement generation fails', function () {
     $topic = QuizTopic::factory()->create();
     $old = DailyQuiz::factory()->create(['quiz_date' => today(), 'question' => 'السؤال القديم؟']);
 
-    QuizAuthoringAgent::fake(['ناتج ليس JSON', 'ولا هذا JSON']);
+    QuizAuthoringAgent::fake(['لم أرسل سؤالاً عبر الأداة', 'ولا في هذه المحاولة']);
 
     expect(fn () => app(QuizAuthor::class)->generateForDate(today(), $topic, replace: true))
         ->toThrow(RuntimeException::class);
@@ -153,7 +161,7 @@ it('refuses to replace a quiz that is already posted', function () {
     $topic = QuizTopic::factory()->create();
     DailyQuiz::factory()->posted()->create(['quiz_date' => today()]);
 
-    QuizAuthoringAgent::fake([quizJson()]);
+    QuizAuthoringAgent::fake([quizToolCall()]);
 
     expect(fn () => app(QuizAuthor::class)->generateForDate(today(), $topic, replace: true))
         ->toThrow(RuntimeException::class);
@@ -164,7 +172,7 @@ it('refuses to replace a quiz that is already posted', function () {
 it('skips when a quiz already exists for the day', function () {
     QuizTopic::factory()->create();
     DailyQuiz::factory()->create(['quiz_date' => today()]);
-    QuizAuthoringAgent::fake([quizJson()]);
+    QuizAuthoringAgent::fake([quizToolCall()]);
 
     $this->artisan('quiz:generate')->assertExitCode(0);
 
@@ -174,7 +182,7 @@ it('skips when a quiz already exists for the day', function () {
 
 it('fails when no active topics exist', function () {
     QuizTopic::factory()->inactive()->create();
-    QuizAuthoringAgent::fake([quizJson()]);
+    QuizAuthoringAgent::fake([quizToolCall()]);
 
     $this->artisan('quiz:generate')->assertExitCode(1);
 
@@ -187,7 +195,7 @@ it('fails while the AI master switch is off', function () {
     $ai->save();
 
     QuizTopic::factory()->create();
-    QuizAuthoringAgent::fake([quizJson()]);
+    QuizAuthoringAgent::fake([quizToolCall()]);
 
     $this->artisan('quiz:generate')->assertExitCode(1);
 
@@ -195,51 +203,53 @@ it('fails while the AI master switch is off', function () {
     QuizAuthoringAgent::assertNeverPrompted();
 });
 
-it('retries once after an invalid response', function () {
+it('retries when the model finishes without submitting, then succeeds', function () {
     QuizTopic::factory()->create();
-    QuizAuthoringAgent::fake(['ناتج ليس JSON', quizJson()]);
+    QuizAuthoringAgent::fake(['لم أُرسل سؤالاً بعد', quizToolCall()]);
 
     $this->artisan('quiz:generate')->assertExitCode(0);
 
     expect(DailyQuiz::query()->count())->toBe(1);
 });
 
-it('gives up after two invalid responses', function () {
+it('gives up when the model never submits a question', function () {
     QuizTopic::factory()->create();
-    QuizAuthoringAgent::fake(['ناتج ليس JSON', 'ولا هذا JSON']);
+    QuizAuthoringAgent::fake(['نص بلا استدعاء أداة', 'وكذلك هنا']);
 
     $this->artisan('quiz:generate')->assertExitCode(1);
 
     expect(DailyQuiz::query()->count())->toBe(0);
 });
 
-it('rejects a question longer than the Telegram poll limit', function () {
+it('corrects a too-long question within the same run', function () {
     QuizTopic::factory()->create();
     QuizAuthoringAgent::fake([
-        quizJson(['question' => str_repeat('س', 301)]),
-        quizJson(['question' => str_repeat('س', 301)]),
+        quizToolCall(['question' => str_repeat('س', 301)]),
+        quizToolCall(['question' => 'سؤال قصير مصحّح؟']),
     ]);
 
-    $this->artisan('quiz:generate')->assertExitCode(1);
+    $this->artisan('quiz:generate')->assertExitCode(0);
 
-    expect(DailyQuiz::query()->count())->toBe(0);
+    expect(DailyQuiz::query()->count())->toBe(1)
+        ->and(DailyQuiz::forDate(today())->question)->toBe('سؤال قصير مصحّح؟');
 });
 
-it('rejects duplicated options', function () {
+it('corrects duplicated options within the same run', function () {
     QuizTopic::factory()->create();
     QuizAuthoringAgent::fake([
-        quizJson(['options' => ['AND', 'AND', 'NOT', 'XOR']]),
-        quizJson(['options' => ['AND', 'AND', 'NOT', 'XOR']]),
+        quizToolCall(['options' => ['AND', 'AND', 'NOT', 'XOR']]),
+        quizToolCall(),
     ]);
 
-    $this->artisan('quiz:generate')->assertExitCode(1);
+    $this->artisan('quiz:generate')->assertExitCode(0);
 
-    expect(DailyQuiz::query()->count())->toBe(0);
+    expect(DailyQuiz::query()->count())->toBe(1)
+        ->and(DailyQuiz::forDate(today())->options)->toBe(['AND', 'OR', 'NOT', 'XOR']);
 });
 
-it('rejects when the correct option is much longer than the distractors', function () {
+it('gives up when the correct option stays much longer than the distractors', function () {
     QuizTopic::factory()->create();
-    $lopsided = quizJson([
+    $lopsided = quizToolCall([
         'options' => ['AND', 'OR', str_repeat('ن', 20), 'XOR'],
         'correct_option' => 2,
     ]);
@@ -250,21 +260,22 @@ it('rejects when the correct option is much longer than the distractors', functi
     expect(DailyQuiz::query()->count())->toBe(0);
 });
 
-it('retries when the correct option is too long, then accepts balanced options', function () {
+it('corrects a lopsided correct option within the same run', function () {
     QuizTopic::factory()->create();
     QuizAuthoringAgent::fake([
-        quizJson(['options' => ['AND', 'OR', str_repeat('ن', 20), 'XOR'], 'correct_option' => 2]),
-        quizJson(),
+        quizToolCall(['options' => ['AND', 'OR', str_repeat('ن', 20), 'XOR'], 'correct_option' => 2]),
+        quizToolCall(),
     ]);
 
     $this->artisan('quiz:generate')->assertExitCode(0);
 
-    expect(DailyQuiz::query()->count())->toBe(1);
+    expect(DailyQuiz::query()->count())->toBe(1)
+        ->and(DailyQuiz::forDate(today())->options)->toBe(['AND', 'OR', 'NOT', 'XOR']);
 });
 
-it('tolerates a markdown code fence around the JSON', function () {
+it('ignores a trailing assistant message after the question is accepted', function () {
     QuizTopic::factory()->create();
-    QuizAuthoringAgent::fake(["```json\n".quizJson()."\n```"]);
+    QuizAuthoringAgent::fake([quizToolCall(), 'تم، اعتمدت السؤال.']);
 
     $this->artisan('quiz:generate')->assertExitCode(0);
 
@@ -275,7 +286,7 @@ it('prefers spotlight topics on the spotlight weekday', function () {
     QuizTopic::factory()->create(['name' => 'أساسيات']);
     $spotlight = QuizTopic::factory()->spotlight()->create(['name' => 'أمن سيبراني متقدم']);
 
-    QuizAuthoringAgent::fake([quizJson()]);
+    QuizAuthoringAgent::fake([quizToolCall()]);
 
     $wednesday = today()->next(CarbonInterface::WEDNESDAY);
 
@@ -288,7 +299,7 @@ it('avoids spotlight topics on regular days while regular topics exist', functio
     $regular = QuizTopic::factory()->create(['name' => 'أساسيات']);
     QuizTopic::factory()->spotlight()->create(['name' => 'أمن سيبراني متقدم']);
 
-    QuizAuthoringAgent::fake([quizJson()]);
+    QuizAuthoringAgent::fake([quizToolCall()]);
 
     $sunday = today()->next(CarbonInterface::SUNDAY);
 
@@ -305,7 +316,7 @@ it('lists recent questions in the prompt so the model avoids repeats', function 
         'status' => DailyQuiz::STATUS_CLOSED,
     ]);
 
-    QuizAuthoringAgent::fake([quizJson()]);
+    QuizAuthoringAgent::fake([quizToolCall()]);
 
     $this->artisan('quiz:generate')->assertExitCode(0);
 
