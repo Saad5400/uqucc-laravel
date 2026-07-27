@@ -35,6 +35,13 @@ class QuizAuthor
 
     public const MAX_OPTION_CHARS = 100;
 
+    /**
+     * The "longest option is the answer" tell: reject (and retry) when the
+     * correct option runs more than this many characters longer than the
+     * average of the three distractors, forcing options of similar length.
+     */
+    public const MAX_CORRECT_OPTION_LENGTH_LEAD = 10;
+
     public const MAX_EXPLANATION_CHARS = 200;
 
     /**
@@ -77,11 +84,13 @@ class QuizAuthor
 
         الشكل:
         - سؤال واحد واضح له إجابة صحيحة واحدة لا لبس فيها، وثلاثة بدائل خاطئة معقولة (ليست هزلية ولا واضحة الخطأ)، لكنها ليست فخاخاً دقيقة تُصمَّم لإسقاط المنتبه.
+        - اجعل الخيارات الأربعة متقاربة الطول وبالأسلوب نفسه؛ لا تجعل الإجابة الصحيحة أطول أو أكثر تفصيلاً من البدائل — فطولها الزائد تلميح يكشفها. (يُرفض الناتج تلقائياً ويُعاد توليده إذا تجاوز طول الإجابة الصحيحة متوسط طول البدائل بأكثر من عشرة أحرف.)
 
         الكود أو المقدمة (حقل body):
         - body رسالة منسّقة تُنشر فوق التصويت مباشرة، ولها استخدامان: (أ) كود أو سيناريو يعتمد عليه السؤال، أو (ب) مقدمة تعليمية قصيرة تُمهّد لمفهوم قد لا يعرفه الجميع. لا تضع أياً منهما داخل نص السؤال.
         - الكود/السيناريو: ضع أي كود داخل سياج ماركداون بلغته، هكذا: ‏```py … ``` أو ‏```java … ``` — ليظهر بخط ثابت واتجاه سليم. اجعله من سطر إلى أربعة أسطر كحد أقصى، ومفهوماً لدارسي جافا وبايثون معاً ما أمكن.
-        - المقدمة التعليمية: إذا اعتمد سؤال تطبيقي على مفهوم قد لا يعرفه بعض الطلاب، عرّف الفكرة عموماً في body بسطر أو سطرين بلغة بسيطة وودّية، ثم اطرح سؤالاً يطبّقها على موقف ملموس جديد.
+        - المقدمة التعليمية — متى تُضاف: إذا استند السؤال إلى سلوك دالة أو أمر أو عملية محددة قد لا يستحضرها الجميع (مثل COUNT(DISTINCT) في SQL، أو fork() في نظم التشغيل، أو مُعدِّل الوصول private)، فاشرح ذلك السلوك عموماً في body بسطر أو سطرين بلغة بسيطة وودّية، ثم اطرح سؤالاً يطبّقه على حالة ملموسة (احسب الناتج، عدد العمليات، وهكذا). هذا يحوّل السؤال من «هل تحفظ؟» إلى «هل تفكّر؟» ويجعله عادلاً لجمهور مختلط لم يدرس الجميع مادته.
+        - متى تُترك المقدمة فارغة: إذا كان المفهوم من البديهيات التي يعرفها الجميع (أولوية العمليات الحسابية، المتغيرات الأساسية)، فلا تضف مقدمة — ستكون حشواً مملاً.
         - حاسم — ممنوع كشف الإجابة في المقدمة: المقدمة تشرح المفهوم عموماً فقط، ولا تذكر أياً من الخيارات بالاسم، ولا تُصنّف أياً منها، ولا تُلمّح لأي خيار هو الصحيح. إن أمكن للقارئ نسخ الإجابة من المقدمة فقد أفسدتها. مثال ممنوع وقع فعلاً: مقدمة تقول «الشجرة والرسم غير خطيين» ثم السؤال «أيّها ليس خطياً؟» والشجرة خيار — هذا كشف صريح وسؤال تصنيف ممل معاً. المقدمة تُمهّد لتطبيق يفكّر فيه الطالب، لا لاسترجاع ما كُتب فيها.
         - عند وجود body اجعل حقل question جملة استفهامية قصيرة مستقلة تُقرأ وحدها (مثل «ماذا يُطبع؟» أو «أيّها مثال على متطلب غير وظيفي؟») — لأن التصويت لا يعرض نص body.
         - إن لم يحتَج السؤال إلى كود ولا مقدمة، اترك body سلسلة فارغة "" واكتب السؤال كاملاً في question.
@@ -320,6 +329,8 @@ class QuizAuthor
             throw new RuntimeException('ترتيب الإجابة الصحيحة يجب أن يكون بين 0 و3.');
         }
 
+        $this->assertOptionLengthsBalanced($options, (int) $correct);
+
         return [
             'question' => $question,
             'body' => $body === '' ? null : $body,
@@ -329,5 +340,32 @@ class QuizAuthor
             'hint' => $hint === '' ? null : Str::limit($hint, self::MAX_HINT_CHARS, ''),
             'obvious_hint' => $obviousHint === '' ? null : Str::limit($obviousHint, self::MAX_HINT_CHARS, ''),
         ];
+    }
+
+    /**
+     * Reject the classic "longest option is the answer" giveaway: the correct
+     * option must not run noticeably longer than the average of the three
+     * distractors. On failure the generation is retried, so the model is
+     * pushed to rewrite every option to a similar length.
+     *
+     * @param  array<int, string>  $options
+     */
+    private function assertOptionLengthsBalanced(array $options, int $correct): void
+    {
+        $correctLength = mb_strlen($options[$correct]);
+
+        $distractorLengths = [];
+
+        foreach ($options as $index => $option) {
+            if ($index !== $correct) {
+                $distractorLengths[] = mb_strlen($option);
+            }
+        }
+
+        $averageDistractorLength = array_sum($distractorLengths) / count($distractorLengths);
+
+        if ($correctLength - $averageDistractorLength > self::MAX_CORRECT_OPTION_LENGTH_LEAD) {
+            throw new RuntimeException('الإجابة الصحيحة أطول بوضوح من بقية الخيارات (تلميح غير مقصود) — اجعل كل الخيارات متقاربة الطول.');
+        }
     }
 }

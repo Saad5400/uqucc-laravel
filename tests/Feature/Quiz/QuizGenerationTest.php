@@ -237,6 +237,31 @@ it('rejects duplicated options', function () {
     expect(DailyQuiz::query()->count())->toBe(0);
 });
 
+it('rejects when the correct option is much longer than the distractors', function () {
+    QuizTopic::factory()->create();
+    $lopsided = quizJson([
+        'options' => ['AND', 'OR', str_repeat('ن', 20), 'XOR'],
+        'correct_option' => 2,
+    ]);
+    QuizAuthoringAgent::fake([$lopsided, $lopsided]);
+
+    $this->artisan('quiz:generate')->assertExitCode(1);
+
+    expect(DailyQuiz::query()->count())->toBe(0);
+});
+
+it('retries when the correct option is too long, then accepts balanced options', function () {
+    QuizTopic::factory()->create();
+    QuizAuthoringAgent::fake([
+        quizJson(['options' => ['AND', 'OR', str_repeat('ن', 20), 'XOR'], 'correct_option' => 2]),
+        quizJson(),
+    ]);
+
+    $this->artisan('quiz:generate')->assertExitCode(0);
+
+    expect(DailyQuiz::query()->count())->toBe(1);
+});
+
 it('tolerates a markdown code fence around the JSON', function () {
     QuizTopic::factory()->create();
     QuizAuthoringAgent::fake(["```json\n".quizJson()."\n```"]);
