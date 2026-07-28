@@ -60,7 +60,8 @@ abstract class BaseTeamHandler extends BaseHandler
     }
 
     /**
-     * Resolve names against one chat's teams.
+     * Resolve names against one chat's teams, keeping the caller's order so
+     * replies list teams the way the person typed them.
      *
      * @param  array<int, string>  $names
      * @return array{Collection<int, TelegramTeam>, array<int, string>} the found teams and the missing names
@@ -70,7 +71,9 @@ abstract class BaseTeamHandler extends BaseHandler
         $teams = TelegramTeam::query()
             ->where('chat_id', $chatId)
             ->whereIn('name', $names)
-            ->get();
+            ->get()
+            ->sortBy(fn (TelegramTeam $team): int => (int) array_search($team->name, $names, true))
+            ->values();
 
         $missing = array_values(array_diff($names, $teams->pluck('name')->all()));
 

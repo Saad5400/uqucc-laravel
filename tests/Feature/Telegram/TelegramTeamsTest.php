@@ -199,6 +199,24 @@ describe('join and approval', function () {
             ->and(TelegramTeamMember::query()->count())->toBe(0);
     });
 
+    it('accepts «+» as a separator in the join request, including multi-word team names', function () {
+        makeTeam('علوم الحاسب');
+        makeTeam('44');
+        makeTeam('طالب');
+
+        $ackFake = runTeamsUpdate(teamsGroupMessage('انضم علوم الحاسب + 44 + طالب', [
+            'from' => ['id' => TEAMS_MEMBER_ID, 'is_bot' => false, 'first_name' => 'سارة'],
+        ]));
+
+        expect($ackFake->allTexts()[0])->toContain('علوم الحاسب • 44 • طالب');
+
+        runTeamsUpdate(teamsConsentReply('أضف', [
+            'text' => 'انضم علوم الحاسب + 44 + طالب',
+        ]), [TEAMS_ADMIN_ID => 'administrator']);
+
+        expect(TelegramTeamMember::query()->where('telegram_user_id', TEAMS_MEMBER_ID)->count())->toBe(3);
+    });
+
     it('rejects a join request for teams that do not exist', function () {
         $fake = runTeamsUpdate(teamsGroupMessage('انضم العابدية'));
 
