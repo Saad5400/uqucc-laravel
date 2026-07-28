@@ -74,6 +74,7 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::post('/quiz/topics', [QuizTopicController::class, 'store'])->name('quiz.topics.store');
         Route::put('/quiz/topics/{topic}', [QuizTopicController::class, 'update'])->name('quiz.topics.update');
         Route::delete('/quiz/topics/{topic}', [QuizTopicController::class, 'destroy'])->name('quiz.topics.destroy');
+        Route::post('/quiz/quizzes', [DailyQuizController::class, 'store'])->name('quiz.quizzes.store');
         Route::put('/quiz/quizzes/{quiz}', [DailyQuizController::class, 'update'])->name('quiz.quizzes.update');
         Route::delete('/quiz/quizzes/{quiz}', [DailyQuizController::class, 'destroy'])->name('quiz.quizzes.destroy');
 

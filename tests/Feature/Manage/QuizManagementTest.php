@@ -17,6 +17,28 @@ beforeEach(function () {
     $this->admin->assignRole('admin');
 });
 
+/**
+ * A complete, valid question payload — the shape the editor dialog submits.
+ *
+ * @param  array<string, mixed>  $overrides
+ * @return array<string, mixed>
+ */
+function quizPayload(array $overrides = []): array
+{
+    return [
+        'quiz_topic_id' => null,
+        'quiz_date' => today()->toDateString(),
+        'question' => 'سؤال؟',
+        'body' => null,
+        'options' => ['أ', 'ب', 'ج', 'د'],
+        'correct_option' => 0,
+        'explanation' => null,
+        'hint' => null,
+        'obvious_hint' => null,
+        ...$overrides,
+    ];
+}
+
 it('redirects guests to the login page', function () {
     $this->get('/manage/quiz')->assertRedirect('/manage/login');
 });
@@ -33,6 +55,9 @@ it('renders the quiz page with settings, topics, quizzes and leaderboards', func
             ->has('settings', fn (Assert $settings) => $settings->has('enabled')->has('reminders_enabled')->has('chat_ids'))
             ->has('topics', 2)
             ->has('quizzes.data', 1)
+            ->where('limits.question', 300)
+            ->where('limits.hint', 120)
+            ->where('today', today()->toDateString())
             ->where('todayQuizStatus', 'ready')
             ->has('weeklyTop')
             ->has('allTimeTop')
@@ -115,39 +140,125 @@ it('rejects a topic without a name', function () {
         ->assertSessionHasErrors('name');
 });
 
-it('edits a ready quiz', function () {
-    $quiz = DailyQuiz::factory()->create();
+it('edits every field of a ready quiz', function () {
+    $quiz = DailyQuiz::factory()->create(['quiz_date' => today()]);
+    $topic = QuizTopic::factory()->create();
 
     $this->actingAs($this->admin)
-        ->put("/manage/quiz/quizzes/{$quiz->id}", [
+        ->put("/manage/quiz/quizzes/{$quiz->id}", quizPayload([
+            'quiz_topic_id' => $topic->id,
+            'quiz_date' => today()->addDay()->toDateString(),
             'question' => 'سؤال معدّل؟',
             'body' => "في الكود:\n```py\nx = 1\n```",
             'options' => ['أ', 'ب', 'ج', 'د'],
             'correct_option' => 3,
-            'explanation' => null,
-        ])
+            'explanation' => 'لأن كذا.',
+            'hint' => 'فكّر في الأساس.',
+            'obvious_hint' => 'الجواب قريب من الخيار الأخير.',
+        ]))
         ->assertRedirect()
         ->assertSessionHas('success');
 
     $quiz->refresh();
 
-    expect($quiz->question)->toBe('سؤال معدّل؟')
+    expect($quiz->quiz_topic_id)->toBe($topic->id)
+        ->and($quiz->quiz_date->toDateString())->toBe(today()->addDay()->toDateString())
+        ->and($quiz->question)->toBe('سؤال معدّل؟')
         ->and($quiz->body)->toBe("في الكود:\n```py\nx = 1\n```")
         ->and($quiz->options)->toBe(['أ', 'ب', 'ج', 'د'])
         ->and($quiz->correct_option)->toBe(3)
-        ->and($quiz->explanation)->toBeNull();
+        ->and($quiz->explanation)->toBe('لأن كذا.')
+        ->and($quiz->hint)->toBe('فكّر في الأساس.')
+        ->and($quiz->obvious_hint)->toBe('الجواب قريب من الخيار الأخير.');
+});
+
+it('clears the hints when they are submitted blank', function () {
+    $quiz = DailyQuiz::factory()->create();
+
+    expect($quiz->hint)->not->toBeNull();
+
+    $this->actingAs($this->admin)
+        ->put("/manage/quiz/quizzes/{$quiz->id}", quizPayload(['hint' => '', 'obvious_hint' => '   ']))
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    $quiz->refresh();
+
+    expect($quiz->hint)->toBeNull()
+        ->and($quiz->obvious_hint)->toBeNull();
+});
+
+it('writes a question by hand without the AI', function () {
+    $topic = QuizTopic::factory()->create();
+
+    $this->actingAs($this->admin)
+        ->post('/manage/quiz/quizzes', quizPayload([
+            'quiz_topic_id' => $topic->id,
+            'quiz_date' => today()->addDays(2)->toDateString(),
+            'question' => 'سؤال بخط اليد؟',
+            'correct_option' => 2,
+            'hint' => 'تلميح.',
+        ]))
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    $quiz = DailyQuiz::query()->sole();
+
+    expect($quiz->question)->toBe('سؤال بخط اليد؟')
+        ->and($quiz->quiz_topic_id)->toBe($topic->id)
+        ->and($quiz->quiz_date->toDateString())->toBe(today()->addDays(2)->toDateString())
+        ->and($quiz->correct_option)->toBe(2)
+        ->and($quiz->hint)->toBe('تلميح.')
+        ->and($quiz->status)->toBe(DailyQuiz::STATUS_READY);
+});
+
+it('keeps one question per day', function () {
+    DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    $this->actingAs($this->admin)
+        ->post('/manage/quiz/quizzes', quizPayload())
+        ->assertSessionHasErrors('quiz_date');
+
+    expect(DailyQuiz::query()->count())->toBe(1);
+});
+
+it('lets a question keep its own date while editing', function () {
+    $quiz = DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    $this->actingAs($this->admin)
+        ->put("/manage/quiz/quizzes/{$quiz->id}", quizPayload(['question' => 'نفس اليوم؟']))
+        ->assertSessionHasNoErrors();
+
+    expect($quiz->refresh()->question)->toBe('نفس اليوم؟');
+});
+
+it('refuses to move a question onto a day that is taken', function () {
+    DailyQuiz::factory()->create(['quiz_date' => today()]);
+    $quiz = DailyQuiz::factory()->create(['quiz_date' => today()->addDay()]);
+
+    $this->actingAs($this->admin)
+        ->put("/manage/quiz/quizzes/{$quiz->id}", quizPayload(['quiz_date' => today()->toDateString()]))
+        ->assertSessionHasErrors('quiz_date');
+
+    expect($quiz->refresh()->quiz_date->toDateString())->toBe(today()->addDay()->toDateString());
+});
+
+it('rejects a topic that does not exist', function () {
+    $quiz = DailyQuiz::factory()->create();
+
+    $this->actingAs($this->admin)
+        ->put("/manage/quiz/quizzes/{$quiz->id}", quizPayload(['quiz_topic_id' => 9999]))
+        ->assertSessionHasErrors('quiz_topic_id');
 });
 
 it('refuses to edit or delete a posted quiz', function () {
     $quiz = DailyQuiz::factory()->posted()->create();
 
     $this->actingAs($this->admin)
-        ->put("/manage/quiz/quizzes/{$quiz->id}", [
+        ->put("/manage/quiz/quizzes/{$quiz->id}", quizPayload([
+            'quiz_date' => $quiz->quiz_date->toDateString(),
             'question' => 'سؤال معدّل؟',
-            'options' => ['أ', 'ب', 'ج', 'د'],
-            'correct_option' => 0,
-            'explanation' => null,
-        ])
+        ]))
         ->assertSessionHasErrors('quiz');
 
     $this->actingAs($this->admin)
@@ -159,27 +270,34 @@ it('refuses to edit or delete a posted quiz', function () {
 });
 
 it('enforces Telegram length limits when editing a quiz', function (array $payload, string $errorKey) {
-    $quiz = DailyQuiz::factory()->create();
-
-    $valid = [
-        'question' => 'سؤال؟',
-        'options' => ['أ', 'ب', 'ج', 'د'],
-        'correct_option' => 0,
-        'explanation' => null,
-    ];
+    $quiz = DailyQuiz::factory()->create(['quiz_date' => today()]);
 
     $this->actingAs($this->admin)
-        ->put("/manage/quiz/quizzes/{$quiz->id}", [...$valid, ...$payload])
+        ->put("/manage/quiz/quizzes/{$quiz->id}", quizPayload($payload))
         ->assertSessionHasErrors($errorKey);
 })->with([
     'long question' => [['question' => str_repeat('س', 301)], 'question'],
+    'empty question' => [['question' => ''], 'question'],
     'long option' => [['options' => [str_repeat('س', 101), 'ب', 'ج', 'د']], 'options.0'],
     'three options' => [['options' => ['أ', 'ب', 'ج']], 'options'],
     'duplicate options' => [['options' => ['أ', 'أ', 'ج', 'د']], 'options.0'],
+    'blank option' => [['options' => ['أ', '   ', 'ج', 'د']], 'options.1'],
     'long explanation' => [['explanation' => str_repeat('س', 201)], 'explanation'],
     'long body' => [['body' => str_repeat('س', 701)], 'body'],
+    'long hint' => [['hint' => str_repeat('س', 121)], 'hint'],
+    'long obvious hint' => [['obvious_hint' => str_repeat('س', 121)], 'obvious_hint'],
     'correct out of range' => [['correct_option' => 4], 'correct_option'],
+    'missing date' => [['quiz_date' => null], 'quiz_date'],
+    'invalid date' => [['quiz_date' => 'ليس تاريخاً'], 'quiz_date'],
 ]);
+
+it('enforces the same limits when writing a question by hand', function () {
+    $this->actingAs($this->admin)
+        ->post('/manage/quiz/quizzes', quizPayload(['hint' => str_repeat('س', 121)]))
+        ->assertSessionHasErrors('hint');
+
+    expect(DailyQuiz::query()->count())->toBe(0);
+});
 
 it('deletes a ready quiz', function () {
     $quiz = DailyQuiz::factory()->create();

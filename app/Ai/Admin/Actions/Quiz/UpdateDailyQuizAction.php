@@ -37,6 +37,8 @@ class UpdateDailyQuizAction extends AdminAction
             .'correct_option (0-3 index into options) and an optional explanation. '
             .'Put any code or scenario in the optional body field (markdown; fence code with ``` ) — '
             .'it is posted as a formatted message above the poll, so keep the question a short standalone sentence. '
+            .'The optional hint / obvious_hint are the two teasers the reminder bot sends mid-window and just '
+            .'before the question closes. '
             .'Only a ready (unposted) quiz can be edited.';
     }
 
@@ -64,6 +66,12 @@ class UpdateDailyQuizAction extends AdminAction
                 ->required(),
             'explanation' => $schema->string()
                 ->description('Optional explanation shown after answering (max '.QuizAuthor::MAX_EXPLANATION_CHARS.' chars).'),
+            'hint' => $schema->string()
+                ->description('Optional non-spoiler teaser the bot sends mid-window to revive participation (max '
+                    .QuizAuthor::MAX_HINT_CHARS.' chars). Empty string to clear it.'),
+            'obvious_hint' => $schema->string()
+                ->description('Optional blunter hint sent with the last call before the question closes (max '
+                    .QuizAuthor::MAX_HINT_CHARS.' chars). Empty string to clear it.'),
         ];
     }
 
@@ -137,7 +145,30 @@ class UpdateDailyQuizAction extends AdminAction
             'options' => $options,
             'correct_option' => (int) $correct,
             'explanation' => $explanation === '' ? null : $explanation,
+            'hint' => $this->hint($input, 'hint', $quiz->hint),
+            'obvious_hint' => $this->hint($input, 'obvious_hint', $quiz->obvious_hint),
         ];
+    }
+
+    /**
+     * A reminder teaser: absent means "leave as it is" (the model is not
+     * required to resend hints it did not touch), an empty string clears it.
+     *
+     * @param  array<string, mixed>  $input
+     */
+    private function hint(array $input, string $key, ?string $current): ?string
+    {
+        if (! array_key_exists($key, $input) || $input[$key] === null) {
+            return $current;
+        }
+
+        $hint = trim((string) $input[$key]);
+
+        if (mb_strlen($hint) > QuizAuthor::MAX_HINT_CHARS) {
+            throw new AdminActionException('التلميح أطول من الحد ('.QuizAuthor::MAX_HINT_CHARS.' حرف).');
+        }
+
+        return $hint === '' ? null : $hint;
     }
 
     /**
@@ -169,6 +200,8 @@ class UpdateDailyQuizAction extends AdminAction
             'options' => $normalized['options'],
             'correct_option' => $normalized['correct_option'],
             'explanation' => $normalized['explanation'],
+            'hint' => $normalized['hint'],
+            'obvious_hint' => $normalized['obvious_hint'],
         ]);
 
         return ActionResult::text('تم حفظ تعديلات سؤال يوم '.$normalized['quiz_date'].'.');

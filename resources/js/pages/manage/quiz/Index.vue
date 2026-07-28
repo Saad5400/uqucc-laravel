@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import CharCount from '@/components/manage/CharCount.vue';
 import ConfirmDialog from '@/components/manage/ConfirmDialog.vue';
 import EmptyState from '@/components/manage/EmptyState.vue';
 import ManageLayout from '@/components/manage/ManageLayout.vue';
@@ -20,7 +21,7 @@ import { arabicCount } from '@/lib/arabic';
 import { formatDateTime, formatRelativeTime, formatShortDate } from '@/lib/formatters';
 import type { Paginated } from '@/lib/pagination';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
-import { CheckCircle2, EllipsisVertical, Loader2, Pencil, Plus, Sparkles, Trash2, Trophy } from 'lucide-vue-next';
+import { CheckCircle2, EllipsisVertical, Loader2, Pencil, PenLine, Plus, Sparkles, Trash2, Trophy } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 defineOptions({ layout: ManageLayout });
@@ -47,6 +48,7 @@ interface Topic {
 
 interface Quiz {
     id: number;
+    quiz_topic_id: number | null;
     quiz_date: string;
     question: string;
     body: string | null;
@@ -71,11 +73,22 @@ interface Player {
     answers_count: number;
 }
 
+/** Telegram's hard caps, mirrored from the authoring constants server-side. */
+interface Limits {
+    question: number;
+    body: number;
+    option: number;
+    explanation: number;
+    hint: number;
+}
+
 const props = defineProps<{
     settings: QuizSettingsValues;
     groupChats: GroupChat[];
     topics: Topic[];
     quizzes: Paginated<Quiz>;
+    limits: Limits;
+    today: string;
     todayQuizStatus: Quiz['status'] | null;
     weeklyTop: Player[];
     allTimeTop: Player[];
@@ -149,48 +162,90 @@ function goToQuizzesPage(page: number): void {
 }
 
 /* ------------------------------------------------------------------ */
-/* Edit / delete a not-yet-posted quiz                                 */
+/* Write / edit / delete a not-yet-posted quiz                         */
 /* ------------------------------------------------------------------ */
 
+/** The "no topic" sentinel — Select cannot hold an empty string value. */
+const NO_TOPIC = 'none';
+
+const quizDialogOpen = ref(false);
 const editingQuiz = ref<Quiz | null>(null);
 
+/**
+ * Optional text is held as an empty string (the textareas' natural value);
+ * the server normalizes blanks back to null on save.
+ */
 const quizForm = useForm({
+    quiz_topic_id: NO_TOPIC,
+    quiz_date: '',
     question: '',
-    body: '' as string | null,
+    body: '',
     options: ['', '', '', ''],
     correct_option: '0',
-    explanation: '' as string | null,
+    explanation: '',
+    hint: '',
+    obvious_hint: '',
 });
 
-function openQuizEditor(quiz: Quiz): void {
+/** The day a hand-written question defaults to: today, or tomorrow when today is taken. */
+function defaultQuizDate(): string {
+    const date = new Date(`${props.today}T00:00:00Z`);
+
+    if (props.todayQuizStatus !== null) {
+        date.setUTCDate(date.getUTCDate() + 1);
+    }
+
+    return date.toISOString().slice(0, 10);
+}
+
+/** Opens the shared question dialog — editing the given question, or writing a new one. */
+function openQuizEditor(quiz: Quiz | null): void {
     editingQuiz.value = quiz;
     quizForm.clearErrors();
-    quizForm.question = quiz.question;
-    quizForm.body = quiz.body ?? '';
-    quizForm.options = [...quiz.options];
-    quizForm.correct_option = String(quiz.correct_option);
-    quizForm.explanation = quiz.explanation ?? '';
+    quizForm.quiz_topic_id = quiz?.quiz_topic_id ? String(quiz.quiz_topic_id) : NO_TOPIC;
+    quizForm.quiz_date = quiz?.quiz_date ?? defaultQuizDate();
+    quizForm.question = quiz?.question ?? '';
+    quizForm.body = quiz?.body ?? '';
+    quizForm.options = quiz ? [...quiz.options] : ['', '', '', ''];
+    quizForm.correct_option = String(quiz?.correct_option ?? 0);
+    quizForm.explanation = quiz?.explanation ?? '';
+    quizForm.hint = quiz?.hint ?? '';
+    quizForm.obvious_hint = quiz?.obvious_hint ?? '';
+    quizDialogOpen.value = true;
 }
 
 function submitQuizEditor(): void {
-    if (!editingQuiz.value) {
-        return;
-    }
+    const form = quizForm.transform((data) => ({
+        ...data,
+        quiz_topic_id: data.quiz_topic_id === NO_TOPIC ? null : Number(data.quiz_topic_id),
+        correct_option: Number(data.correct_option),
+    }));
 
-    quizForm
-        .transform((data) => ({
-            ...data,
-            correct_option: Number(data.correct_option),
-            body: data.body === '' ? null : data.body,
-            explanation: data.explanation === '' ? null : data.explanation,
-        }))
-        .put(`/manage/quiz/quizzes/${editingQuiz.value.id}`, {
-            preserveScroll: true,
-            onSuccess: () => {
-                editingQuiz.value = null;
-            },
-        });
+    const options = {
+        preserveScroll: true,
+        onSuccess: () => {
+            quizDialogOpen.value = false;
+            editingQuiz.value = null;
+        },
+    };
+
+    if (editingQuiz.value) {
+        form.put(`/manage/quiz/quizzes/${editingQuiz.value.id}`, options);
+    } else {
+        form.post('/manage/quiz/quizzes', options);
+    }
 }
+
+/** A question dated before today never posts — the poster only looks up today. */
+const quizDateIsPast = computed(() => quizForm.quiz_date !== '' && quizForm.quiz_date < props.today);
+
+/** Why a question can no longer be edited or deleted, or null while it still can. */
+function lockReason(quiz: Quiz): string | null {
+    return quiz.status === 'ready' ? null : 'لا يمكن تعديل سؤال أو حذفه بعد نشره — الإجابات والنقاط محسوبة عليه.';
+}
+
+/** The "already posted" rejection, raised against the whole question rather than a field. */
+const quizLockError = computed(() => (quizForm.errors as Record<string, string>).quiz ?? null);
 
 /** First error for the options array, including per-element errors like `options.2`. */
 const optionsError = computed(() => {
@@ -230,7 +285,7 @@ const editingTopic = ref<Topic | null>(null);
 
 const topicForm = useForm({
     name: '',
-    prompt_hint: '' as string | null,
+    prompt_hint: '',
     is_spotlight: false,
     is_active: true,
 });
@@ -357,9 +412,18 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
         <Card>
             <CardHeader class="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
                 <CardTitle class="text-lg">الأسئلة</CardTitle>
-                <div class="flex items-center gap-2">
+                <div class="flex flex-wrap items-center gap-2">
                     <p v-if="todayIsPosted" class="text-xs text-muted-foreground">سؤال اليوم منشور</p>
-                    <Button size="sm" :disabled="todayIsPosted || generating" @click="openGenerateDialog">
+                    <Button size="sm" variant="outline" @click="openQuizEditor(null)">
+                        <PenLine class="size-4" />
+                        كتابة سؤال يدوياً
+                    </Button>
+                    <Button
+                        size="sm"
+                        :disabled="todayIsPosted || generating"
+                        :title="todayIsPosted ? 'سؤال اليوم منشور بالفعل — لا يمكن إعادة توليده' : undefined"
+                        @click="openGenerateDialog"
+                    >
                         <Loader2 v-if="generating" class="size-4 animate-spin" />
                         <Sparkles v-else class="size-4" />
                         {{ willReplaceToday ? 'إعادة توليد سؤال اليوم' : 'توليد سؤال اليوم' }}
@@ -374,7 +438,7 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                     v-if="!quizzes.data.length"
                     :icon="Sparkles"
                     title="لا توجد أسئلة بعد"
-                    description="يُولَّد سؤال جديد تلقائياً كل يوم من أحد المواضيع أدناه، ويمكنك توليد سؤال اليوم يدوياً من الزر أعلاه. راجع السؤال وعدّله قبل موعد النشر."
+                    description="يُولَّد سؤال جديد تلقائياً كل يوم من أحد المواضيع أدناه، ويمكنك توليد سؤال اليوم أو كتابته بنفسك من الأزرار أعلاه. راجع السؤال وعدّله — نصه وخياراته وتلميحاته — قبل موعد النشر."
                 />
 
                 <ul v-else class="overflow-hidden rounded-lg border border-border">
@@ -393,19 +457,22 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                                 <p class="font-medium">{{ quiz.question }}</p>
                             </div>
 
-                            <DropdownMenu v-if="quiz.status === 'ready'">
+                            <DropdownMenu>
                                 <DropdownMenuTrigger as-child>
                                     <Button variant="ghost" size="icon" aria-label="إجراءات السؤال">
                                         <EllipsisVertical />
                                     </Button>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end">
-                                    <DropdownMenuItem @select="openQuizEditor(quiz)">
+                                <DropdownMenuContent align="end" class="max-w-72">
+                                    <p v-if="lockReason(quiz)" class="px-2 py-1.5 text-xs text-balance text-muted-foreground">
+                                        {{ lockReason(quiz) }}
+                                    </p>
+                                    <DropdownMenuItem :disabled="lockReason(quiz) !== null" @select="openQuizEditor(quiz)">
                                         <Pencil />
                                         تعديل
                                     </DropdownMenuItem>
                                     <DropdownMenuSeparator />
-                                    <DropdownMenuItem variant="destructive" @select="deletingQuiz = quiz">
+                                    <DropdownMenuItem variant="destructive" :disabled="lockReason(quiz) !== null" @select="deletingQuiz = quiz">
                                         <Trash2 />
                                         حذف
                                     </DropdownMenuItem>
@@ -438,12 +505,7 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                     </li>
                 </ul>
 
-                <Pagination
-                    :page="quizzes.current_page"
-                    :pages="quizzes.last_page"
-                    :total="quizzes.total"
-                    @update:page="goToQuizzesPage"
-                />
+                <Pagination :page="quizzes.current_page" :pages="quizzes.last_page" :total="quizzes.total" @update:page="goToQuizzesPage" />
             </CardContent>
         </Card>
 
@@ -666,29 +728,66 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
         </DialogContent>
     </Dialog>
 
-    <!-- Edit quiz dialog -->
-    <Dialog
-        :open="editingQuiz !== null"
-        @update:open="
-            (value) => {
-                if (!value) editingQuiz = null;
-            }
-        "
-    >
+    <!-- Write / edit question dialog -->
+    <Dialog v-model:open="quizDialogOpen">
         <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-lg">
             <DialogHeader>
-                <DialogTitle>تعديل السؤال</DialogTitle>
+                <DialogTitle>{{ editingQuiz ? 'تعديل السؤال' : 'كتابة سؤال جديد' }}</DialogTitle>
             </DialogHeader>
 
             <form class="space-y-4" @submit.prevent="submitQuizEditor">
+                <p v-if="quizLockError" class="text-sm text-destructive-foreground">{{ quizLockError }}</p>
+
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <div class="space-y-2">
+                        <Label for="quiz-date">تاريخ النشر</Label>
+                        <Input
+                            id="quiz-date"
+                            v-model="quizForm.quiz_date"
+                            type="date"
+                            dir="ltr"
+                            class="text-start tabular-nums"
+                            :aria-invalid="quizForm.errors.quiz_date ? true : undefined"
+                        />
+                        <p v-if="quizForm.errors.quiz_date" class="text-sm text-destructive-foreground">{{ quizForm.errors.quiz_date }}</p>
+                        <p v-else-if="quizDateIsPast" class="text-xs text-destructive-foreground">
+                            تاريخ ماضٍ — لن يُنشر هذا السؤال، فالنشر التلقائي يأخذ سؤال اليوم فقط.
+                        </p>
+                        <p v-else class="text-xs text-muted-foreground">يُنشر سؤال اليوم المحدد تلقائياً الساعة 4 عصراً. لكل يوم سؤال واحد.</p>
+                    </div>
+
+                    <div class="space-y-2">
+                        <Label for="quiz-topic">الموضوع</Label>
+                        <Select id="quiz-topic" v-model="quizForm.quiz_topic_id">
+                            <SelectTrigger class="w-full" aria-label="موضوع السؤال">
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="none">بدون موضوع</SelectItem>
+                                <SelectItem v-for="topic in topics" :key="topic.id" :value="String(topic.id)">
+                                    {{ topic.name }}{{ topic.is_active ? '' : ' (معطّل)' }}
+                                </SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <p v-if="quizForm.errors.quiz_topic_id" class="text-sm text-destructive-foreground">{{ quizForm.errors.quiz_topic_id }}</p>
+                        <p v-else class="text-xs text-muted-foreground">تصنيف فقط — يظهر بجانب السؤال ويمنع تكرار الموضوع في التوليد التالي.</p>
+                    </div>
+                </div>
+
                 <div class="space-y-2">
-                    <Label for="quiz-question">السؤال</Label>
+                    <div class="flex items-center justify-between gap-2">
+                        <Label for="quiz-question">السؤال</Label>
+                        <CharCount :value="quizForm.question" :max="limits.question" />
+                    </div>
                     <Textarea id="quiz-question" v-model="quizForm.question" rows="3" :aria-invalid="quizForm.errors.question ? true : undefined" />
                     <p v-if="quizForm.errors.question" class="text-sm text-destructive-foreground">{{ quizForm.errors.question }}</p>
                 </div>
 
                 <div class="space-y-2">
-                    <Label for="quiz-body">الكود / المقدمة (اختياري)</Label>
+                    <div class="flex items-center justify-between gap-2">
+                        <Label for="quiz-body">الكود / المقدمة (اختياري)</Label>
+                        <CharCount :value="quizForm.body" :max="limits.body" />
+                    </div>
                     <Textarea
                         id="quiz-body"
                         v-model="quizForm.body"
@@ -703,10 +802,24 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                 </div>
 
                 <div class="space-y-2">
-                    <Label>الخيارات</Label>
+                    <div class="flex items-center justify-between gap-2">
+                        <Label>الخيارات</Label>
+                        <span class="text-xs text-muted-foreground">الحد {{ limits.option }} حرف للخيار</span>
+                    </div>
                     <div v-for="index in [0, 1, 2, 3]" :key="index" class="flex items-center gap-2">
-                        <span class="w-5 text-center text-sm text-muted-foreground tabular-nums">{{ index + 1 }}</span>
-                        <Input v-model="quizForm.options[index]" :aria-label="`الخيار ${index + 1}`" />
+                        <span
+                            class="flex w-5 shrink-0 justify-center text-sm text-muted-foreground tabular-nums"
+                            :title="Number(quizForm.correct_option) === index ? 'الإجابة الصحيحة' : undefined"
+                        >
+                            <CheckCircle2 v-if="Number(quizForm.correct_option) === index" class="size-4 text-primary" />
+                            <template v-else>{{ index + 1 }}</template>
+                        </span>
+                        <Input
+                            v-model="quizForm.options[index]"
+                            :aria-label="`الخيار ${index + 1}`"
+                            :class="Number(quizForm.correct_option) === index ? 'border-primary' : ''"
+                        />
+                        <CharCount :value="quizForm.options[index]" :max="limits.option" class="w-14 shrink-0 text-end" />
                     </div>
                     <p v-if="optionsError" class="text-sm text-destructive-foreground">{{ optionsError }}</p>
                 </div>
@@ -727,7 +840,10 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                 </div>
 
                 <div class="space-y-2">
-                    <Label for="quiz-explanation">الشرح (يظهر بعد الإجابة)</Label>
+                    <div class="flex items-center justify-between gap-2">
+                        <Label for="quiz-explanation">الشرح (يظهر بعد الإجابة)</Label>
+                        <CharCount :value="quizForm.explanation" :max="limits.explanation" />
+                    </div>
                     <Textarea
                         id="quiz-explanation"
                         v-model="quizForm.explanation"
@@ -737,11 +853,40 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                     <p v-if="quizForm.errors.explanation" class="text-sm text-destructive-foreground">{{ quizForm.errors.explanation }}</p>
                 </div>
 
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between gap-2">
+                        <Label for="quiz-hint">🧩 تلميح التذكير (اختياري)</Label>
+                        <CharCount :value="quizForm.hint" :max="limits.hint" />
+                    </div>
+                    <Textarea id="quiz-hint" v-model="quizForm.hint" rows="2" :aria-invalid="quizForm.errors.hint ? true : undefined" />
+                    <p v-if="quizForm.errors.hint" class="text-sm text-destructive-foreground">{{ quizForm.errors.hint }}</p>
+                    <p v-else class="text-xs text-muted-foreground">
+                        يُرسله البوت في منتصف مدة السؤال لتحريك المشاركة — يقرّب الفكرة دون كشف الإجابة. اتركه فارغاً ليتخطى البوت هذا التذكير.
+                    </p>
+                </div>
+
+                <div class="space-y-2">
+                    <div class="flex items-center justify-between gap-2">
+                        <Label for="quiz-obvious-hint">💡 تلميح آخر فرصة (اختياري)</Label>
+                        <CharCount :value="quizForm.obvious_hint" :max="limits.hint" />
+                    </div>
+                    <Textarea
+                        id="quiz-obvious-hint"
+                        v-model="quizForm.obvious_hint"
+                        rows="2"
+                        :aria-invalid="quizForm.errors.obvious_hint ? true : undefined"
+                    />
+                    <p v-if="quizForm.errors.obvious_hint" class="text-sm text-destructive-foreground">{{ quizForm.errors.obvious_hint }}</p>
+                    <p v-else class="text-xs text-muted-foreground">
+                        التلميح الأصرح قبل إغلاق السؤال مباشرة. إن تركته فارغاً استُخدم تلميح التذكير بدلاً منه.
+                    </p>
+                </div>
+
                 <DialogFooter class="gap-2">
-                    <Button type="button" variant="outline" @click="editingQuiz = null">إلغاء</Button>
+                    <Button type="button" variant="outline" @click="quizDialogOpen = false">إلغاء</Button>
                     <Button type="submit" :disabled="quizForm.processing">
                         <Loader2 v-if="quizForm.processing" class="size-4 animate-spin" />
-                        حفظ السؤال
+                        {{ editingQuiz ? 'حفظ السؤال' : 'إضافة السؤال' }}
                     </Button>
                 </DialogFooter>
             </form>

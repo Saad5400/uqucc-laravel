@@ -10,6 +10,7 @@ use App\Ai\Admin\Actions\Quiz\ListQuizTopicsAction;
 use App\Ai\Admin\Actions\Quiz\RegenerateDailyQuizAction;
 use App\Ai\Admin\Actions\Quiz\UpdateDailyQuizAction;
 use App\Ai\Admin\Actions\Quiz\UpdateQuizTopicAction;
+use App\Ai\Quiz\QuizAuthor;
 use App\Ai\Quiz\QuizAuthoringAgent;
 use App\Models\DailyQuiz;
 use App\Models\QuizPlayer;
@@ -117,6 +118,48 @@ it('edits a ready quiz and refuses a posted one', function () {
 
     expect(fn () => app(UpdateDailyQuizAction::class)->handle([...$payload, 'quiz_id' => $posted->id], $this->user))
         ->toThrow(AdminActionException::class);
+});
+
+it('edits the reminder hints and leaves untouched ones alone', function () {
+    $quiz = DailyQuiz::factory()->create(['quiz_date' => today(), 'hint' => 'تلميح قديم', 'obvious_hint' => 'صريح قديم']);
+
+    $payload = [
+        'quiz_id' => $quiz->id,
+        'question' => 'سؤال؟',
+        'options' => ['أ', 'ب', 'ج', 'د'],
+        'correct_option' => 0,
+    ];
+
+    app(UpdateDailyQuizAction::class)->handle([...$payload, 'hint' => 'تلميح جديد'], $this->user);
+
+    expect($quiz->refresh()->hint)->toBe('تلميح جديد')
+        ->and($quiz->obvious_hint)->toBe('صريح قديم');
+
+    app(UpdateDailyQuizAction::class)->handle([...$payload, 'obvious_hint' => ''], $this->user);
+
+    expect($quiz->refresh()->obvious_hint)->toBeNull()
+        ->and($quiz->hint)->toBe('تلميح جديد');
+});
+
+it('rejects a hint longer than the cap', function () {
+    $quiz = DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    app(UpdateDailyQuizAction::class)->handle([
+        'quiz_id' => $quiz->id,
+        'question' => 'سؤال؟',
+        'options' => ['أ', 'ب', 'ج', 'د'],
+        'correct_option' => 0,
+        'hint' => str_repeat('س', QuizAuthor::MAX_HINT_CHARS + 1),
+    ], $this->user);
+})->throws(AdminActionException::class);
+
+it('reports the reminder hints when reading a quiz', function () {
+    DailyQuiz::factory()->create(['quiz_date' => today(), 'hint' => 'تلميح التذكير هنا', 'obvious_hint' => null]);
+
+    $result = app(GetDailyQuizAction::class)->handle([], $this->user);
+
+    expect($result->message)->toContain('تلميح التذكير هنا')
+        ->toContain('تلميح آخر فرصة: —');
 });
 
 it('regenerates today\'s quiz by replacing the ready one', function () {

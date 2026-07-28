@@ -12,8 +12,9 @@ use Illuminate\Support\Carbon;
 
 /**
  * The daily quiz for a given day (default today): its id, status, question,
- * options with the correct one marked, explanation, source topic, and — once
- * posted — turnout and accuracy. Use the returned id with update_daily_quiz.
+ * options with the correct one marked, explanation, the two reminder hints,
+ * source topic, and — once posted — turnout and accuracy. Use the returned id
+ * with update_daily_quiz.
  * Read-only.
  */
 class GetDailyQuizAction extends AdminAction
@@ -36,7 +37,7 @@ class GetDailyQuizAction extends AdminAction
     public function description(): string
     {
         return 'Get the daily quiz for a day (default today) — id, status (ready/posted/closed), question, '
-            .'options with the correct answer marked, explanation, topic, and turnout once posted '
+            .'options with the correct answer marked, explanation, reminder hints, topic, and turnout once posted '
             .'(عرض سؤال اليوم مع حالته وخياراته والإجابة الصحيحة). '
             .'Optional date in YYYY-MM-DD. Use the returned id with update_daily_quiz. Read-only.';
     }
@@ -126,6 +127,9 @@ class GetDailyQuizAction extends AdminAction
         if (filled($quiz->explanation)) {
             $lines[] = 'الشرح: '.$quiz->explanation;
         }
+
+        $lines[] = 'تلميح التذكير: '.($quiz->hint ?? '—');
+        $lines[] = 'تلميح آخر فرصة: '.($quiz->obvious_hint ?? '—');
 
         if ($quiz->status !== DailyQuiz::STATUS_READY) {
             $lines[] = 'المشاركون: '.$quiz->answers_count.' — إجابات صحيحة: '.$quiz->correct_answers_count;

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Ai\Quiz\QuizAuthor;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Manage\GenerateDailyQuizRequest;
 use App\Http\Requests\Manage\UpdateQuizSettingsRequest;
@@ -17,8 +18,8 @@ use Inertia\Response;
 
 /**
  * The daily quiz control room: feature settings (on/off + target group), the
- * AI topic list, the generated questions (editable until posted), and the
- * leaderboards mirroring what the bot shows in the group.
+ * AI topic list, the questions (generated or hand-written, editable until
+ * posted), and the leaderboards mirroring what the bot shows in the group.
  */
 class QuizController extends Controller
 {
@@ -68,6 +69,7 @@ class QuizController extends Controller
                 ->withQueryString()
                 ->through(fn (DailyQuiz $quiz): array => [
                     'id' => $quiz->id,
+                    'quiz_topic_id' => $quiz->quiz_topic_id,
                     'quiz_date' => $quiz->quiz_date->toDateString(),
                     'question' => $quiz->question,
                     'body' => $quiz->body,
@@ -82,6 +84,14 @@ class QuizController extends Controller
                     'answers_count' => $quiz->answers_count,
                     'correct_answers_count' => $quiz->correct_answers_count,
                 ]),
+            'limits' => [
+                'question' => QuizAuthor::MAX_QUESTION_CHARS,
+                'body' => QuizAuthor::MAX_BODY_CHARS,
+                'option' => QuizAuthor::MAX_OPTION_CHARS,
+                'explanation' => QuizAuthor::MAX_EXPLANATION_CHARS,
+                'hint' => QuizAuthor::MAX_HINT_CHARS,
+            ],
+            'today' => today()->toDateString(),
             'todayQuizStatus' => DailyQuiz::forDate(today())?->status,
             'weeklyTop' => $this->leaderboard('weekly_points'),
             'allTimeTop' => $this->leaderboard('total_points'),
