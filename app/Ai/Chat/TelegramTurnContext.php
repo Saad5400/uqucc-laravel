@@ -9,9 +9,9 @@ use Telegram\Bot\Objects\User;
 /**
  * Prepends a per-turn context block describing WHO is asking and WHERE — the
  * Telegram sender's name/username, the chat kind (private vs group) and its
- * title, the user's language, and the quoted message when the «سيك …» ask is a
- * reply. The Telegram transport shares one conversation per chat, so this hands
- * the model the identity signals a group chat would otherwise strip.
+ * title, and the quoted message when the «سيك …» ask is a reply. The Telegram
+ * transport shares one conversation per chat, so this hands the model the
+ * identity signals a group chat would otherwise strip.
  *
  * The block lives ONLY in the current turn's user message (the tail after the
  * cached system prompt + tools + prior messages), so prefix caching is never
@@ -54,8 +54,8 @@ class TelegramTurnContext
 
     /**
      * Build the metadata lines for a turn: sender identity, chat kind and
-     * title, language, and the quoted reply context. Empty fields are omitted,
-     * and the line order is fixed so identical input yields an identical block.
+     * title, and the quoted reply context. Empty fields are omitted, and the
+     * line order is fixed so identical input yields an identical block.
      */
     public function preambleFor(Message $telegramMessage): string
     {
@@ -63,7 +63,6 @@ class TelegramTurnContext
             $this->senderLine($telegramMessage->getFrom()),
             $this->chatLine($telegramMessage),
             $this->groupTitleLine($telegramMessage),
-            $this->languageLine($telegramMessage->getFrom()),
             $this->replyLine($telegramMessage->getReplyToMessage()),
         ], static fn (string $line): bool => $line !== '');
 
@@ -119,20 +118,6 @@ class TelegramTurnContext
         $title = trim((string) $chat->getTitle());
 
         return $title === '' ? '' : 'اسم المجموعة: '.$title;
-    }
-
-    /**
-     * "لغة المستخدم: <code>" from the sender's IETF language tag.
-     */
-    private function languageLine(?User $from): string
-    {
-        if ($from === null) {
-            return '';
-        }
-
-        $language = trim((string) $from->getLanguageCode());
-
-        return $language === '' ? '' : 'لغة المستخدم: '.$language;
     }
 
     /**

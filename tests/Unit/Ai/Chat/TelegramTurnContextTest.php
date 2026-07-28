@@ -21,7 +21,7 @@ it('describes a private chat sender without a group title', function () {
     expect($wrapped)
         ->toContain('السائل: سعد باطويل (@saad)')
         ->toContain('نوع المحادثة: خاصة')
-        ->toContain('لغة المستخدم: ar')
+        ->not->toContain('لغة المستخدم')
         ->not->toContain('اسم المجموعة')
         ->toEndWith("رسالة المستخدم:\nكم مكافأة الامتياز؟");
 });
