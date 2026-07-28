@@ -2,6 +2,7 @@
 
 namespace App\Services\Telegram\Handlers;
 
+use App\Helpers\ArabicNormalizer;
 use App\Models\TelegramTeam;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -60,24 +61,59 @@ abstract class BaseTeamHandler extends BaseHandler
     }
 
     /**
-     * Resolve names against one chat's teams, keeping the caller's order so
-     * replies list teams the way the person typed them.
+     * Resolve names against one chat's teams, matching each name against team
+     * names and aliases alike and ignoring the spelling variants the
+     * normalizer folds. Order follows what the person typed, and a team named
+     * twice (say by name and by alias in one message) resolves once.
      *
      * @param  array<int, string>  $names
      * @return array{Collection<int, TelegramTeam>, array<int, string>} the found teams and the missing names
      */
     protected function resolveTeams(int $chatId, array $names): array
     {
-        $teams = TelegramTeam::query()
+        $normalizedByName = [];
+
+        foreach ($names as $name) {
+            $normalizedByName[$name] = ArabicNormalizer::normalize($name);
+        }
+
+        $lookups = array_values(array_filter($normalizedByName, static fn (string $value): bool => $value !== ''));
+
+        $candidates = $lookups === [] ? new Collection : TelegramTeam::query()
             ->where('chat_id', $chatId)
-            ->whereIn('name', $names)
-            ->get()
-            ->sortBy(fn (TelegramTeam $team): int => (int) array_search($team->name, $names, true))
-            ->values();
+            ->where(fn ($query) => $query
+                ->whereIn('normalized_name', $lookups)
+                ->orWhereHas('aliases', fn ($aliases) => $aliases->whereIn('normalized_name', $lookups))
+            )
+            ->with('aliases')
+            ->get();
 
-        $missing = array_values(array_diff($names, $teams->pluck('name')->all()));
+        $teamsByNormalized = [];
 
-        return [$teams, $missing];
+        foreach ($candidates as $team) {
+            $teamsByNormalized[$team->normalized_name] = $team;
+
+            foreach ($team->aliases as $alias) {
+                $teamsByNormalized[$alias->normalized_name] = $team;
+            }
+        }
+
+        $resolved = [];
+        $missing = [];
+
+        foreach ($names as $name) {
+            $team = $teamsByNormalized[$normalizedByName[$name]] ?? null;
+
+            if ($team === null) {
+                $missing[] = $name;
+
+                continue;
+            }
+
+            $resolved[$team->id] ??= $team;
+        }
+
+        return [new Collection(array_values($resolved)), $missing];
     }
 
     /**

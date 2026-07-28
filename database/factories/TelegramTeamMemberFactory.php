@@ -16,10 +16,17 @@ class TelegramTeamMemberFactory extends Factory
             'team_id' => TelegramTeam::factory(),
             'telegram_user_id' => $this->faker->numberBetween(10_000, 9_999_999),
             'first_name' => $this->faker->firstName(),
-            'username' => $this->faker->optional()->userName(),
+            // Null by default so mention rendering is deterministic in tests;
+            // use the withUsername() state for the @mention path.
+            'username' => null,
             'consent_message_id' => $this->faker->numberBetween(1, 999_999),
             'consented_at' => now(),
             'added_by_telegram_id' => $this->faker->numberBetween(10_000, 9_999_999),
         ];
+    }
+
+    public function withUsername(string $username): static
+    {
+        return $this->state(fn (): array => ['username' => $username]);
     }
 }

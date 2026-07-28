@@ -148,10 +148,33 @@ abstract class BaseHandler
     /**
      * A clickable HTML mention that notifies the user even when they have no
      * public username. Only valid with parse_mode HTML.
+     *
+     * Prefer {@see mentionUser()} — Telegram delivers a mention notification
+     * far more reliably for a plain @username than for one of these links.
      */
     protected function mentionLink(int $userId, string $name): string
     {
         return '<a href="tg://user?id='.$userId.'">'.$this->escapeHtml($name).'</a>';
+    }
+
+    /**
+     * The most reliable way to actually ping someone.
+     *
+     * Telegram resolves a plain «@username» in the message text into a real
+     * mention and notifies its owner. A tg://user link only notifies when the
+     * recipient's client can resolve the numeric id, which routinely fails for
+     * people who never started the bot — so it is the fallback, used only for
+     * members who have no public username. Only valid with parse_mode HTML.
+     */
+    protected function mentionUser(int $userId, ?string $username, string $fallbackName): string
+    {
+        $username = trim((string) $username);
+
+        if ($username !== '') {
+            return '@'.$this->escapeHtml(ltrim($username, '@'));
+        }
+
+        return $this->mentionLink($userId, $fallbackName);
     }
 
     protected function isGroupChat(Message $message): bool

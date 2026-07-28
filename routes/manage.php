@@ -90,6 +90,8 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::put('/telegram-teams/teams/{team}', [TelegramTeamController::class, 'update'])->name('telegram-teams.update');
         Route::delete('/telegram-teams/teams/{team}', [TelegramTeamController::class, 'destroy'])->name('telegram-teams.destroy');
         Route::delete('/telegram-teams/members/{member}', [TelegramTeamController::class, 'destroyMember'])->name('telegram-teams.members.destroy');
+        Route::post('/telegram-teams/teams/{team}/aliases', [TelegramTeamController::class, 'storeAlias'])->name('telegram-teams.aliases.store');
+        Route::delete('/telegram-teams/aliases/{alias}', [TelegramTeamController::class, 'destroyAlias'])->name('telegram-teams.aliases.destroy');
         Route::put('/telegram-teams/categories/{category}', [TelegramTeamCategoryController::class, 'update'])->name('telegram-teams.categories.update');
         Route::delete('/telegram-teams/categories/{category}', [TelegramTeamCategoryController::class, 'destroy'])->name('telegram-teams.categories.destroy');
         Route::get('/telegram-teams/{chatId}', [TelegramTeamController::class, 'show'])->where('chatId', '-?\d+')->name('telegram-teams.show');

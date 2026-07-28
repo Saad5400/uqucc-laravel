@@ -3,10 +3,12 @@
 namespace App\Http\Controllers\Manage;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Manage\StoreTelegramTeamAliasRequest;
 use App\Http\Requests\Manage\StoreTelegramTeamRequest;
 use App\Http\Requests\Manage\UpdateTelegramTeamRequest;
 use App\Models\TelegramChatSetting;
 use App\Models\TelegramTeam;
+use App\Models\TelegramTeamAlias;
 use App\Models\TelegramTeamCategory;
 use App\Models\TelegramTeamMember;
 use Illuminate\Http\RedirectResponse;
@@ -53,7 +55,10 @@ class TelegramTeamController extends Controller
 
         $teams = TelegramTeam::query()
             ->where('chat_id', $chatId)
-            ->with(['members' => fn ($query) => $query->orderBy('id')])
+            ->with([
+                'members' => fn ($query) => $query->orderBy('id'),
+                'aliases' => fn ($query) => $query->orderBy('name'),
+            ])
             ->orderBy('name')
             ->get();
 
@@ -76,6 +81,10 @@ class TelegramTeamController extends Controller
                 'id' => $team->id,
                 'name' => $team->name,
                 'category_id' => $team->category_id,
+                'aliases' => $team->aliases->map(fn (TelegramTeamAlias $alias): array => [
+                    'id' => $alias->id,
+                    'name' => $alias->name,
+                ]),
                 'members' => $team->members->map(fn (TelegramTeamMember $member): array => [
                     'id' => $member->id,
                     'telegram_user_id' => (string) $member->telegram_user_id,
@@ -125,5 +134,25 @@ class TelegramTeamController extends Controller
         $member->delete();
 
         return back()->with('success', 'تمت إزالة العضو من الفريق.');
+    }
+
+    /**
+     * Add an extra name the team answers to in Telegram.
+     */
+    public function storeAlias(StoreTelegramTeamAliasRequest $request, TelegramTeam $team): RedirectResponse
+    {
+        $team->aliases()->create([
+            'chat_id' => $team->chat_id,
+            'name' => $request->string('name')->trim()->value(),
+        ]);
+
+        return back()->with('success', 'تمت إضافة الاختصار.');
+    }
+
+    public function destroyAlias(TelegramTeamAlias $alias): RedirectResponse
+    {
+        $alias->delete();
+
+        return back()->with('success', 'تم حذف الاختصار.');
     }
 }

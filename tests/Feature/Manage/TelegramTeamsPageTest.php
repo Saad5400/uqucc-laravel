@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\TelegramTeam;
+use App\Models\TelegramTeamAlias;
 use App\Models\TelegramTeamCategory;
 use App\Models\TelegramTeamMember;
 use App\Models\User;
@@ -88,7 +89,7 @@ describe('teams', function () {
 
         $this->actingAs($this->admin)
             ->post('/manage/telegram-teams/-100500/teams', ['name' => 'العابدية'])
-            ->assertSessionHasErrors(['name' => 'يوجد فريق بهذا الاسم في هذه المجموعة.']);
+            ->assertSessionHasErrors(['name' => 'هذا الاسم مستخدم بالفعل كفريق أو اختصار في هذه المجموعة.']);
     });
 
     it('allows the same team name in a different chat', function () {
@@ -159,6 +160,64 @@ describe('categories', function () {
 
         expect(TelegramTeamCategory::query()->find($category->id))->toBeNull()
             ->and($team->refresh()->category_id)->toBeNull();
+    });
+});
+
+describe('aliases', function () {
+    it('adds an alias to a team', function () {
+        $team = TelegramTeam::factory()->create(['chat_id' => -100500, 'name' => 'علوم الحاسب']);
+
+        $this->actingAs($this->admin)
+            ->post("/manage/telegram-teams/teams/{$team->id}/aliases", ['name' => 'cs'])
+            ->assertSessionHas('success');
+
+        expect(TelegramTeam::findByName(-100500, 'cs')?->id)->toBe($team->id);
+    });
+
+    it('rejects an alias already claimed by a team or another alias', function () {
+        $cs = TelegramTeam::factory()->create(['chat_id' => -100500, 'name' => 'علوم الحاسب']);
+        $se = TelegramTeam::factory()->create(['chat_id' => -100500, 'name' => 'هندسة البرمجيات']);
+        TelegramTeamAlias::factory()->forTeam($cs)->create(['name' => 'cs']);
+
+        $this->actingAs($this->admin)
+            ->post("/manage/telegram-teams/teams/{$se->id}/aliases", ['name' => 'CS'])
+            ->assertSessionHasErrors(['name' => 'هذا الاسم مستخدم بالفعل كفريق أو اختصار في هذه المجموعة.']);
+
+        $this->actingAs($this->admin)
+            ->post("/manage/telegram-teams/teams/{$se->id}/aliases", ['name' => 'علوم الحاسب'])
+            ->assertSessionHasErrors('name');
+    });
+
+    it('deletes an alias', function () {
+        $alias = TelegramTeamAlias::factory()->create();
+
+        $this->actingAs($this->admin)
+            ->delete("/manage/telegram-teams/aliases/{$alias->id}")
+            ->assertSessionHas('success');
+
+        expect(TelegramTeamAlias::query()->find($alias->id))->toBeNull();
+    });
+
+    it('rejects a team name that collides with an existing alias', function () {
+        $team = TelegramTeam::factory()->create(['chat_id' => -100500, 'name' => 'علوم الحاسب']);
+        TelegramTeamAlias::factory()->forTeam($team)->create(['name' => 'cs']);
+
+        $this->actingAs($this->admin)
+            ->post('/manage/telegram-teams/-100500/teams', ['name' => 'cs'])
+            ->assertSessionHasErrors('name');
+    });
+
+    it('exposes a team\'s aliases to the page', function () {
+        $team = TelegramTeam::factory()->create(['chat_id' => -100500, 'name' => 'علوم الحاسب']);
+        TelegramTeamAlias::factory()->forTeam($team)->create(['name' => 'cs']);
+
+        $this->actingAs($this->admin)
+            ->get('/manage/telegram-teams/-100500')
+            ->assertInertia(fn (Assert $page) => $page
+                ->component('manage/telegram-teams/Show')
+                ->where('teams.0.aliases.0.name', 'cs')
+                ->etc()
+            );
     });
 });
 

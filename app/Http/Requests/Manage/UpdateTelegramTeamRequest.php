@@ -5,6 +5,7 @@ namespace App\Http\Requests\Manage;
 use App\Models\TelegramTeam;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class UpdateTelegramTeamRequest extends FormRequest
 {
@@ -30,19 +31,33 @@ class UpdateTelegramTeamRequest extends FormRequest
         $team = $this->route('team');
 
         return [
-            'name' => [
-                'sometimes',
-                'required',
-                'string',
-                'max:32',
-                Rule::unique('telegram_teams', 'name')->where('chat_id', $team->chat_id)->ignore($team->id),
-            ],
+            'name' => ['sometimes', 'required', 'string', 'max:32'],
             'category_id' => [
                 'sometimes',
                 'nullable',
                 'integer',
                 Rule::exists('telegram_team_categories', 'id')->where('chat_id', $team->chat_id),
             ],
+        ];
+    }
+
+    /**
+     * Team names and aliases share one namespace per chat, and matching folds
+     * spelling variants — so uniqueness is checked on the normalized value
+     * rather than with a plain unique rule.
+     */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                /** @var TelegramTeam $team */
+                $team = $this->route('team');
+                $name = (string) $this->string('name')->trim();
+
+                if ($this->has('name') && $name !== '' && TelegramTeam::nameIsTaken($team->chat_id, $name, $team->id)) {
+                    $validator->errors()->add('name', 'هذا الاسم مستخدم بالفعل كفريق أو اختصار في هذه المجموعة.');
+                }
+            },
         ];
     }
 
@@ -56,7 +71,6 @@ class UpdateTelegramTeamRequest extends FormRequest
         return [
             'name.required' => 'اسم الفريق مطلوب.',
             'name.max' => 'اسم الفريق طويل — الحد الأقصى 32 حرفًا.',
-            'name.unique' => 'يوجد فريق بهذا الاسم في هذه المجموعة.',
             'category_id.exists' => 'التصنيف غير موجود في هذه المجموعة.',
         ];
     }

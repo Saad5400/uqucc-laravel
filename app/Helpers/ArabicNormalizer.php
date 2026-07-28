@@ -10,8 +10,9 @@ class ArabicNormalizer
      * - Normalizes all hamza forms to alef
      * - Normalizes alef maqsura to ya
      * - Normalizes ta marbuta to ha
+     * - Folds Arabic-Indic digits to ASCII (٤٥ -> 45)
      * - Converts to lowercase
-     * - Trims whitespace
+     * - Collapses runs of whitespace and trims
      */
     public static function normalize(string $text): string
     {
@@ -30,16 +31,32 @@ class ArabicNormalizer
         // Normalize ta marbuta to ha (for better matching)
         $text = str_replace('ة', 'ه', $text);
 
-        // Trim whitespace
-        $text = trim($text);
+        // Fold Arabic-Indic digits so ٤٥ and 45 are the same text
+        $text = self::normalizeDigits($text);
 
-        return $text;
+        // Collapse internal whitespace runs, then trim
+        $text = preg_replace('/\s+/u', ' ', $text) ?? $text;
+
+        return trim($text);
+    }
+
+    /**
+     * Fold Arabic-Indic (٠-٩) and Extended Arabic-Indic (۰-۹) digits to ASCII,
+     * so a number typed in either script matches the same text.
+     */
+    public static function normalizeDigits(string $text): string
+    {
+        return str_replace(
+            ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩', '۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'],
+            ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9'],
+            $text,
+        );
     }
 
     /**
      * Normalize Arabic text and remove the definite article ال (al-) from each word.
      * This allows matching with or without the article in any position.
-     * 
+     *
      * Example: "دليل الهياكل المتقطعة" -> "دليل هياكل متقطعه"
      */
     public static function normalizeWithoutDefiniteArticle(string $text): string
@@ -48,12 +65,13 @@ class ArabicNormalizer
 
         // Split into words, remove ال from the beginning of each word, then rejoin
         $words = preg_split('/\s+/u', $normalized);
-        
+
         $cleanedWords = array_map(function ($word) {
             // Remove the definite article ال from the beginning of each word
             if (mb_substr($word, 0, 2, 'UTF-8') === 'ال') {
                 return mb_substr($word, 2, null, 'UTF-8');
             }
+
             return $word;
         }, $words);
 

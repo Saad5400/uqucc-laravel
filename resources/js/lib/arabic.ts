@@ -28,3 +28,26 @@ export function arabicCount(count: number, forms: ArabicNounForms): string {
 
     return `${count} ${forms.singular}`;
 }
+
+/** «عضو واحد»، «عضوان»، «5 أعضاء»، «430 عضو». */
+export function arabicMembers(count: number): string {
+    return arabicCount(count, { singular: 'عضو', dual: 'عضوان', plural: 'أعضاء', feminineOne: 'واحد' });
+}
+
+/**
+ * Totals across teams count memberships, not people — one person in three
+ * teams is three عضويات. «عضوية واحدة»، «عضويتان»، «5 عضويات»، «430 عضوية».
+ */
+export function arabicMemberships(count: number): string {
+    return arabicCount(count, { singular: 'عضوية', dual: 'عضويتان', plural: 'عضويات' });
+}
+
+/** «فريق واحد»، «فريقان»، «5 فرق»، «20 فريق». */
+export function arabicTeams(count: number): string {
+    return arabicCount(count, { singular: 'فريق', dual: 'فريقان', plural: 'فرق', feminineOne: 'واحد' });
+}
+
+/** «تصنيف واحد»، «تصنيفان»، «5 تصنيفات»، «12 تصنيف». */
+export function arabicCategories(count: number): string {
+    return arabicCount(count, { singular: 'تصنيف', dual: 'تصنيفان', plural: 'تصنيفات', feminineOne: 'واحد' });
+}

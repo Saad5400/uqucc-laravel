@@ -4,10 +4,9 @@ namespace App\Http\Requests\Manage;
 
 use App\Models\TelegramTeam;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
-class StoreTelegramTeamRequest extends FormRequest
+class StoreTelegramTeamAliasRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -27,15 +26,8 @@ class StoreTelegramTeamRequest extends FormRequest
      */
     public function rules(): array
     {
-        $chatId = (int) $this->route('chatId');
-
         return [
             'name' => ['required', 'string', 'max:32'],
-            'category_id' => [
-                'nullable',
-                'integer',
-                Rule::exists('telegram_team_categories', 'id')->where('chat_id', $chatId),
-            ],
         ];
     }
 
@@ -48,9 +40,11 @@ class StoreTelegramTeamRequest extends FormRequest
     {
         return [
             function (Validator $validator): void {
+                /** @var TelegramTeam $team */
+                $team = $this->route('team');
                 $name = (string) $this->string('name')->trim();
 
-                if ($name !== '' && TelegramTeam::nameIsTaken((int) $this->route('chatId'), $name)) {
+                if ($name !== '' && TelegramTeam::nameIsTaken($team->chat_id, $name, $team->id)) {
                     $validator->errors()->add('name', 'هذا الاسم مستخدم بالفعل كفريق أو اختصار في هذه المجموعة.');
                 }
             },
@@ -65,9 +59,8 @@ class StoreTelegramTeamRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'name.required' => 'اسم الفريق مطلوب.',
-            'name.max' => 'اسم الفريق طويل — الحد الأقصى 32 حرفًا.',
-            'category_id.exists' => 'التصنيف غير موجود في هذه المجموعة.',
+            'name.required' => 'الاختصار مطلوب.',
+            'name.max' => 'الاختصار طويل — الحد الأقصى 32 حرفًا.',
         ];
     }
 }

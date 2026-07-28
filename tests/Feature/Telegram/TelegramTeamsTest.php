@@ -3,6 +3,7 @@
 use App\Jobs\ProcessTelegramUpdate;
 use App\Jobs\SendTelegramTeamMentions;
 use App\Models\TelegramTeam;
+use App\Models\TelegramTeamAlias;
 use App\Models\TelegramTeamCategory;
 use App\Models\TelegramTeamMember;
 use Illuminate\Support\Facades\Queue;
@@ -235,7 +236,7 @@ describe('join and approval', function () {
             ->and($member->first_name)->toBe('سارة')
             ->and($member->consent_message_id)->toBe(77)
             ->and($member->added_by_telegram_id)->toBe(TEAMS_ADMIN_ID)
-            ->and($fake->allTexts()[0])->toContain('tg://user?id='.TEAMS_MEMBER_ID);
+            ->and($fake->allTexts()[0])->toContain('@sara');
     });
 
     it('refuses approval from a non-admin', function () {
@@ -341,6 +342,116 @@ describe('opt-out and removal', function () {
     });
 });
 
+describe('aliases', function () {
+    it('lets an admin give a team extra names it answers to', function () {
+        makeTeam('علوم الحاسب');
+
+        $fake = runTeamsUpdate(teamsGroupMessage('اختصار علوم الحاسب: cs، سي اس'), [TEAMS_ADMIN_ID => 'administrator']);
+
+        expect($fake->allTexts()[0])->toContain('يستجيب أيضًا لـ: cs • سي اس')
+            ->and(TelegramTeamAlias::query()->count())->toBe(2);
+    });
+
+    it('refuses alias commands from a regular member', function () {
+        makeTeam('علوم الحاسب');
+
+        $fake = runTeamsUpdate(teamsGroupMessage('اختصار علوم الحاسب: cs'));
+
+        expect($fake->allTexts())->toContain('هذا الأمر متاح لمشرفي المجموعة فقط. 🔒')
+            ->and(TelegramTeamAlias::query()->count())->toBe(0);
+    });
+
+    it('resolves an alias everywhere a team name works', function () {
+        $team = makeTeam('علوم الحاسب');
+        TelegramTeamAlias::factory()->forTeam($team)->create(['name' => 'cs']);
+
+        $joinFake = runTeamsUpdate(teamsGroupMessage('انضم cs', [
+            'from' => ['id' => TEAMS_MEMBER_ID, 'is_bot' => false, 'first_name' => 'سارة'],
+        ]));
+        expect($joinFake->allTexts()[0])->toContain('تم استلام طلبك');
+
+        runTeamsUpdate(teamsConsentReply('أضف', ['text' => 'انضم cs']), [TEAMS_ADMIN_ID => 'administrator']);
+        expect(TelegramTeamMember::query()->where('team_id', $team->id)->count())->toBe(1);
+
+        $mentionFake = runTeamsUpdate(teamsGroupMessage('منشن فريق cs'));
+        expect($mentionFake->allTexts()[0])->toContain('نداء لأعضاء فريق «علوم الحاسب»');
+    });
+
+    it('rejects an alias that another team or alias already claims', function () {
+        $cs = makeTeam('علوم الحاسب');
+        makeTeam('هندسة البرمجيات');
+        TelegramTeamAlias::factory()->forTeam($cs)->create(['name' => 'cs']);
+
+        $fake = runTeamsUpdate(teamsGroupMessage('اختصار هندسة البرمجيات: cs، علوم الحاسب'), [TEAMS_ADMIN_ID => 'administrator']);
+
+        expect($fake->allTexts()[0])->toContain('مستخدمة بالفعل')
+            ->and(TelegramTeamAlias::query()->count())->toBe(1);
+    });
+
+    it('refuses to create a team whose name collides with an alias', function () {
+        $team = makeTeam('علوم الحاسب');
+        TelegramTeamAlias::factory()->forTeam($team)->create(['name' => 'cs']);
+
+        $fake = runTeamsUpdate(teamsGroupMessage('فريق جديد CS'), [TEAMS_ADMIN_ID => 'administrator']);
+
+        expect($fake->allTexts()[0])->toContain('مستخدم بالفعل')
+            ->and(TelegramTeam::query()->count())->toBe(1);
+    });
+
+    it('removes an alias without touching the team or its members', function () {
+        $team = makeTeam('علوم الحاسب');
+        TelegramTeamAlias::factory()->forTeam($team)->create(['name' => 'cs']);
+        TelegramTeamMember::factory()->for($team, 'team')->create();
+
+        $fake = runTeamsUpdate(teamsGroupMessage('حذف اختصار cs'), [TEAMS_ADMIN_ID => 'administrator']);
+
+        expect($fake->allTexts()[0])->toContain('تم حذف الاختصار: cs')
+            ->and(TelegramTeamAlias::query()->count())->toBe(0)
+            ->and(TelegramTeam::query()->find($team->id))->not->toBeNull()
+            ->and(TelegramTeamMember::query()->count())->toBe(1);
+    });
+
+    it('drops a team\'s aliases when the team is deleted', function () {
+        $team = makeTeam('علوم الحاسب');
+        TelegramTeamAlias::factory()->forTeam($team)->create(['name' => 'cs']);
+
+        $team->delete();
+
+        expect(TelegramTeamAlias::query()->count())->toBe(0);
+    });
+
+    it('matches Arabic-Indic digits and spelling variants with no alias defined', function () {
+        makeTeam('45');
+        makeTeam('الأمن السيبراني');
+
+        $digits = runTeamsUpdate(teamsGroupMessage('منشن فريق ٤٥'));
+        expect($digits->allTexts()[0])->toContain('لا يوجد أعضاء مطابقون');
+
+        $hamza = runTeamsUpdate(teamsGroupMessage('منشن فريق الامن السيبراني'));
+        expect($hamza->allTexts()[0])->toContain('لا يوجد أعضاء مطابقون');
+    });
+
+    it('counts a team named twice (by name and alias) only once in an intersection', function () {
+        $team = makeTeam('علوم الحاسب');
+        TelegramTeamAlias::factory()->forTeam($team)->create(['name' => 'cs']);
+        TelegramTeamMember::factory()->for($team, 'team')->create(['telegram_user_id' => 501, 'first_name' => 'سارة']);
+
+        $fake = runTeamsUpdate(teamsGroupMessage('منشن فرق علوم الحاسب + cs'));
+
+        expect($fake->allTexts()[0])->toContain('(1):')
+            ->and($fake->allTexts()[0])->toContain('tg://user?id=501');
+    });
+
+    it('lists aliases beside their team', function () {
+        $team = makeTeam('علوم الحاسب');
+        TelegramTeamAlias::factory()->forTeam($team)->create(['name' => 'cs']);
+
+        $fake = runTeamsUpdate(teamsGroupMessage('الفرق'));
+
+        expect($fake->allTexts()[0])->toContain('علوم الحاسب [cs] (0)');
+    });
+});
+
 describe('listing', function () {
     it('lists teams grouped by category with member counts', function () {
         $category = TelegramTeamCategory::factory()->create(['chat_id' => TEAMS_CHAT_ID, 'name' => 'الفرع']);
@@ -385,16 +496,24 @@ describe('listing', function () {
 });
 
 describe('mention blast', function () {
-    it('mentions every team member with clickable tg://user links', function () {
+    it('mentions members by @username, which Telegram reliably turns into a notification', function () {
         $team = makeTeam();
-        TelegramTeamMember::factory()->for($team, 'team')->create(['telegram_user_id' => 501, 'first_name' => 'سارة']);
+        TelegramTeamMember::factory()->for($team, 'team')->withUsername('sara')->create(['telegram_user_id' => 501, 'first_name' => 'سارة']);
+
+        $fake = runTeamsUpdate(teamsGroupMessage('منشن فريق العابدية'));
+
+        expect($fake->allTexts()[0])->toContain('📣 نداء لأعضاء فريق «العابدية» (1):')
+            ->and($fake->allTexts()[0])->toContain('@sara')
+            ->and($fake->allTexts()[0])->not->toContain('tg://user');
+    });
+
+    it('falls back to a tg://user link for members without a username', function () {
+        $team = makeTeam();
         TelegramTeamMember::factory()->for($team, 'team')->create(['telegram_user_id' => 502, 'first_name' => 'خالد']);
 
         $fake = runTeamsUpdate(teamsGroupMessage('منشن فريق العابدية'));
 
-        expect($fake->allTexts()[0])->toContain('📣 نداء لأعضاء فريق «العابدية» (2):')
-            ->and($fake->allTexts()[0])->toContain('<a href="tg://user?id=501">سارة</a>')
-            ->and($fake->allTexts()[0])->toContain('<a href="tg://user?id=502">خالد</a>');
+        expect($fake->allTexts()[0])->toContain('<a href="tg://user?id=502">خالد</a>');
     });
 
     it('treats multiple teams as an intersection', function () {
@@ -408,7 +527,8 @@ describe('mention blast', function () {
 
         expect($fake->allTexts()[0])->toContain('(1):')
             ->and($fake->allTexts()[0])->toContain('tg://user?id=501')
-            ->and($fake->allTexts()[0])->not->toContain('tg://user?id=502');
+            ->and($fake->allTexts()[0])->not->toContain('tg://user?id=502')
+            ->and($fake->allTexts()[0])->not->toContain('خالد');
     });
 
     it('stays silent when the command is buried inside a sentence', function () {

@@ -208,7 +208,7 @@ class TeamMembershipHandler extends BaseTeamHandler
         $lines = [];
 
         if ($added !== []) {
-            $lines[] = '✅ تمت إضافة '.$this->mentionLink($memberId, $this->personName($member)).' إلى: '.$this->joinNames($added);
+            $lines[] = '✅ تمت إضافة '.$this->mentionUser($memberId, $member->getUsername(), $this->personName($member)).' إلى: '.$this->joinNames($added);
         }
 
         if ($blocked !== []) {

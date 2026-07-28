@@ -50,7 +50,7 @@ class TeamInfoHandler extends BaseTeamHandler
 
         $teams = TelegramTeam::query()
             ->where('chat_id', (int) $message->getChat()->getId())
-            ->with('category')
+            ->with(['category', 'aliases'])
             ->withCount('members')
             ->orderBy('name')
             ->get();
@@ -69,7 +69,13 @@ class TeamInfoHandler extends BaseTeamHandler
             ->map(function ($group, string $categoryName): string {
                 $label = $categoryName === '' ? 'بدون تصنيف' : $categoryName;
                 $teamList = $group
-                    ->map(fn (TelegramTeam $team): string => $this->escapeHtml($team->name)." ({$team->members_count})")
+                    ->map(function (TelegramTeam $team): string {
+                        $aliases = $team->aliases->isNotEmpty()
+                            ? ' ['.$team->aliases->map(fn ($alias): string => $this->escapeHtml($alias->name))->implode('، ').']'
+                            : '';
+
+                        return $this->escapeHtml($team->name)."{$aliases} ({$team->members_count})";
+                    })
                     ->implode(' • ');
 
                 return '<b>'.$this->escapeHtml($label).'</b> — '.$teamList;

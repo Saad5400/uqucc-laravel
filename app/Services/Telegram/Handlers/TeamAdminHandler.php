@@ -2,7 +2,9 @@
 
 namespace App\Services\Telegram\Handlers;
 
+use App\Helpers\ArabicNormalizer;
 use App\Models\TelegramTeam;
+use App\Models\TelegramTeamAlias;
 use App\Models\TelegramTeamCategory;
 use Telegram\Bot\Keyboard\Keyboard;
 use Telegram\Bot\Objects\CallbackQuery;
@@ -51,6 +53,8 @@ class TeamAdminHandler extends BaseTeamHandler
             'team_category_create' => $this->createCategory($message, $route['args'][0]),
             'team_category_delete' => $this->deleteCategory($message, $route['args'][0]),
             'team_categorize' => $this->categorizeTeam($message, $route['args'][0], $route['args'][1]),
+            'team_alias_add' => $this->addAliases($message, $route['args'][0], $route['args'][1]),
+            'team_alias_remove' => $this->removeAliases($message, $route['args'][0]),
         };
     }
 
@@ -138,7 +142,121 @@ class TeamAdminHandler extends BaseTeamHandler
             return ['command' => 'team_categorize', 'args' => [trim($matches[1]), trim($matches[2])]];
         }
 
+        if (preg_match('/^حذف اختصار\s+(.+)$/u', $content, $matches)) {
+            return ['command' => 'team_alias_remove', 'args' => [trim($matches[1])]];
+        }
+
+        if (preg_match('/^اختصار\s+(.+?)\s*[:：=]\s*(.+)$/u', $content, $matches)) {
+            return ['command' => 'team_alias_add', 'args' => [trim($matches[1]), trim($matches[2])]];
+        }
+
         return null;
+    }
+
+    /**
+     * «اختصار علوم الحاسب: cs، سي اس» — extra names the team answers to
+     * everywhere: انضم, منشن فريق, أعضاء and the rest.
+     */
+    protected function addAliases(Message $message, string $teamName, string $rawAliases): void
+    {
+        $chatId = (int) $message->getChat()->getId();
+        $team = TelegramTeam::findByName($chatId, $teamName);
+
+        if ($team === null) {
+            $this->reply($message, "لا يوجد فريق باسم «{$teamName}». اعرض الفرق بالأمر: الفرق");
+
+            return;
+        }
+
+        $names = $this->parseNameList($rawAliases);
+
+        if ($names === []) {
+            $this->reply($message, "حدد الاختصار: اختصار {$team->name}: cs");
+
+            return;
+        }
+
+        $added = [];
+        $taken = [];
+        $tooLong = [];
+
+        foreach ($names as $name) {
+            if (mb_strlen($name) > self::MAX_NAME_LENGTH) {
+                $tooLong[] = $name;
+
+                continue;
+            }
+
+            if (TelegramTeam::nameIsTaken($chatId, $name, (int) $team->id)) {
+                $taken[] = $name;
+
+                continue;
+            }
+
+            $alias = TelegramTeamAlias::query()->create([
+                'team_id' => $team->id,
+                'chat_id' => $chatId,
+                'name' => $name,
+            ]);
+
+            $added[] = $alias->name;
+        }
+
+        $lines = [];
+
+        if ($added !== []) {
+            $lines[] = '✅ أصبح فريق «'.$this->escapeHtml($team->name).'» يستجيب أيضًا لـ: '.$this->joinNames($added);
+        }
+
+        if ($taken !== []) {
+            $lines[] = '⚠️ مستخدمة بالفعل في هذه المجموعة: '.$this->joinNames($taken);
+        }
+
+        if ($tooLong !== []) {
+            $lines[] = '⚠️ طويلة (الحد '.self::MAX_NAME_LENGTH.' حرفًا): '.$this->joinNames($tooLong);
+        }
+
+        $this->replyHtml($message, implode("\n", $lines));
+    }
+
+    /**
+     * «حذف اختصار cs» — drops the alias only; the team and its members stay.
+     */
+    protected function removeAliases(Message $message, string $rawAliases): void
+    {
+        $chatId = (int) $message->getChat()->getId();
+        $names = $this->parseNameList($rawAliases);
+
+        $removed = [];
+        $missing = [];
+
+        foreach ($names as $name) {
+            $alias = TelegramTeamAlias::query()
+                ->where('chat_id', $chatId)
+                ->where('normalized_name', ArabicNormalizer::normalize($name))
+                ->first();
+
+            if ($alias === null) {
+                $missing[] = $name;
+
+                continue;
+            }
+
+            $removed[] = $alias->name;
+            $alias->delete();
+        }
+
+        $lines = [];
+
+        if ($removed !== []) {
+            $lines[] = '✅ تم حذف الاختصار: '.$this->joinNames($removed);
+        }
+
+        if ($missing !== []) {
+            $lines[] = '⚠️ لا يوجد اختصار بهذا الاسم: '.$this->joinNames($missing);
+        }
+
+        $this->replyHtml($message, implode("\n", $lines));
     }
 
     protected function createTeam(Message $message, string $name, ?string $categoryName): void
@@ -151,8 +269,8 @@ class TeamAdminHandler extends BaseTeamHandler
             return;
         }
 
-        if (TelegramTeam::findByName($chatId, $name) !== null) {
-            $this->reply($message, "فريق «{$name}» موجود بالفعل.");
+        if (TelegramTeam::nameIsTaken($chatId, $name)) {
+            $this->reply($message, "الاسم «{$name}» مستخدم بالفعل في هذه المجموعة (كفريق أو كاختصار).");
 
             return;
         }

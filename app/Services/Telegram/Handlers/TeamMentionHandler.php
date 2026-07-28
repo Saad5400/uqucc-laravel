@@ -96,10 +96,11 @@ class TeamMentionHandler extends BaseTeamHandler
     }
 
     /**
-     * Users present in every one of the given teams, with a display name.
+     * Users present in every one of the given teams, with what is needed to
+     * ping them.
      *
      * @param  array<int, int|string>  $teamIds
-     * @return array<int, array{id: int, name: string}>
+     * @return array<int, array{id: int, name: string, username: string|null}>
      */
     protected function intersectMembers(array $teamIds): array
     {
@@ -114,6 +115,7 @@ class TeamMentionHandler extends BaseTeamHandler
             ->map(fn ($memberships): array => [
                 'id' => (int) $memberships->first()->telegram_user_id,
                 'name' => $memberships->first()->displayName(),
+                'username' => $memberships->last()->username,
             ])
             ->values()
             ->all();
@@ -134,7 +136,7 @@ class TeamMentionHandler extends BaseTeamHandler
     }
 
     /**
-     * @param  array<int, array{id: int, name: string}>  $mentionables
+     * @param  array<int, array{id: int, name: string, username: string|null}>  $mentionables
      * @return array<int, string>
      */
     protected function mentionChunks(array $mentionables): array
@@ -143,7 +145,7 @@ class TeamMentionHandler extends BaseTeamHandler
 
         return array_map(
             fn (array $batch): string => implode('، ', array_map(
-                fn (array $member): string => $this->mentionLink($member['id'], $member['name']),
+                fn (array $member): string => $this->mentionUser($member['id'], $member['username'], $member['name']),
                 $batch,
             )),
             array_chunk($capped, self::MENTIONS_PER_MESSAGE),
