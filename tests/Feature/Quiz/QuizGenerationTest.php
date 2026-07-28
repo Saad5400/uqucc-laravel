@@ -2,6 +2,7 @@
 
 use App\Ai\Quiz\QuizAuthor;
 use App\Ai\Quiz\QuizAuthoringAgent;
+use App\Jobs\GenerateDailyQuizJob;
 use App\Models\DailyQuiz;
 use App\Models\QuizTopic;
 use App\Settings\AiSettings;
@@ -167,6 +168,50 @@ it('refuses to replace a quiz that is already posted', function () {
         ->toThrow(RuntimeException::class);
 
     QuizAuthoringAgent::assertNeverPrompted();
+});
+
+it('generates for a future day when the panel job carries a date', function () {
+    QuizTopic::factory()->create();
+    QuizAuthoringAgent::fake([quizToolCall(['question' => 'سؤال بعد ثلاثة أيام؟'])]);
+
+    (new GenerateDailyQuizJob(today()->addDays(3)->toDateString()))->handle(app(QuizAuthor::class));
+
+    expect(DailyQuiz::forDate(today()))->toBeNull()
+        ->and(DailyQuiz::forDate(today()->addDays(3))?->question)->toBe('سؤال بعد ثلاثة أيام؟');
+});
+
+it('never overwrites an existing day unless the job says to replace it', function () {
+    QuizTopic::factory()->create();
+    $existing = DailyQuiz::factory()->create(['quiz_date' => today()->addDay(), 'question' => 'السؤال المحجوز؟']);
+
+    QuizAuthoringAgent::fake([quizToolCall(['question' => 'سؤال دخيل؟'])]);
+
+    (new GenerateDailyQuizJob(today()->addDay()->toDateString()))->handle(app(QuizAuthor::class));
+
+    expect(DailyQuiz::query()->count())->toBe(1)
+        ->and($existing->refresh()->question)->toBe('السؤال المحجوز؟');
+    QuizAuthoringAgent::assertNeverPrompted();
+});
+
+it('re-rolls a future day when the panel job asks to replace it', function () {
+    QuizTopic::factory()->create();
+    DailyQuiz::factory()->create(['quiz_date' => today()->addDay(), 'question' => 'السؤال القديم؟']);
+
+    QuizAuthoringAgent::fake([quizToolCall(['question' => 'السؤال الجديد؟'])]);
+
+    (new GenerateDailyQuizJob(today()->addDay()->toDateString(), replace: true))->handle(app(QuizAuthor::class));
+
+    expect(DailyQuiz::query()->count())->toBe(1)
+        ->and(DailyQuiz::forDate(today()->addDay())->question)->toBe('السؤال الجديد؟');
+});
+
+it('defaults the panel job to today when no date is given', function () {
+    QuizTopic::factory()->create();
+    QuizAuthoringAgent::fake([quizToolCall()]);
+
+    (new GenerateDailyQuizJob)->handle(app(QuizAuthor::class));
+
+    expect(DailyQuiz::forDate(today()))->not->toBeNull();
 });
 
 it('skips when a quiz already exists for the day', function () {

@@ -57,6 +57,24 @@ export function formatShortDate(isoDate: string): string {
     return shortDateFormatter.format(new Date(`${isoDate}T00:00:00`));
 }
 
+const weekdayDateFormatter = new Intl.DateTimeFormat('ar', { weekday: 'long', day: 'numeric', month: 'long' });
+
+/** "2026-07-29" → a weekday-qualified Arabic date ("الأربعاء ٢٩ يوليو"). */
+export function formatWeekdayDate(isoDate: string): string {
+    return weekdayDateFormatter.format(new Date(`${isoDate}T00:00:00`));
+}
+
+/**
+ * "2026-07-29" relative to today as a whole-day phrase ("اليوم", "غداً",
+ * "بعد ٣ أيام") — calendar-day arithmetic, not elapsed hours, so a date is
+ * never called "tomorrow" just because it is 20 hours away.
+ */
+export function formatDayOffset(isoDate: string, today: string): string {
+    const days = Math.round((new Date(`${isoDate}T00:00:00Z`).getTime() - new Date(`${today}T00:00:00Z`).getTime()) / 86_400_000);
+
+    return relativeTimeFormatter.format(days, 'day');
+}
+
 const dateTimeFormatter = new Intl.DateTimeFormat('ar', { dateStyle: 'medium', timeStyle: 'short' });
 
 export function formatDateTime(iso: string): string {

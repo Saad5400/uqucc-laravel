@@ -43,7 +43,7 @@ it('redirects guests to the login page', function () {
     $this->get('/manage/quiz')->assertRedirect('/manage/login');
 });
 
-it('renders the quiz page with settings, topics, quizzes and leaderboards', function () {
+it('renders the quiz page with settings, topics, the current question and leaderboards', function () {
     QuizTopic::factory()->count(2)->create();
     DailyQuiz::factory()->create(['quiz_date' => today()]);
 
@@ -54,7 +54,9 @@ it('renders the quiz page with settings, topics, quizzes and leaderboards', func
             ->component('manage/quiz/Index')
             ->has('settings', fn (Assert $settings) => $settings->has('enabled')->has('reminders_enabled')->has('chat_ids'))
             ->has('topics', 2)
-            ->has('quizzes.data', 1)
+            ->where('currentQuiz.quiz_date', today()->toDateString())
+            ->has('upcoming', 1)
+            ->where('pastCount', 0)
             ->where('limits.question', 300)
             ->where('limits.hint', 120)
             ->where('today', today()->toDateString())
@@ -64,22 +66,113 @@ it('renders the quiz page with settings, topics, quizzes and leaderboards', func
             ->has('groupChats'));
 });
 
-it('paginates the questions list at five per page', function () {
-    DailyQuiz::factory()->count(7)->sequence(fn ($sequence) => ['quiz_date' => today()->subDays($sequence->index)])->create();
+it('shows today\'s question as the current one while it is still editable', function () {
+    DailyQuiz::factory()->create(['quiz_date' => today(), 'question' => 'سؤال اليوم؟']);
+    DailyQuiz::factory()->create(['quiz_date' => today()->addDay(), 'question' => 'سؤال الغد؟']);
 
     $this->actingAs($this->admin)
         ->get('/manage/quiz')
         ->assertInertia(fn (Assert $page) => $page
-            ->has('quizzes.data', 5)
-            ->where('quizzes.total', 7)
-            ->where('quizzes.per_page', 5)
-            ->where('quizzes.last_page', 2));
+            ->where('currentQuiz.question', 'سؤال اليوم؟')
+            ->has('upcoming', 2));
+});
+
+it('falls through to the nearest upcoming question once today is posted', function () {
+    DailyQuiz::factory()->posted()->create(['quiz_date' => today()]);
+    DailyQuiz::factory()->create(['quiz_date' => today()->addDays(3), 'question' => 'بعد ثلاثة أيام؟']);
+    DailyQuiz::factory()->create(['quiz_date' => today()->addDay(), 'question' => 'سؤال الغد؟']);
 
     $this->actingAs($this->admin)
-        ->get('/manage/quiz?page=2')
+        ->get('/manage/quiz')
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('todayQuizStatus', 'posted')
+            ->where('currentQuiz.question', 'سؤال الغد؟')
+            ->where('currentQuiz.quiz_date', today()->addDay()->toDateString()));
+});
+
+it('shows no current question when nothing ahead is editable', function () {
+    DailyQuiz::factory()->closed()->create(['quiz_date' => today()->subDay()]);
+    DailyQuiz::factory()->posted()->create(['quiz_date' => today()]);
+
+    $this->actingAs($this->admin)
+        ->get('/manage/quiz')
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('currentQuiz', null)
+            ->where('pastCount', 1));
+});
+
+it('never promotes a stale past-dated ready question to the front door', function () {
+    DailyQuiz::factory()->create(['quiz_date' => today()->subDays(2), 'question' => 'سؤال قديم لم يُنشر؟']);
+
+    $this->actingAs($this->admin)
+        ->get('/manage/quiz')
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('currentQuiz', null)
+            ->where('pastCount', 1));
+});
+
+it('offers the first unscheduled day as the generation default', function () {
+    DailyQuiz::factory()->create(['quiz_date' => today()]);
+    DailyQuiz::factory()->create(['quiz_date' => today()->addDay()]);
+    DailyQuiz::factory()->create(['quiz_date' => today()->addDays(3)]);
+
+    $this->actingAs($this->admin)
+        ->get('/manage/quiz')
+        ->assertInertia(fn (Assert $page) => $page->where('nextFreeDate', today()->addDays(2)->toDateString()));
+});
+
+it('lists upcoming questions in the archive, nearest day first', function () {
+    DailyQuiz::factory()
+        ->count(12)
+        ->sequence(fn ($sequence) => ['quiz_date' => today()->addDays($sequence->index)])
+        ->create();
+
+    $this->actingAs($this->admin)
+        ->get('/manage/quiz/archive')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('manage/quiz/Archive')
+            ->where('scope', 'upcoming')
+            ->has('quizzes.data', 10)
+            ->where('quizzes.total', 12)
+            ->where('quizzes.data.0.quiz_date', today()->toDateString())
+            ->where('quizzes.data.9.quiz_date', today()->addDays(9)->toDateString())
+            ->where('counts.upcoming', 12)
+            ->where('counts.past', 0));
+
+    $this->actingAs($this->admin)
+        ->get('/manage/quiz/archive?page=2')
         ->assertInertia(fn (Assert $page) => $page
             ->has('quizzes.data', 2)
-            ->where('quizzes.current_page', 2));
+            ->where('quizzes.data.0.quiz_date', today()->addDays(10)->toDateString()));
+});
+
+it('lists past questions in the archive, most recent first', function () {
+    DailyQuiz::factory()->closed()->create(['quiz_date' => today()->subDays(3)]);
+    DailyQuiz::factory()->closed()->create(['quiz_date' => today()->subDay()]);
+    DailyQuiz::factory()->create(['quiz_date' => today()->addDay()]);
+
+    $this->actingAs($this->admin)
+        ->get('/manage/quiz/archive?scope=past')
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('scope', 'past')
+            ->has('quizzes.data', 2)
+            ->where('quizzes.data.0.quiz_date', today()->subDay()->toDateString())
+            ->where('quizzes.data.1.quiz_date', today()->subDays(3)->toDateString())
+            ->where('counts.upcoming', 1)
+            ->where('counts.past', 2));
+});
+
+it('treats an unknown archive scope as the upcoming queue', function () {
+    DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    $this->actingAs($this->admin)
+        ->get('/manage/quiz/archive?scope=nonsense')
+        ->assertInertia(fn (Assert $page) => $page->where('scope', 'upcoming')->has('quizzes.data', 1));
+});
+
+it('redirects guests away from the archive', function () {
+    $this->get('/manage/quiz/archive')->assertRedirect('/manage/login');
 });
 
 it('saves the quiz settings with multiple groups', function () {
@@ -318,7 +411,55 @@ it('queues on-demand generation for today', function () {
         ->assertRedirect()
         ->assertSessionHas('success');
 
-    Queue::assertPushed(GenerateDailyQuizJob::class, fn (GenerateDailyQuizJob $job): bool => $job->queue === 'ai');
+    Queue::assertPushed(GenerateDailyQuizJob::class, fn (GenerateDailyQuizJob $job): bool => $job->queue === 'ai'
+        && $job->date === today()->toDateString()
+        && $job->replace === false);
+});
+
+it('queues generation for a future date to fill the buffer', function () {
+    Queue::fake();
+
+    $this->actingAs($this->admin)
+        ->post('/manage/quiz/generate', ['date' => today()->addDays(4)->toDateString()])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    Queue::assertPushed(GenerateDailyQuizJob::class, fn (GenerateDailyQuizJob $job): bool => $job->date === today()->addDays(4)->toDateString()
+        && $job->replace === false);
+});
+
+it('refuses to generate for a day that has already gone', function () {
+    Queue::fake();
+
+    $this->actingAs($this->admin)
+        ->post('/manage/quiz/generate', ['date' => today()->subDay()->toDateString()])
+        ->assertSessionHasErrors('date');
+
+    Queue::assertNothingPushed();
+});
+
+it('asks to replace rather than overwrite when the target day is already taken', function () {
+    Queue::fake();
+    DailyQuiz::factory()->create(['quiz_date' => today()->addDays(2)]);
+
+    $this->actingAs($this->admin)
+        ->post('/manage/quiz/generate', ['date' => today()->addDays(2)->toDateString()])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    Queue::assertPushed(GenerateDailyQuizJob::class, fn (GenerateDailyQuizJob $job): bool => $job->date === today()->addDays(2)->toDateString()
+        && $job->replace === true);
+});
+
+it('refuses to regenerate a posted question on a future-dated day', function () {
+    Queue::fake();
+    DailyQuiz::factory()->posted()->create(['quiz_date' => today()->addDay()]);
+
+    $this->actingAs($this->admin)
+        ->post('/manage/quiz/generate', ['date' => today()->addDay()->toDateString()])
+        ->assertSessionHasErrors('generate');
+
+    Queue::assertNothingPushed();
 });
 
 it('queues generation from a chosen topic', function () {

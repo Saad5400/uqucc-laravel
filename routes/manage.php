@@ -69,6 +69,7 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::delete('/corpus/{document}', [CorpusDocumentController::class, 'destroy'])->name('corpus.destroy');
 
         Route::get('/quiz', [QuizController::class, 'index'])->name('quiz.index');
+        Route::get('/quiz/archive', [QuizController::class, 'archive'])->name('quiz.archive');
         Route::put('/quiz/settings', [QuizController::class, 'updateSettings'])->name('quiz.settings.update');
         Route::post('/quiz/generate', [QuizController::class, 'generate'])->name('quiz.generate');
         Route::post('/quiz/topics', [QuizTopicController::class, 'store'])->name('quiz.topics.store');

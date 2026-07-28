@@ -1,10 +1,13 @@
 <script setup lang="ts">
-import CharCount from '@/components/manage/CharCount.vue';
 import ConfirmDialog from '@/components/manage/ConfirmDialog.vue';
 import EmptyState from '@/components/manage/EmptyState.vue';
 import ManageLayout from '@/components/manage/ManageLayout.vue';
 import PageHeader from '@/components/manage/PageHeader.vue';
-import Pagination from '@/components/manage/Pagination.vue';
+import GenerateQuizDialog from '@/components/manage/quiz/GenerateQuizDialog.vue';
+import QuizCard from '@/components/manage/quiz/QuizCard.vue';
+import QuizEditorDialog from '@/components/manage/quiz/QuizEditorDialog.vue';
+import type { Limits, QueuedDay, Quiz, Topic } from '@/components/manage/quiz/types';
+import { statusBadges } from '@/components/manage/quiz/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,15 +16,13 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { TagsInput, TagsInputInput, TagsInputItem, TagsInputItemDelete, TagsInputItemText } from '@/components/ui/tags-input';
 import { Textarea } from '@/components/ui/textarea';
 import { arabicCount } from '@/lib/arabic';
-import { formatDateTime, formatRelativeTime, formatShortDate } from '@/lib/formatters';
-import type { Paginated } from '@/lib/pagination';
-import { Head, router, useForm, usePage } from '@inertiajs/vue3';
-import { CheckCircle2, EllipsisVertical, Loader2, Pencil, PenLine, Plus, Sparkles, Trash2, Trophy } from 'lucide-vue-next';
+import { formatDateTime, formatDayOffset, formatRelativeTime, formatShortDate, formatWeekdayDate } from '@/lib/formatters';
+import { Head, Link, router, useForm } from '@inertiajs/vue3';
+import { CalendarClock, EllipsisVertical, Library, Loader2, Pencil, PenLine, Plus, Sparkles, Trash2, Trophy } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 defineOptions({ layout: ManageLayout });
@@ -37,33 +38,6 @@ interface GroupChat {
     title: string | null;
 }
 
-interface Topic {
-    id: number;
-    name: string;
-    prompt_hint: string | null;
-    is_spotlight: boolean;
-    is_active: boolean;
-    last_used_at: string | null;
-}
-
-interface Quiz {
-    id: number;
-    quiz_topic_id: number | null;
-    quiz_date: string;
-    question: string;
-    body: string | null;
-    options: string[];
-    correct_option: number;
-    explanation: string | null;
-    hint: string | null;
-    obvious_hint: string | null;
-    status: 'ready' | 'posted' | 'closed';
-    topic: string | null;
-    posted_at: string | null;
-    answers_count: number;
-    correct_answers_count: number;
-}
-
 interface Player {
     id: number;
     name: string;
@@ -73,187 +47,69 @@ interface Player {
     answers_count: number;
 }
 
-/** Telegram's hard caps, mirrored from the authoring constants server-side. */
-interface Limits {
-    question: number;
-    body: number;
-    option: number;
-    explanation: number;
-    hint: number;
-}
-
 const props = defineProps<{
     settings: QuizSettingsValues;
     groupChats: GroupChat[];
     topics: Topic[];
-    quizzes: Paginated<Quiz>;
+    currentQuiz: Quiz | null;
+    upcoming: QueuedDay[];
+    pastCount: number;
     limits: Limits;
     today: string;
+    nextFreeDate: string;
     todayQuizStatus: Quiz['status'] | null;
     weeklyTop: Player[];
     allTimeTop: Player[];
 }>();
 
-const page = usePage();
-const pageErrors = computed(() => (page.props.errors ?? {}) as Record<string, string>);
-
-const statusBadges: Record<Quiz['status'], { label: string; variant: 'secondary' | 'default' | 'outline' }> = {
-    ready: { label: 'بانتظار النشر', variant: 'secondary' },
-    posted: { label: 'منشور الآن', variant: 'default' },
-    closed: { label: 'مغلق', variant: 'outline' },
-};
-
 /* ------------------------------------------------------------------ */
-/* Generate today's question on demand                                 */
+/* The one question the admin can act on right now                     */
 /* ------------------------------------------------------------------ */
 
-const generating = ref(false);
-const generateDialogOpen = ref(false);
-
-/** 'auto' means let the author pick; otherwise the chosen active topic id as a string. */
-const generateTopicId = ref('auto');
-
-/** A ready question already exists today — generating replaces it in place. */
-const willReplaceToday = computed(() => props.todayQuizStatus === 'ready');
-
-/** A posted question can never be regenerated. */
+/** Today's question exists and has already gone out — it can never change again. */
 const todayIsPosted = computed(() => props.todayQuizStatus !== null && props.todayQuizStatus !== 'ready');
 
-const activeTopics = computed(() => props.topics.filter((topic) => topic.is_active));
+/** The front door is showing a future day rather than today. */
+const showingFutureDay = computed(() => props.currentQuiz !== null && props.currentQuiz.quiz_date !== props.today);
 
-function openGenerateDialog(): void {
-    generateTopicId.value = 'auto';
-    generateDialogOpen.value = true;
-}
+/**
+ * Why the question on screen is the one on screen. Never leave the admin
+ * guessing which day they are about to edit.
+ */
+const currentQuizContext = computed(() => {
+    if (props.currentQuiz === null) {
+        return null;
+    }
 
-function generateNow(): void {
-    generating.value = true;
+    if (!showingFutureDay.value) {
+        return { tone: 'muted' as const, text: 'هذا سؤال اليوم — راجعه وعدّله قبل النشر التلقائي الساعة 4 عصراً.' };
+    }
 
-    router.post(
-        '/manage/quiz/generate',
-        { topic_id: generateTopicId.value === 'auto' ? null : Number(generateTopicId.value) },
-        {
-            preserveScroll: true,
-            onSuccess: () => {
-                generateDialogOpen.value = false;
-            },
-            onFinish: () => {
-                generating.value = false;
-            },
-        },
-    );
-}
+    const day = `${formatWeekdayDate(props.currentQuiz.quiz_date)} (${formatDayOffset(props.currentQuiz.quiz_date, props.today)})`;
 
-/* ------------------------------------------------------------------ */
-/* Questions list pagination                                           */
-/* ------------------------------------------------------------------ */
+    if (todayIsPosted.value) {
+        return { tone: 'muted' as const, text: `سؤال اليوم نُشر بالفعل ولم يعد قابلاً للتعديل — المعروض هنا هو سؤال ${day}.` };
+    }
 
-function goToQuizzesPage(page: number): void {
-    router.get(
-        '/manage/quiz',
-        { page },
-        {
-            preserveState: true,
-            preserveScroll: true,
-            replace: true,
-            only: ['quizzes'],
-        },
-    );
-}
+    return { tone: 'warning' as const, text: `لا يوجد سؤال لليوم! المعروض هو أقرب سؤال قادم — ${day}. ولّد سؤالاً لليوم قبل الساعة 4 عصراً.` };
+});
+
+/** The queue after the question already shown in full above it. */
+const queueAhead = computed(() => props.upcoming.filter((day) => day.id !== props.currentQuiz?.id));
 
 /* ------------------------------------------------------------------ */
-/* Write / edit / delete a not-yet-posted quiz                         */
+/* Generate / write / edit / delete                                    */
 /* ------------------------------------------------------------------ */
 
-/** The "no topic" sentinel — Select cannot hold an empty string value. */
-const NO_TOPIC = 'none';
+const generateDialogOpen = ref(false);
 
 const quizDialogOpen = ref(false);
 const editingQuiz = ref<Quiz | null>(null);
 
-/**
- * Optional text is held as an empty string (the textareas' natural value);
- * the server normalizes blanks back to null on save.
- */
-const quizForm = useForm({
-    quiz_topic_id: NO_TOPIC,
-    quiz_date: '',
-    question: '',
-    body: '',
-    options: ['', '', '', ''],
-    correct_option: '0',
-    explanation: '',
-    hint: '',
-    obvious_hint: '',
-});
-
-/** The day a hand-written question defaults to: today, or tomorrow when today is taken. */
-function defaultQuizDate(): string {
-    const date = new Date(`${props.today}T00:00:00Z`);
-
-    if (props.todayQuizStatus !== null) {
-        date.setUTCDate(date.getUTCDate() + 1);
-    }
-
-    return date.toISOString().slice(0, 10);
-}
-
-/** Opens the shared question dialog — editing the given question, or writing a new one. */
 function openQuizEditor(quiz: Quiz | null): void {
     editingQuiz.value = quiz;
-    quizForm.clearErrors();
-    quizForm.quiz_topic_id = quiz?.quiz_topic_id ? String(quiz.quiz_topic_id) : NO_TOPIC;
-    quizForm.quiz_date = quiz?.quiz_date ?? defaultQuizDate();
-    quizForm.question = quiz?.question ?? '';
-    quizForm.body = quiz?.body ?? '';
-    quizForm.options = quiz ? [...quiz.options] : ['', '', '', ''];
-    quizForm.correct_option = String(quiz?.correct_option ?? 0);
-    quizForm.explanation = quiz?.explanation ?? '';
-    quizForm.hint = quiz?.hint ?? '';
-    quizForm.obvious_hint = quiz?.obvious_hint ?? '';
     quizDialogOpen.value = true;
 }
-
-function submitQuizEditor(): void {
-    const form = quizForm.transform((data) => ({
-        ...data,
-        quiz_topic_id: data.quiz_topic_id === NO_TOPIC ? null : Number(data.quiz_topic_id),
-        correct_option: Number(data.correct_option),
-    }));
-
-    const options = {
-        preserveScroll: true,
-        onSuccess: () => {
-            quizDialogOpen.value = false;
-            editingQuiz.value = null;
-        },
-    };
-
-    if (editingQuiz.value) {
-        form.put(`/manage/quiz/quizzes/${editingQuiz.value.id}`, options);
-    } else {
-        form.post('/manage/quiz/quizzes', options);
-    }
-}
-
-/** A question dated before today never posts — the poster only looks up today. */
-const quizDateIsPast = computed(() => quizForm.quiz_date !== '' && quizForm.quiz_date < props.today);
-
-/** Why a question can no longer be edited or deleted, or null while it still can. */
-function lockReason(quiz: Quiz): string | null {
-    return quiz.status === 'ready' ? null : 'لا يمكن تعديل سؤال أو حذفه بعد نشره — الإجابات والنقاط محسوبة عليه.';
-}
-
-/** The "already posted" rejection, raised against the whole question rather than a field. */
-const quizLockError = computed(() => (quizForm.errors as Record<string, string>).quiz ?? null);
-
-/** First error for the options array, including per-element errors like `options.2`. */
-const optionsError = computed(() => {
-    const errors = quizForm.errors as Record<string, string>;
-    const key = Object.keys(errors).find((errorKey) => errorKey === 'options' || errorKey.startsWith('options.'));
-
-    return key ? errors[key] : null;
-});
 
 const deletingQuiz = ref<Quiz | null>(null);
 const deleteProcessing = ref(false);
@@ -408,104 +264,100 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
             سؤال اليوم غير مفعّل بعد — فعّله وحدد المجموعة المستهدفة من بطاقة «الإعدادات» أسفل الصفحة ليبدأ النشر التلقائي.
         </div>
 
-        <!-- Questions -->
+        <!-- The one question that can be edited right now -->
         <Card>
             <CardHeader class="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-                <CardTitle class="text-lg">الأسئلة</CardTitle>
+                <CardTitle class="text-lg">{{ showingFutureDay ? 'السؤال القادم' : 'سؤال اليوم' }}</CardTitle>
                 <div class="flex flex-wrap items-center gap-2">
-                    <p v-if="todayIsPosted" class="text-xs text-muted-foreground">سؤال اليوم منشور</p>
                     <Button size="sm" variant="outline" @click="openQuizEditor(null)">
                         <PenLine class="size-4" />
                         كتابة سؤال يدوياً
                     </Button>
-                    <Button
-                        size="sm"
-                        :disabled="todayIsPosted || generating"
-                        :title="todayIsPosted ? 'سؤال اليوم منشور بالفعل — لا يمكن إعادة توليده' : undefined"
-                        @click="openGenerateDialog"
-                    >
-                        <Loader2 v-if="generating" class="size-4 animate-spin" />
-                        <Sparkles v-else class="size-4" />
-                        {{ willReplaceToday ? 'إعادة توليد سؤال اليوم' : 'توليد سؤال اليوم' }}
+                    <Button size="sm" @click="generateDialogOpen = true">
+                        <Sparkles class="size-4" />
+                        توليد بالذكاء الاصطناعي
                     </Button>
                 </div>
             </CardHeader>
             <CardContent class="space-y-4">
-                <p v-if="pageErrors.generate" class="text-sm text-destructive-foreground">{{ pageErrors.generate }}</p>
-                <p v-if="pageErrors.quiz" class="text-sm text-destructive-foreground">{{ pageErrors.quiz }}</p>
+                <p
+                    v-if="currentQuizContext"
+                    class="rounded-lg border p-3 text-sm"
+                    :class="
+                        currentQuizContext.tone === 'warning'
+                            ? 'border-destructive/40 bg-destructive/5 text-destructive-foreground'
+                            : 'border-border bg-muted/50 text-muted-foreground'
+                    "
+                >
+                    {{ currentQuizContext.text }}
+                </p>
 
                 <EmptyState
-                    v-if="!quizzes.data.length"
+                    v-if="currentQuiz === null"
                     :icon="Sparkles"
-                    title="لا توجد أسئلة بعد"
-                    description="يُولَّد سؤال جديد تلقائياً كل يوم من أحد المواضيع أدناه، ويمكنك توليد سؤال اليوم أو كتابته بنفسك من الأزرار أعلاه. راجع السؤال وعدّله — نصه وخياراته وتلميحاته — قبل موعد النشر."
+                    title="لا يوجد سؤال بانتظار النشر"
+                    description="كل يوم يحتاج سؤالاً واحداً. ولّده بالذكاء الاصطناعي من أحد المواضيع أدناه، أو اكتبه بنفسك — ثم راجع نصه وخياراته وتلميحاته قبل موعد النشر."
+                >
+                    <div class="flex flex-wrap justify-center gap-2">
+                        <Button size="sm" @click="generateDialogOpen = true">
+                            <Sparkles class="size-4" />
+                            توليد سؤال
+                        </Button>
+                        <Button size="sm" variant="outline" @click="openQuizEditor(null)">
+                            <PenLine class="size-4" />
+                            كتابة سؤال يدوياً
+                        </Button>
+                    </div>
+                </EmptyState>
+
+                <div v-else class="rounded-lg border border-border p-4">
+                    <QuizCard :quiz="currentQuiz" prominent @edit="openQuizEditor" @delete="(quiz) => (deletingQuiz = quiz)" />
+                </div>
+            </CardContent>
+        </Card>
+
+        <!-- The rest of the schedule -->
+        <Card>
+            <CardHeader class="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
+                <CardTitle class="text-lg">الأيام المجهّزة</CardTitle>
+                <Button as-child size="sm" variant="outline">
+                    <Link href="/manage/quiz/archive">
+                        <Library class="size-4" />
+                        كل الأسئلة
+                        <span v-if="pastCount" class="text-muted-foreground tabular-nums">({{ pastCount }} سابق)</span>
+                    </Link>
+                </Button>
+            </CardHeader>
+            <CardContent class="space-y-3">
+                <EmptyState
+                    v-if="!queueAhead.length"
+                    :icon="CalendarClock"
+                    title="لا توجد أيام محجوزة بعد"
+                    description="يكفي أن يُولَّد سؤال كل فجر، لكن تجهيز أيام قادمة مسبقاً يحميك من تعطّل التوليد — ولّد سؤالاً لتاريخ قادم من زر «توليد بالذكاء الاصطناعي»."
                 />
 
-                <ul v-else class="overflow-hidden rounded-lg border border-border">
-                    <li v-for="quiz in quizzes.data" :key="quiz.id" class="space-y-2 border-b border-border p-3 last:border-b-0">
-                        <div class="flex items-start justify-between gap-3">
-                            <div class="min-w-0 flex-1 space-y-1">
-                                <div class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                                    <span class="tabular-nums">{{ formatShortDate(quiz.quiz_date) }}</span>
-                                    <Badge :variant="statusBadges[quiz.status].variant">{{ statusBadges[quiz.status].label }}</Badge>
-                                    <Badge v-if="quiz.topic" variant="outline">{{ quiz.topic }}</Badge>
-                                    <span v-if="quiz.status !== 'ready'">
-                                        {{ arabicCount(quiz.answers_count, { singular: 'إجابة', dual: 'إجابتان', plural: 'إجابات' }) }} — منها
-                                        {{ quiz.correct_answers_count }} صحيحة
-                                    </span>
-                                </div>
-                                <p class="font-medium">{{ quiz.question }}</p>
-                            </div>
-
-                            <DropdownMenu>
-                                <DropdownMenuTrigger as-child>
-                                    <Button variant="ghost" size="icon" aria-label="إجراءات السؤال">
-                                        <EllipsisVertical />
-                                    </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" class="max-w-72">
-                                    <p v-if="lockReason(quiz)" class="px-2 py-1.5 text-xs text-balance text-muted-foreground">
-                                        {{ lockReason(quiz) }}
-                                    </p>
-                                    <DropdownMenuItem :disabled="lockReason(quiz) !== null" @select="openQuizEditor(quiz)">
-                                        <Pencil />
-                                        تعديل
-                                    </DropdownMenuItem>
-                                    <DropdownMenuSeparator />
-                                    <DropdownMenuItem variant="destructive" :disabled="lockReason(quiz) !== null" @select="deletingQuiz = quiz">
-                                        <Trash2 />
-                                        حذف
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        </div>
-
-                        <pre
-                            v-if="quiz.body"
-                            dir="ltr"
-                            class="overflow-x-auto rounded-md border border-border bg-muted/40 p-2 text-start font-mono text-xs whitespace-pre-wrap"
-                            >{{ quiz.body }}</pre
+                <template v-else>
+                    <ul class="flex flex-wrap gap-2">
+                        <li
+                            v-for="day in queueAhead"
+                            :key="day.id"
+                            class="flex items-center gap-2 rounded-full border border-border py-1 ps-2 pe-3 text-xs"
                         >
-
-                        <ol class="grid gap-1 text-sm sm:grid-cols-2">
-                            <li
-                                v-for="(option, index) in quiz.options"
-                                :key="index"
-                                class="flex items-center gap-1.5 rounded-md border border-border px-2 py-1"
-                                :class="index === quiz.correct_option ? 'border-transparent bg-primary/10' : ''"
-                            >
-                                <CheckCircle2 v-if="index === quiz.correct_option" class="size-4 shrink-0 text-primary" />
-                                <span class="min-w-0 truncate">{{ option }}</span>
-                            </li>
-                        </ol>
-
-                        <p v-if="quiz.explanation" class="text-xs text-muted-foreground">الشرح: {{ quiz.explanation }}</p>
-                        <p v-if="quiz.hint" class="text-xs text-muted-foreground">🧩 تلميح التذكير: {{ quiz.hint }}</p>
-                        <p v-if="quiz.obvious_hint" class="text-xs text-muted-foreground">💡 تلميح آخر فرصة: {{ quiz.obvious_hint }}</p>
-                    </li>
-                </ul>
-
-                <Pagination :page="quizzes.current_page" :pages="quizzes.last_page" :total="quizzes.total" @update:page="goToQuizzesPage" />
+                            <span class="tabular-nums">{{ formatShortDate(day.quiz_date) }}</span>
+                            <span class="text-muted-foreground">{{ formatDayOffset(day.quiz_date, today) }}</span>
+                            <Badge v-if="day.status !== 'ready'" :variant="statusBadges[day.status].variant">
+                                {{ statusBadges[day.status].label }}
+                            </Badge>
+                            <span v-else-if="day.topic" class="text-muted-foreground">{{ day.topic }}</span>
+                        </li>
+                    </ul>
+                    <p class="text-xs text-muted-foreground">
+                        {{ arabicCount(queueAhead.length, { singular: 'يوم آخر مجهّز', dual: 'يومان آخران مجهّزان', plural: 'أيام أخرى مجهّزة' }) }}
+                        إلى جانب السؤال المعروض أعلاه. أول يوم فارغ:
+                        <span class="tabular-nums">{{ formatWeekdayDate(nextFreeDate) }}</span
+                        >.
+                    </p>
+                </template>
             </CardContent>
         </Card>
 
@@ -685,213 +537,16 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
         </Card>
     </div>
 
-    <!-- Generate / regenerate today's question dialog -->
-    <Dialog v-model:open="generateDialogOpen">
-        <DialogContent class="sm:max-w-lg">
-            <DialogHeader>
-                <DialogTitle>{{ willReplaceToday ? 'إعادة توليد سؤال اليوم' : 'توليد سؤال اليوم' }}</DialogTitle>
-            </DialogHeader>
+    <GenerateQuizDialog v-model:open="generateDialogOpen" :topics="topics" :upcoming="upcoming" :today="today" :default-date="nextFreeDate" />
 
-            <form class="space-y-4" @submit.prevent="generateNow">
-                <p v-if="willReplaceToday" class="rounded-lg border border-border bg-muted/50 p-3 text-sm">
-                    يوجد سؤال «بانتظار النشر» لهذا اليوم — التوليد سيستبدله بسؤال جديد. لن يُحذف السؤال الحالي إلا بعد نجاح التوليد.
-                </p>
-
-                <div class="space-y-2">
-                    <Label for="generate-topic">الموضوع</Label>
-                    <Select id="generate-topic" v-model="generateTopicId">
-                        <SelectTrigger class="w-full" aria-label="موضوع السؤال">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="auto">موضوع عشوائي (يختاره النظام)</SelectItem>
-                            <SelectItem v-for="topic in activeTopics" :key="topic.id" :value="String(topic.id)">
-                                {{ topic.name }}
-                            </SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <p class="text-xs text-muted-foreground">
-                        اترك «موضوع عشوائي» ليختار النظام الموضوع الأقل استخداماً كالمعتاد، أو اختر موضوعاً محدداً لتوليد سؤال منه.
-                    </p>
-                    <p v-if="pageErrors.topic_id" class="text-sm text-destructive-foreground">{{ pageErrors.topic_id }}</p>
-                </div>
-
-                <DialogFooter class="gap-2">
-                    <Button type="button" variant="outline" @click="generateDialogOpen = false">إلغاء</Button>
-                    <Button type="submit" :disabled="generating">
-                        <Loader2 v-if="generating" class="size-4 animate-spin" />
-                        <Sparkles v-else class="size-4" />
-                        {{ willReplaceToday ? 'إعادة التوليد' : 'توليد' }}
-                    </Button>
-                </DialogFooter>
-            </form>
-        </DialogContent>
-    </Dialog>
-
-    <!-- Write / edit question dialog -->
-    <Dialog v-model:open="quizDialogOpen">
-        <DialogContent class="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-            <DialogHeader>
-                <DialogTitle>{{ editingQuiz ? 'تعديل السؤال' : 'كتابة سؤال جديد' }}</DialogTitle>
-            </DialogHeader>
-
-            <form class="space-y-4" @submit.prevent="submitQuizEditor">
-                <p v-if="quizLockError" class="text-sm text-destructive-foreground">{{ quizLockError }}</p>
-
-                <div class="grid gap-4 sm:grid-cols-2">
-                    <div class="space-y-2">
-                        <Label for="quiz-date">تاريخ النشر</Label>
-                        <Input
-                            id="quiz-date"
-                            v-model="quizForm.quiz_date"
-                            type="date"
-                            dir="ltr"
-                            class="text-start tabular-nums"
-                            :aria-invalid="quizForm.errors.quiz_date ? true : undefined"
-                        />
-                        <p v-if="quizForm.errors.quiz_date" class="text-sm text-destructive-foreground">{{ quizForm.errors.quiz_date }}</p>
-                        <p v-else-if="quizDateIsPast" class="text-xs text-destructive-foreground">
-                            تاريخ ماضٍ — لن يُنشر هذا السؤال، فالنشر التلقائي يأخذ سؤال اليوم فقط.
-                        </p>
-                        <p v-else class="text-xs text-muted-foreground">يُنشر سؤال اليوم المحدد تلقائياً الساعة 4 عصراً. لكل يوم سؤال واحد.</p>
-                    </div>
-
-                    <div class="space-y-2">
-                        <Label for="quiz-topic">الموضوع</Label>
-                        <Select id="quiz-topic" v-model="quizForm.quiz_topic_id">
-                            <SelectTrigger class="w-full" aria-label="موضوع السؤال">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="none">بدون موضوع</SelectItem>
-                                <SelectItem v-for="topic in topics" :key="topic.id" :value="String(topic.id)">
-                                    {{ topic.name }}{{ topic.is_active ? '' : ' (معطّل)' }}
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <p v-if="quizForm.errors.quiz_topic_id" class="text-sm text-destructive-foreground">{{ quizForm.errors.quiz_topic_id }}</p>
-                        <p v-else class="text-xs text-muted-foreground">تصنيف فقط — يظهر بجانب السؤال ويمنع تكرار الموضوع في التوليد التالي.</p>
-                    </div>
-                </div>
-
-                <div class="space-y-2">
-                    <div class="flex items-center justify-between gap-2">
-                        <Label for="quiz-question">السؤال</Label>
-                        <CharCount :value="quizForm.question" :max="limits.question" />
-                    </div>
-                    <Textarea id="quiz-question" v-model="quizForm.question" rows="3" :aria-invalid="quizForm.errors.question ? true : undefined" />
-                    <p v-if="quizForm.errors.question" class="text-sm text-destructive-foreground">{{ quizForm.errors.question }}</p>
-                </div>
-
-                <div class="space-y-2">
-                    <div class="flex items-center justify-between gap-2">
-                        <Label for="quiz-body">الكود / المقدمة (اختياري)</Label>
-                        <CharCount :value="quizForm.body" :max="limits.body" />
-                    </div>
-                    <Textarea
-                        id="quiz-body"
-                        v-model="quizForm.body"
-                        dir="ltr"
-                        rows="5"
-                        class="font-mono text-sm"
-                        placeholder="ضع الكود داخل سياج ```py … ``` — يُنشر كرسالة منسّقة فوق التصويت، وتُصبح رسالة التصويت مجرد «اختر إجابتك»."
-                        :aria-invalid="quizForm.errors.body ? true : undefined"
-                    />
-                    <p v-if="quizForm.errors.body" class="text-sm text-destructive-foreground">{{ quizForm.errors.body }}</p>
-                    <p v-else class="text-xs text-muted-foreground">يدعم ماركداون. ضع الكود بين ثلاث علامات اقتباس خلفية ليظهر بخط ثابت.</p>
-                </div>
-
-                <div class="space-y-2">
-                    <div class="flex items-center justify-between gap-2">
-                        <Label>الخيارات</Label>
-                        <span class="text-xs text-muted-foreground">الحد {{ limits.option }} حرف للخيار</span>
-                    </div>
-                    <div v-for="index in [0, 1, 2, 3]" :key="index" class="flex items-center gap-2">
-                        <span
-                            class="flex w-5 shrink-0 justify-center text-sm text-muted-foreground tabular-nums"
-                            :title="Number(quizForm.correct_option) === index ? 'الإجابة الصحيحة' : undefined"
-                        >
-                            <CheckCircle2 v-if="Number(quizForm.correct_option) === index" class="size-4 text-primary" />
-                            <template v-else>{{ index + 1 }}</template>
-                        </span>
-                        <Input
-                            v-model="quizForm.options[index]"
-                            :aria-label="`الخيار ${index + 1}`"
-                            :class="Number(quizForm.correct_option) === index ? 'border-primary' : ''"
-                        />
-                        <CharCount :value="quizForm.options[index]" :max="limits.option" class="w-14 shrink-0 text-end" />
-                    </div>
-                    <p v-if="optionsError" class="text-sm text-destructive-foreground">{{ optionsError }}</p>
-                </div>
-
-                <div class="space-y-2">
-                    <Label>الإجابة الصحيحة</Label>
-                    <Select v-model="quizForm.correct_option">
-                        <SelectTrigger class="w-full" aria-label="الإجابة الصحيحة">
-                            <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem v-for="index in [0, 1, 2, 3]" :key="index" :value="String(index)">
-                                {{ index + 1 }} — {{ quizForm.options[index] || 'خيار فارغ' }}
-                            </SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <p v-if="quizForm.errors.correct_option" class="text-sm text-destructive-foreground">{{ quizForm.errors.correct_option }}</p>
-                </div>
-
-                <div class="space-y-2">
-                    <div class="flex items-center justify-between gap-2">
-                        <Label for="quiz-explanation">الشرح (يظهر بعد الإجابة)</Label>
-                        <CharCount :value="quizForm.explanation" :max="limits.explanation" />
-                    </div>
-                    <Textarea
-                        id="quiz-explanation"
-                        v-model="quizForm.explanation"
-                        rows="2"
-                        :aria-invalid="quizForm.errors.explanation ? true : undefined"
-                    />
-                    <p v-if="quizForm.errors.explanation" class="text-sm text-destructive-foreground">{{ quizForm.errors.explanation }}</p>
-                </div>
-
-                <div class="space-y-2">
-                    <div class="flex items-center justify-between gap-2">
-                        <Label for="quiz-hint">🧩 تلميح التذكير (اختياري)</Label>
-                        <CharCount :value="quizForm.hint" :max="limits.hint" />
-                    </div>
-                    <Textarea id="quiz-hint" v-model="quizForm.hint" rows="2" :aria-invalid="quizForm.errors.hint ? true : undefined" />
-                    <p v-if="quizForm.errors.hint" class="text-sm text-destructive-foreground">{{ quizForm.errors.hint }}</p>
-                    <p v-else class="text-xs text-muted-foreground">
-                        يُرسله البوت في منتصف مدة السؤال لتحريك المشاركة — يقرّب الفكرة دون كشف الإجابة. اتركه فارغاً ليتخطى البوت هذا التذكير.
-                    </p>
-                </div>
-
-                <div class="space-y-2">
-                    <div class="flex items-center justify-between gap-2">
-                        <Label for="quiz-obvious-hint">💡 تلميح آخر فرصة (اختياري)</Label>
-                        <CharCount :value="quizForm.obvious_hint" :max="limits.hint" />
-                    </div>
-                    <Textarea
-                        id="quiz-obvious-hint"
-                        v-model="quizForm.obvious_hint"
-                        rows="2"
-                        :aria-invalid="quizForm.errors.obvious_hint ? true : undefined"
-                    />
-                    <p v-if="quizForm.errors.obvious_hint" class="text-sm text-destructive-foreground">{{ quizForm.errors.obvious_hint }}</p>
-                    <p v-else class="text-xs text-muted-foreground">
-                        التلميح الأصرح قبل إغلاق السؤال مباشرة. إن تركته فارغاً استُخدم تلميح التذكير بدلاً منه.
-                    </p>
-                </div>
-
-                <DialogFooter class="gap-2">
-                    <Button type="button" variant="outline" @click="quizDialogOpen = false">إلغاء</Button>
-                    <Button type="submit" :disabled="quizForm.processing">
-                        <Loader2 v-if="quizForm.processing" class="size-4 animate-spin" />
-                        {{ editingQuiz ? 'حفظ السؤال' : 'إضافة السؤال' }}
-                    </Button>
-                </DialogFooter>
-            </form>
-        </DialogContent>
-    </Dialog>
+    <QuizEditorDialog
+        v-model:open="quizDialogOpen"
+        :quiz="editingQuiz"
+        :topics="topics"
+        :limits="limits"
+        :today="today"
+        :default-date="nextFreeDate"
+    />
 
     <!-- Add / edit topic dialog -->
     <Dialog v-model:open="topicDialogOpen">
