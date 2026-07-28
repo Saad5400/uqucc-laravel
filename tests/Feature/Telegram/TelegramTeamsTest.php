@@ -74,6 +74,17 @@ function makeTeam(string $name = 'العابدية'): TelegramTeam
     return TelegramTeam::factory()->create(['chat_id' => TEAMS_CHAT_ID, 'name' => $name]);
 }
 
+describe('help', function () {
+    it('documents the member commands and the group-admin commands', function () {
+        $fake = runTeamsUpdate(teamsGroupMessage('/help'));
+
+        expect($fake->allTexts()[0])->toContain('👥 الفرق (في المجموعات):')
+            ->and($fake->allTexts()[0])->toContain('منشن فريق')
+            ->and($fake->allTexts()[0])->toContain('🛡️ إدارة الفرق (لمشرفي المجموعة):')
+            ->and($fake->allTexts()[0])->toContain('حذف تصنيف');
+    });
+});
+
 describe('team administration', function () {
     it('lets a group admin create a team', function () {
         $fake = runTeamsUpdate(teamsGroupMessage('فريق جديد العابدية'), [TEAMS_ADMIN_ID => 'administrator']);
