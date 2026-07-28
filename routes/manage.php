@@ -20,6 +20,8 @@ use App\Http\Controllers\Manage\QuizController;
 use App\Http\Controllers\Manage\QuizTopicController;
 use App\Http\Controllers\Manage\TelegramChatSettingController;
 use App\Http\Controllers\Manage\TelegramSettingsController;
+use App\Http\Controllers\Manage\TelegramTeamCategoryController;
+use App\Http\Controllers\Manage\TelegramTeamController;
 use App\Http\Controllers\Manage\UserController;
 use Illuminate\Support\Facades\Route;
 
@@ -83,6 +85,16 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::put('/telegram-chats/{chat}', [TelegramChatSettingController::class, 'update'])->name('telegram-chats.update');
         Route::post('/telegram-chats/{chat}/reset-conversation', [TelegramChatSettingController::class, 'resetConversation'])->name('telegram-chats.reset-conversation');
         Route::delete('/telegram-chats/{chat}', [TelegramChatSettingController::class, 'destroy'])->name('telegram-chats.destroy');
+
+        Route::get('/telegram-teams', [TelegramTeamController::class, 'index'])->name('telegram-teams.index');
+        Route::put('/telegram-teams/teams/{team}', [TelegramTeamController::class, 'update'])->name('telegram-teams.update');
+        Route::delete('/telegram-teams/teams/{team}', [TelegramTeamController::class, 'destroy'])->name('telegram-teams.destroy');
+        Route::delete('/telegram-teams/members/{member}', [TelegramTeamController::class, 'destroyMember'])->name('telegram-teams.members.destroy');
+        Route::put('/telegram-teams/categories/{category}', [TelegramTeamCategoryController::class, 'update'])->name('telegram-teams.categories.update');
+        Route::delete('/telegram-teams/categories/{category}', [TelegramTeamCategoryController::class, 'destroy'])->name('telegram-teams.categories.destroy');
+        Route::get('/telegram-teams/{chatId}', [TelegramTeamController::class, 'show'])->where('chatId', '-?\d+')->name('telegram-teams.show');
+        Route::post('/telegram-teams/{chatId}/teams', [TelegramTeamController::class, 'store'])->where('chatId', '-?\d+')->name('telegram-teams.store');
+        Route::post('/telegram-teams/{chatId}/categories', [TelegramTeamCategoryController::class, 'store'])->where('chatId', '-?\d+')->name('telegram-teams.categories.store');
 
         Route::middleware('can:manage-users')->group(function () {
             Route::get('/users', [UserController::class, 'index'])->name('users.index');

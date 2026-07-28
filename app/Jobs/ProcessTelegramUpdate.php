@@ -25,6 +25,10 @@ use App\Services\Telegram\Handlers\PrivateForwardHandler;
 use App\Services\Telegram\Handlers\PythonExecutionHandler;
 use App\Services\Telegram\Handlers\QuizLeaderboardHandler;
 use App\Services\Telegram\Handlers\QuizMyScoreHandler;
+use App\Services\Telegram\Handlers\TeamAdminHandler;
+use App\Services\Telegram\Handlers\TeamInfoHandler;
+use App\Services\Telegram\Handlers\TeamMembershipHandler;
+use App\Services\Telegram\Handlers\TeamMentionHandler;
 use App\Services\Telegram\Handlers\TruthTableHandler;
 use App\Services\Telegram\Handlers\UquccListHandler;
 use App\Services\Telegram\Handlers\UquccSearchHandler;
@@ -110,12 +114,16 @@ class ProcessTelegramUpdate implements ShouldQueue
             return;
         }
 
-        // Handle callback queries (inline button presses)
+        // Handle callback queries (inline button presses), routed by data prefix
         $callbackQuery = $update->getCallbackQuery();
         if ($callbackQuery) {
             try {
-                $pageManagementHandler = new PageManagementHandler($telegram, app(ContentParser::class));
-                $pageManagementHandler->handleCallback($callbackQuery);
+                if (str_starts_with((string) $callbackQuery->getData(), TeamAdminHandler::CALLBACK_PREFIX)) {
+                    (new TeamAdminHandler($telegram))->handleCallback($callbackQuery);
+                } else {
+                    $pageManagementHandler = new PageManagementHandler($telegram, app(ContentParser::class));
+                    $pageManagementHandler->handleCallback($callbackQuery);
+                }
             } catch (\Exception $e) {
                 Log::error('Telegram callback error', [
                     'message' => $e->getMessage(),
@@ -161,6 +169,10 @@ class ProcessTelegramUpdate implements ShouldQueue
             new AiToggleHandler($telegram),
             new QuizLeaderboardHandler($telegram),
             new QuizMyScoreHandler($telegram),
+            new TeamAdminHandler($telegram),
+            new TeamMembershipHandler($telegram),
+            new TeamInfoHandler($telegram),
+            new TeamMentionHandler($telegram),
             // Last on purpose: the assistant only answers messages no other handler owns.
             new AiChatHandler(
                 $telegram,
