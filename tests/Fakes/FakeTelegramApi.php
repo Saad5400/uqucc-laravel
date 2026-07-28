@@ -37,6 +37,9 @@ class FakeTelegramApi extends Api
     /** @var array<int, array<string, mixed>> */
     public array $unpinnedMessages = [];
 
+    /** @var array<int, array<string, mixed>> */
+    public array $answeredCallbacks = [];
+
     /** Chat-member status per telegram user id (default 'member'). */
     /** @var array<int|string, string> */
     public array $chatMemberStatuses = [];
@@ -106,6 +109,13 @@ class FakeTelegramApi extends Api
         $this->editedMessages[] = $params;
 
         return new Message(['message_id' => $params['message_id'] ?? 0, 'chat' => ['id' => $params['chat_id'] ?? 0]]);
+    }
+
+    public function answerCallbackQuery(array $params): bool
+    {
+        $this->answeredCallbacks[] = $params;
+
+        return true;
     }
 
     public function getChatMember(array $params): ChatMember

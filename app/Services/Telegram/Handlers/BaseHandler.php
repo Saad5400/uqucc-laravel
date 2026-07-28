@@ -146,6 +146,38 @@ abstract class BaseHandler
     }
 
     /**
+     * A clickable HTML mention that notifies the user even when they have no
+     * public username. Only valid with parse_mode HTML.
+     */
+    protected function mentionLink(int $userId, string $name): string
+    {
+        return '<a href="tg://user?id='.$userId.'">'.$this->escapeHtml($name).'</a>';
+    }
+
+    protected function isGroupChat(Message $message): bool
+    {
+        return in_array($message->getChat()->getType(), ['group', 'supergroup'], true);
+    }
+
+    /**
+     * Whether the sender is a Telegram-side creator/administrator of the
+     * chat, checked live against the Bot API (never cached or stored).
+     */
+    protected function isGroupAdmin(Message $message): bool
+    {
+        try {
+            $member = $this->telegram->getChatMember([
+                'chat_id' => $message->getChat()->getId(),
+                'user_id' => $message->getFrom()->getId(),
+            ]);
+
+            return in_array($member->status, ['creator', 'administrator'], true);
+        } catch (\Exception) {
+            return false;
+        }
+    }
+
+    /**
      * Get user state from cache (persists across job executions).
      */
     protected function getUserState(int $userId): ?array

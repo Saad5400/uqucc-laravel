@@ -55,16 +55,7 @@ class AiToggleHandler extends BaseHandler
             return true;
         }
 
-        try {
-            $member = $this->telegram->getChatMember([
-                'chat_id' => $message->getChat()->getId(),
-                'user_id' => $message->getFrom()->getId(),
-            ]);
-
-            return in_array($member->status, ['creator', 'administrator'], true);
-        } catch (\Exception) {
-            return false;
-        }
+        return $this->isGroupAdmin($message);
     }
 
     protected function enable(Message $message): void
@@ -135,10 +126,5 @@ class AiToggleHandler extends BaseHandler
         }
 
         return $title !== null && $title !== '' ? (string) $title : null;
-    }
-
-    protected function isGroupChat(Message $message): bool
-    {
-        return in_array($message->getChat()->getType(), ['group', 'supergroup'], true);
     }
 }
