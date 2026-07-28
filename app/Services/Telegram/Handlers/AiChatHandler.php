@@ -3,7 +3,9 @@
 namespace App\Services\Telegram\Handlers;
 
 use App\Ai\Agents\StudentAssistant;
+use App\Ai\Chat\AnswerLinkGuard;
 use App\Ai\Chat\AttachmentContext;
+use App\Ai\Chat\CategoryContext;
 use App\Ai\Chat\ChatAttachmentTextExtractor;
 use App\Ai\Chat\SessionOwner;
 use App\Ai\Chat\TelegramTurnContext;
@@ -83,7 +85,9 @@ class AiChatHandler extends BaseHandler
         protected SpendLedger $ledger,
         protected ChatAttachmentTextExtractor $extractor,
         protected AttachmentContext $attachmentContext,
+        protected CategoryContext $categoryContext,
         protected TelegramTurnContext $turnContext,
+        protected AnswerLinkGuard $linkGuard,
     ) {
         parent::__construct($telegram);
     }
@@ -106,6 +110,8 @@ class AiChatHandler extends BaseHandler
         if ($prompt === null || $prompt === '') {
             return;
         }
+
+        $question = $prompt;
 
         if ($this->anotherHandlerAwaitsInput((int) $message->getFrom()->getId())) {
             return;
@@ -146,6 +152,7 @@ class AiChatHandler extends BaseHandler
                 $prompt = $this->attachmentContext->wrap($prompt, collect([$attachment]));
             }
 
+            $prompt = $this->categoryContext->wrap($prompt, $question);
             $prompt = $this->turnContext->wrap($prompt, $message);
 
             $this->runAssistantTurn($message, $chatSettings, $prompt, $placeholder->getMessageId());
@@ -272,7 +279,7 @@ class AiChatHandler extends BaseHandler
 
             $chatSettings->update(['conversation_id' => $response->conversationId ?? $conversationId]);
 
-            $this->sendReply($chatId, $placeholderMessageId, trim((string) $response->text));
+            $this->sendReply($chatId, $placeholderMessageId, trim($this->linkGuard->sanitize((string) $response->text)));
         } catch (Throwable $exception) {
             report($exception);
 

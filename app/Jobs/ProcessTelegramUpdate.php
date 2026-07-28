@@ -2,7 +2,9 @@
 
 namespace App\Jobs;
 
+use App\Ai\Chat\AnswerLinkGuard;
 use App\Ai\Chat\AttachmentContext;
+use App\Ai\Chat\CategoryContext;
 use App\Ai\Chat\ChatAttachmentTextExtractor;
 use App\Ai\Chat\TelegramTurnContext;
 use App\Ai\Spend\SpendLedger;
@@ -168,7 +170,9 @@ class ProcessTelegramUpdate implements ShouldQueue
                 app(SpendLedger::class),
                 app(ChatAttachmentTextExtractor::class),
                 app(AttachmentContext::class),
+                app(CategoryContext::class),
                 app(TelegramTurnContext::class),
+                app(AnswerLinkGuard::class),
             ),
         ];
 

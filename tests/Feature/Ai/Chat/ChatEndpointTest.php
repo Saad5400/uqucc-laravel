@@ -411,3 +411,85 @@ it('rejects invalid chat payloads', function (array $payload, string $field) {
     'attachment id not a ulid' => [['message' => 'مرحبا', 'attachment_ids' => ['not-a-ulid']], 'attachment_ids.0'],
     'too many attachments' => [['message' => 'مرحبا', 'attachment_ids' => array_fill(0, 6, '01JX0000000000000000000000')], 'attachment_ids'],
 ]);
+
+it('never streams a link the model invented, and keeps the real one', function () {
+    config()->set('app.url', 'https://uqucc.sb.sa');
+
+    Page::factory()->create(['slug' => '/alkhtt', 'title' => 'الخطة الدراسية']);
+
+    StudentAssistant::fake([
+        'راجع [الخطة الدراسية](https://uqucc.sb.sa/alkhtt) ثم [التخصصات](https://uqucc.sb.sa/wahm).',
+    ]);
+
+    $content = withChatSession(chatSessionId())
+        ->post(route('ai.chat.send'), ['message' => 'وش أفضل تخصص؟'])
+        ->streamedContent();
+
+    expect($content)->not->toContain('wahm')
+        ->and($content)->toContain('/alkhtt')
+        ->and($content)->toContain('التخصصات')
+        ->and($content)->toContain('event: done');
+});
+
+it('strips an invented link from the stored thread when the panel rehydrates', function () {
+    config()->set('app.url', 'https://uqucc.sb.sa');
+
+    $sessionId = chatSessionId();
+    $conversationId = createStoredConversation($sessionId);
+
+    ConversationMessage::query()
+        ->where('conversation_id', $conversationId)
+        ->where('role', 'assistant')
+        ->update(['content' => 'انظر [التخصصات](https://uqucc.sb.sa/wahm).']);
+
+    $messages = withChatSession($sessionId)
+        ->getJson(route('ai.chat.show', $conversationId))
+        ->json('messages');
+
+    expect($messages[1]['content'])->toBe('انظر التخصصات.');
+});
+
+it('hands the model the majors evidence before it answers, without being asked', function () {
+    StudentAssistant::fake(['ما فيه تخصص «أفضل».']);
+
+    seedAssistantPage('دليل التخصصات', 'يدرس طالب تخصص علم البيانات مقررات الإحصاء');
+
+    withChatSession(chatSessionId())
+        ->post(route('ai.chat.send'), ['message' => 'وش أفضل تخصص؟'])
+        ->streamedContent();
+
+    StudentAssistant::assertPrompted(fn ($prompt) => str_contains($prompt->prompt, 'مصادر جاهزة من الدليل')
+        && str_contains($prompt->prompt, 'مقررات الإحصاء')
+        && str_ends_with($prompt->prompt, 'وش أفضل تخصص؟'));
+});
+
+it('leaves a turn that is not about majors free of injected evidence', function () {
+    StudentAssistant::fake(['ألف ريال.']);
+
+    withChatSession(chatSessionId())
+        ->post(route('ai.chat.send'), ['message' => 'كم مكافأة الامتياز؟'])
+        ->streamedContent();
+
+    StudentAssistant::assertPrompted(fn ($prompt) => $prompt->prompt === 'كم مكافأة الامتياز؟');
+});
+
+it('returns the visitor their own message, not the evidence wrapped around it', function () {
+    StudentAssistant::fake(['ما فيه تخصص «أفضل».']);
+
+    seedAssistantPage('دليل التخصصات', 'يدرس طالب تخصص علم البيانات مقررات الإحصاء');
+
+    $sessionId = chatSessionId();
+
+    $conversationId = sseEventData(
+        withChatSession($sessionId)
+            ->post(route('ai.chat.send'), ['message' => 'وش أفضل تخصص؟'])
+            ->streamedContent(),
+        'done',
+    )['conversation_id'];
+
+    $messages = withChatSession($sessionId)
+        ->getJson(route('ai.chat.show', $conversationId))
+        ->json('messages');
+
+    expect($messages[0]['content'])->toBe('وش أفضل تخصص؟');
+});

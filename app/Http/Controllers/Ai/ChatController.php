@@ -3,9 +3,12 @@
 namespace App\Http\Controllers\Ai;
 
 use App\Ai\Agents\StudentAssistant;
+use App\Ai\Chat\AnswerLinkGuard;
 use App\Ai\Chat\AttachmentContext;
+use App\Ai\Chat\CategoryContext;
 use App\Ai\Chat\CitationExtractor;
 use App\Ai\Chat\SessionOwner;
+use App\Ai\Chat\StreamingAnswerLinkGuard;
 use App\Ai\Spend\SpendLedger;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Ai\ChatMessageRequest;
@@ -53,6 +56,7 @@ class ChatController extends Controller
         SpendLedger $ledger,
         CitationExtractor $citations,
         AttachmentContext $attachmentContext,
+        CategoryContext $categoryContext,
     ): JsonResponse|StreamedResponse {
         if (! $settings->isFeatureEnabled('assistant')) {
             return $this->disabledResponse();
@@ -71,7 +75,9 @@ class ChatController extends Controller
         $conversationId = $this->ownedConversationId($request->input('conversation_id'), $sessionId);
         $attachments = $this->ownedAttachments($request->validated('attachment_ids', []), $sessionId);
 
-        $prompt = $attachmentContext->wrap($request->validated('message'), $attachments);
+        $question = (string) $request->validated('message');
+
+        $prompt = $categoryContext->wrap($attachmentContext->wrap($question, $attachments), $question);
 
         return response()->stream(
             fn () => $this->streamTurn($prompt, $sessionId, $conversationId, $attachments, $settings, $ledger, $citations),
@@ -93,6 +99,8 @@ class ChatController extends Controller
         AiSettings $settings,
         CitationExtractor $citations,
         AttachmentContext $attachmentContext,
+        CategoryContext $categoryContext,
+        AnswerLinkGuard $linkGuard,
         string $conversation,
     ): JsonResponse {
         if (! $settings->isFeatureEnabled('assistant')) {
@@ -112,9 +120,11 @@ class ChatController extends Controller
             ->get()
             ->map(fn (ConversationMessage $message): array => [
                 'role' => (string) $message->getAttribute('role'),
+                // Wrappers unwind outside-in: the category block wraps the
+                // attachment block wraps what the visitor actually typed.
                 'content' => $message->getAttribute('role') === 'user'
-                    ? $attachmentContext->unwrap((string) $message->getAttribute('content'))
-                    : (string) $message->getAttribute('content'),
+                    ? $attachmentContext->unwrap($categoryContext->unwrap((string) $message->getAttribute('content')))
+                    : $linkGuard->sanitize((string) $message->getAttribute('content')),
                 'citations' => $message->getAttribute('role') === 'assistant'
                     ? $citations->extractFromStored((array) $message->getAttribute('tool_results'))
                     : [],
@@ -156,10 +166,13 @@ class ChatController extends Controller
             $response = $agent->stream($prompt);
 
             $toolResults = [];
+            $linkGuard = new StreamingAnswerLinkGuard(app(AnswerLinkGuard::class));
 
             foreach ($response as $event) {
                 if ($event instanceof TextDelta) {
-                    $this->emit('delta', ['text' => $event->delta]);
+                    if (($text = $linkGuard->push($event->delta)) !== '') {
+                        $this->emit('delta', ['text' => $text]);
+                    }
                 } elseif ($event instanceof ToolResultEvent) {
                     $toolResults[] = $event->toolResult;
                 } elseif ($event instanceof ErrorEvent) {
@@ -168,6 +181,10 @@ class ChatController extends Controller
 
                     return;
                 }
+            }
+
+            if (($text = $linkGuard->flush()) !== '') {
+                $this->emit('delta', ['text' => $text]);
             }
 
             $this->recordSpend($ledger, $settings, $response->usage ?? null);

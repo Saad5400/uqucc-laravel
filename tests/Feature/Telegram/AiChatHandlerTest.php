@@ -1,13 +1,16 @@
 <?php
 
 use App\Ai\Agents\StudentAssistant;
+use App\Ai\Chat\AnswerLinkGuard;
 use App\Ai\Chat\AttachmentContext;
+use App\Ai\Chat\CategoryContext;
 use App\Ai\Chat\ChatAttachmentTextExtractor;
 use App\Ai\Chat\TelegramTurnContext;
 use App\Ai\Corpus\DocumentExtractionAgent;
 use App\Ai\Spend\SpendLedger;
 use App\Models\Ai\AiUsage;
 use App\Models\Ai\ChatAttachment;
+use App\Models\Page;
 use App\Models\TelegramChatSetting;
 use App\Services\Telegram\Handlers\AiChatHandler;
 use App\Settings\AiSettings;
@@ -38,7 +41,9 @@ function aiChatHandler(FakeTelegramApi $api): AiChatHandler
         app(SpendLedger::class),
         app(ChatAttachmentTextExtractor::class),
         app(AttachmentContext::class),
+        app(CategoryContext::class),
         app(TelegramTurnContext::class),
+        app(AnswerLinkGuard::class),
     );
 }
 
@@ -553,4 +558,55 @@ it('ignores captioned documents with unsupported mimes', function () {
 
     expect($api->sentMessages[0]['text'])->toBe('جاري المعالجة…')
         ->and(ChatAttachment::query()->count())->toBe(0);
+});
+
+it('strips a link the model invented before sending the reply to telegram', function () {
+    config()->set('app.url', 'https://uqucc.sb.sa');
+
+    Page::factory()->create(['slug' => '/alkhtt', 'title' => 'الخطة الدراسية']);
+
+    StudentAssistant::fake([
+        'راجع [الخطة الدراسية](https://uqucc.sb.sa/alkhtt) و[التخصصات](https://uqucc.sb.sa/wahm).',
+    ]);
+
+    activatedChat();
+
+    $api = new FakeTelegramApi;
+
+    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك وش الخطة؟']));
+
+    $reply = end($api->editedMessages)['text'];
+
+    expect($reply)->not->toContain('wahm')
+        ->and($reply)->toContain('التخصصات')
+        ->and($reply)->toContain('/alkhtt');
+});
+
+it('injects the majors evidence into the telegram turn, inside the sender context', function () {
+    $settings = app(AiSettings::class);
+    $settings->search_enabled = true;
+    $settings->save();
+
+    Page::factory()->create([
+        'title' => 'دليل التخصصات',
+        'slug' => '/altkhssusat',
+        'html_content' => [
+            'type' => 'doc',
+            'content' => [[
+                'type' => 'paragraph',
+                'content' => [['type' => 'text', 'text' => 'يدرس طالب تخصص علم البيانات مقررات الإحصاء']],
+            ]],
+        ],
+    ]);
+
+    StudentAssistant::fake(['ما فيه تخصص «أفضل».']);
+
+    activatedChat();
+
+    aiChatHandler(new FakeTelegramApi)->handle(aiChatMessage(['text' => 'سيك وش أفضل تخصص؟']));
+
+    StudentAssistant::assertPrompted(fn ($prompt) => str_contains($prompt->prompt, 'السائل: سعد')
+        && str_contains($prompt->prompt, 'مصادر جاهزة من الدليل')
+        && str_contains($prompt->prompt, 'مقررات الإحصاء')
+        && str_ends_with($prompt->prompt, 'وش أفضل تخصص؟'));
 });
