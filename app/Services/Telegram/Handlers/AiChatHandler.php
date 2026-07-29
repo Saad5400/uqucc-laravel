@@ -10,6 +10,7 @@ use App\Ai\Chat\ChatAttachmentTextExtractor;
 use App\Ai\Chat\SessionOwner;
 use App\Ai\Chat\TelegramTurnContext;
 use App\Ai\Spend\SpendLedger;
+use App\Jobs\AnnounceDeletedAiRequest;
 use App\Models\Ai\ChatAttachment;
 use App\Models\TelegramChatSetting;
 use App\Services\Telegram\TelegramStreamingProgress;
@@ -49,6 +50,10 @@ use Throwable;
  * also prefixed with {@see TelegramTurnContext} — sender/chat metadata that
  * wraps outside any attachment block, kept in the turn tail so prefix caching
  * survives.
+ *
+ * Every answered ask is then watched by {@see AnnounceDeletedAiRequest}: delete
+ * the question after the assistant answered it and the bot posts the question's
+ * text — and a mention of who asked — under its own answer.
  */
 class AiChatHandler extends BaseHandler
 {
@@ -280,6 +285,8 @@ class AiChatHandler extends BaseHandler
             $chatSettings->update(['conversation_id' => $response->conversationId ?? $conversationId]);
 
             $this->sendReply($chatId, $placeholderMessageId, trim($this->linkGuard->sanitize((string) $response->text)));
+
+            $this->watchForDeletedRequest($message, $placeholderMessageId);
         } catch (Throwable $exception) {
             report($exception);
 
@@ -287,6 +294,55 @@ class AiChatHandler extends BaseHandler
 
             $this->editMessage($chatId, $placeholderMessageId, 'حدث خطأ أثناء توليد الرد. حاول مرة أخرى.');
         }
+    }
+
+    /**
+     * Watch the answered ask: if the sender deletes it, the bot posts what was
+     * asked and by whom under its own answer ({@see AnnounceDeletedAiRequest}).
+     * The stored text is the message exactly as sent, «سيك» prefix and all.
+     */
+    protected function watchForDeletedRequest(Message $message, int $replyMessageId): void
+    {
+        $sender = $message->getFrom();
+
+        if ($sender === null) {
+            return;
+        }
+
+        $raw = $message->getText() ?? $message->getCaption();
+
+        AnnounceDeletedAiRequest::watch(
+            chatId: (int) $message->getChat()->getId(),
+            requestMessageId: (int) $message->getMessageId(),
+            replyMessageId: $replyMessageId,
+            requestText: is_string($raw) ? trim($raw) : '',
+            senderId: (int) $sender->getId(),
+            senderName: trim(trim((string) $sender->getFirstName()).' '.trim((string) $sender->getLastName())),
+            senderUsername: trim((string) $sender->getUsername()) ?: null,
+            attachmentLabel: $this->attachmentLabel($message),
+        );
+    }
+
+    /**
+     * An Arabic label for the media the ask carried, for the deletion notice.
+     */
+    protected function attachmentLabel(Message $message): ?string
+    {
+        $photos = $message->getPhoto();
+
+        if ($photos !== null && count($photos) > 0) {
+            return 'صورة';
+        }
+
+        $document = $message->getDocument();
+
+        if (! $document instanceof Document) {
+            return null;
+        }
+
+        $filename = trim((string) ($document->fileName ?? ''));
+
+        return $filename === '' ? 'ملف' : 'ملف: '.$filename;
     }
 
     /**

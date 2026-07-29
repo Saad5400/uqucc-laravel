@@ -40,6 +40,22 @@ class FakeTelegramApi extends Api
     /** @var array<int, array<string, mixed>> */
     public array $answeredCallbacks = [];
 
+    /** @var array<int, array<string, mixed>> */
+    public array $reactions = [];
+
+    /** @var array<int, array<string, mixed>> */
+    public array $editedReplyMarkups = [];
+
+    /**
+     * Message ids the API should answer for as if they no longer exist.
+     *
+     * @var array<int, int>
+     */
+    public array $missingMessageIds = [];
+
+    /** Error setMessageReaction should always fail with, when set. */
+    public ?string $reactionError = null;
+
     /** Chat-member status per telegram user id (default 'member'). */
     /** @var array<int|string, string> */
     public array $chatMemberStatuses = [];
@@ -116,6 +132,40 @@ class FakeTelegramApi extends Api
         $this->answeredCallbacks[] = $params;
 
         return true;
+    }
+
+    public function setMessageReaction(array $params): bool
+    {
+        $this->reactions[] = $params;
+
+        if ($this->reactionError !== null) {
+            throw new \RuntimeException($this->reactionError);
+        }
+
+        $this->failWhenMissing($params, 'Bad Request: message to react not found');
+
+        return true;
+    }
+
+    public function editMessageReplyMarkup(array $params): Message
+    {
+        $this->editedReplyMarkups[] = $params;
+
+        $this->failWhenMissing($params, 'Bad Request: message to edit not found');
+
+        throw new \RuntimeException("Bad Request: message can't be edited");
+    }
+
+    /**
+     * Mimic Telegram's error for a message id the test declared missing.
+     *
+     * @param  array<string, mixed>  $params
+     */
+    private function failWhenMissing(array $params, string $error): void
+    {
+        if (in_array((int) ($params['message_id'] ?? 0), $this->missingMessageIds, true)) {
+            throw new \RuntimeException($error);
+        }
     }
 
     public function getChatMember(array $params): ChatMember

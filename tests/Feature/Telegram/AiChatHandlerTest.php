@@ -8,6 +8,7 @@ use App\Ai\Chat\ChatAttachmentTextExtractor;
 use App\Ai\Chat\TelegramTurnContext;
 use App\Ai\Corpus\DocumentExtractionAgent;
 use App\Ai\Spend\SpendLedger;
+use App\Jobs\AnnounceDeletedAiRequest;
 use App\Models\Ai\AiUsage;
 use App\Models\Ai\ChatAttachment;
 use App\Models\Page;
@@ -15,6 +16,7 @@ use App\Models\TelegramChatSetting;
 use App\Services\Telegram\Handlers\AiChatHandler;
 use App\Settings\AiSettings;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
@@ -609,4 +611,38 @@ it('injects the majors evidence into the telegram turn, inside the sender contex
         && str_contains($prompt->prompt, 'مصادر جاهزة من الدليل')
         && str_contains($prompt->prompt, 'مقررات الإحصاء')
         && str_ends_with($prompt->prompt, 'وش أفضل تخصص؟'));
+});
+
+it('watches the answered ask so a deletion can be exposed', function () {
+    Queue::fake();
+
+    StudentAssistant::fake(['مكافأة الامتياز ألف ريال.']);
+
+    activatedChat(-100777);
+
+    $api = new FakeTelegramApi;
+
+    aiChatHandler($api)->handle(groupAiChatMessage(['from' => ['username' => 'saad']]));
+
+    Queue::assertPushed(AnnounceDeletedAiRequest::class, function (AnnounceDeletedAiRequest $job) use ($api): bool {
+        return $job->chatId === -100777
+            && $job->requestMessageId === 20
+            && $job->replyMessageId === (int) $api->editedMessages[0]['message_id']
+            && $job->requestText === 'سيك كم مكافأة الامتياز؟'
+            && $job->senderId === 501
+            && $job->senderName === 'سعد'
+            && $job->senderUsername === 'saad';
+    });
+});
+
+it('does not watch an ask the assistant failed to answer', function () {
+    Queue::fake();
+
+    StudentAssistant::fake([new RuntimeException('gateway down')]);
+
+    activatedChat(-100777);
+
+    aiChatHandler(new FakeTelegramApi)->handle(groupAiChatMessage());
+
+    Queue::assertNotPushed(AnnounceDeletedAiRequest::class);
 });
