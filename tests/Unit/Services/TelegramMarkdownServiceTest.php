@@ -105,9 +105,23 @@ it('does not treat underscores inside urls as italic', function () {
 
 it('converts inline code and fenced code blocks', function () {
     expect(telegramHtml('استخدم الأمر `php artisan test` محلياً'))
-        ->toBe('استخدم الأمر <code>php artisan test</code> محلياً')
+        ->toBe("استخدم الأمر \u{2068}<code>php artisan test</code>\u{2069} محلياً")
         ->and(telegramHtml("```php\necho 1 < 2;\n```"))
         ->toBe('<pre>echo 1 &lt; 2;</pre>');
+});
+
+it('isolates inline code so edge punctuation keeps its side inside arabic text', function () {
+    expect(telegramHtml('الصلاحيات `-rwxr-xr--` تعني كذا'))
+        ->toBe("الصلاحيات \u{2068}<code>-rwxr-xr--</code>\u{2069} تعني كذا")
+        ->and(telegramHtml('استخدم `--global` مع الأمر'))
+        ->toBe("استخدم \u{2068}<code>--global</code>\u{2069} مع الأمر");
+});
+
+it('keeps the isolate around code when the html is degraded to plain text', function () {
+    $service = new TelegramMarkdownService;
+
+    expect($service->toPlainText($service->toTelegramHtml('الصلاحيات `-rwxr-xr--` تعني كذا')))
+        ->toBe("الصلاحيات \u{2068}-rwxr-xr--\u{2069} تعني كذا");
 });
 
 it('converts blockquotes to telegram blockquotes', function () {

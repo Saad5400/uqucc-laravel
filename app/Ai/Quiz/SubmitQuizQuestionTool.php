@@ -21,6 +21,14 @@ use Stringable;
 class SubmitQuizQuestionTool implements Tool
 {
     /**
+     * Punctuation that the bidi algorithm reorders when it sits at the edge of
+     * a Latin token inside an Arabic sentence. Brackets, parentheses and quotes
+     * are deliberately absent — they mirror correctly around an LTR run, which
+     * is what makes the house style «المكدس (Stack)» safe.
+     */
+    private const BIDI_RISKY_EDGE = '-_.+*/\\=<>|:;#$%&~^@';
+
+    /**
      * The last accepted question, or null until one passes validation.
      *
      * @var array{question: string, body: string|null, options: array<int, string>, correct_option: int, explanation: string|null, hint: string|null, obvious_hint: string|null}|null
@@ -80,7 +88,7 @@ class SubmitQuizQuestionTool implements Tool
         $hint = trim($request->string('hint')->toString());
         $obviousHint = trim($request->string('obvious_hint')->toString());
 
-        $problems = $this->validate($question, $body, $options, $correct);
+        $problems = $this->validate($question, $body, $options, $correct, $explanation, $hint, $obviousHint);
 
         if ($problems !== []) {
             return "رُفض السؤال للمشاكل التالية:\n- ".implode("\n- ", $problems)
@@ -118,8 +126,15 @@ class SubmitQuizQuestionTool implements Tool
      * @param  array<int, string>  $options
      * @return array<int, string>
      */
-    private function validate(string $question, string $body, array $options, int $correct): array
-    {
+    private function validate(
+        string $question,
+        string $body,
+        array $options,
+        int $correct,
+        string $explanation,
+        string $hint,
+        string $obviousHint,
+    ): array {
         $problems = [];
 
         if ($question === '') {
@@ -127,6 +142,19 @@ class SubmitQuizQuestionTool implements Tool
         } elseif (mb_strlen($question) > QuizAuthor::MAX_QUESTION_CHARS) {
             $problems[] = 'السؤال أطول من '.QuizAuthor::MAX_QUESTION_CHARS.' حرف.';
         }
+
+        $unformatted = [
+            'السؤال' => $question,
+            'الشرح' => $explanation,
+            'التلميح الأول' => $hint,
+            'التلميح الثاني' => $obviousHint,
+        ];
+
+        foreach ($options as $index => $option) {
+            $unformatted['الخيار '.($index + 1)] = $option;
+        }
+
+        $problems = array_merge($problems, $this->unformattedTextProblems($unformatted));
 
         if (mb_strlen($body) > QuizAuthor::MAX_BODY_CHARS) {
             $problems[] = 'المقدمة (body) أطول من '.QuizAuthor::MAX_BODY_CHARS.' حرف.';
@@ -164,6 +192,67 @@ class SubmitQuizQuestionTool implements Tool
         }
 
         return $problems;
+    }
+
+    /**
+     * Everything except `body` reaches Telegram as unformatted text — the poll
+     * carries the question, options and explanation with no parse_mode, and the
+     * reminders send the hints escaped rather than rendered. So markdown there
+     * shows its own markers, and a Latin code token there cannot be wrapped in
+     * a directional isolate the way {@see \App\Services\TelegramMarkdownService}
+     * wraps `body`. Both belong in `body` instead, which is a real formatted
+     * message.
+     *
+     * @param  array<string, string>  $fields  label => text
+     * @return array<int, string>
+     */
+    private function unformattedTextProblems(array $fields): array
+    {
+        $problems = [];
+
+        foreach ($fields as $label => $text) {
+            if (str_contains($text, '`')) {
+                $problems[] = $label.' يحتوي علامات ماركداون (`) — وهو يُرسل نصاً عادياً فتظهر العلامات نفسها للقارئ. انقل الكود إلى body داخل سياج ``` ولا تكتب علامات تنسيق هنا.';
+            }
+
+            $risky = $this->bidiRiskyTokens($text);
+
+            if ($risky !== []) {
+                $problems[] = $label.' يحتوي رموزاً يفسد ترتيبها داخل النص العربي ('.implode('، ', $risky).') — الشرطات والنقاط على أطراف الرمز تنتقل إلى الجهة الخطأ فيقرأها الطالب مقلوبة. انقل هذه الرموز إلى body داخل سياج ``` واكتب هنا إشارةً إليها بالكلام.';
+            }
+        }
+
+        return $problems;
+    }
+
+    /**
+     * Tokens whose rendering the bidi algorithm breaks: a Latin/digit token
+     * carrying edge punctuation, such as `-rwxr-xr--` or `--global`. Interior
+     * punctuation is safe (`Big-O`, `node.js` sit between two strong Latin
+     * characters), and trailing Arabic sentence punctuation is stripped before
+     * the check so an ordinary full stop is never mistaken for part of a token.
+     *
+     * @return array<int, string>
+     */
+    private function bidiRiskyTokens(string $text): array
+    {
+        $risky = [];
+        $edges = preg_quote(self::BIDI_RISKY_EDGE, '/');
+
+        foreach (preg_split('/\s+/u', $text) ?: [] as $token) {
+            $core = ltrim($token, '([{«"\'');
+            $core = rtrim($core, '،؛؟!.,)]}»"\'');
+
+            if ($core === '' || preg_match('/[a-zA-Z0-9]/', $core) !== 1) {
+                continue;
+            }
+
+            if (preg_match('/^['.$edges.']|['.$edges.']$/u', $core) === 1) {
+                $risky[] = $core;
+            }
+        }
+
+        return array_values(array_unique($risky));
     }
 
     /**

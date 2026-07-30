@@ -18,6 +18,12 @@ class TelegramMarkdownService
 
     private const PLACEHOLDER_SUFFIX = "\u{1A}";
 
+    /** U+2068 FIRST STRONG ISOLATE — the span's own first letter sets its direction. */
+    private const FIRST_STRONG_ISOLATE = "\u{2068}";
+
+    /** U+2069 POP DIRECTIONAL ISOLATE — closes the isolate opened above. */
+    private const POP_DIRECTIONAL_ISOLATE = "\u{2069}";
+
     public function toTelegramHtml(string $markdown): string
     {
         $placeholders = [];
@@ -59,12 +65,23 @@ class TelegramMarkdownService
     }
 
     /**
+     * Inline code, wrapped in a directional isolate. Monospace alone does not
+     * fix direction: a Latin span sitting in an Arabic line still hands its
+     * edge punctuation to the bidi algorithm, which resolves those neutral
+     * characters against the RTL paragraph and renders them on the wrong side
+     * of the token — `-rwxr-xr--` reads as a different permission string, and
+     * `--flag` loses its dashes to the left. The isolate makes the span's own
+     * first strong character set its direction, and sits outside the <code>
+     * entity so the code the reader taps to copy stays clean.
+     *
      * @param  array<string, string>  $placeholders
      */
     private function extractInlineCode(string $text, array &$placeholders): string
     {
         return (string) preg_replace_callback('/`([^`\n]+)`/', function (array $matches) use (&$placeholders): string {
-            return $this->claim($placeholders, '<code>'.htmlspecialchars($matches[1], ENT_NOQUOTES, 'UTF-8').'</code>');
+            $code = '<code>'.htmlspecialchars($matches[1], ENT_NOQUOTES, 'UTF-8').'</code>';
+
+            return $this->claim($placeholders, self::FIRST_STRONG_ISOLATE.$code.self::POP_DIRECTIONAL_ISOLATE);
         }, $text);
     }
 

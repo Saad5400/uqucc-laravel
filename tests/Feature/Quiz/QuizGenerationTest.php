@@ -106,6 +106,71 @@ it('corrects a too-long body within the same run', function () {
         ->and(DailyQuiz::forDate(today())->question)->toBe('سؤال مصحّح بعد رفض المقدمة الطويلة؟');
 });
 
+it('rejects markdown markers in the fields telegram receives unformatted', function () {
+    QuizTopic::factory()->create();
+
+    QuizAuthoringAgent::fake([
+        quizToolCall(['question' => 'ماذا يفعل الأمر `ls -l`؟']),
+        quizToolCall(['question' => 'سؤال مصحّح بعد رفض علامات الماركداون؟']),
+    ]);
+
+    $this->artisan('quiz:generate')->assertExitCode(0);
+
+    expect(DailyQuiz::query()->count())->toBe(1)
+        ->and(DailyQuiz::forDate(today())->question)->toBe('سؤال مصحّح بعد رفض علامات الماركداون؟');
+});
+
+it('rejects a code token whose direction breaks in the poll question', function () {
+    QuizTopic::factory()->create();
+
+    QuizAuthoringAgent::fake([
+        quizToolCall(['question' => 'إذا كان ناتج ls -l لملف هو -rwxr-xr--، فما صلاحيات الآخرين؟']),
+        quizToolCall([
+            'question' => 'فما صلاحيات «الآخرين» في السلسلة أعلاه؟',
+            'body' => "ناتج الأمر:\n```text\n-rwxr-xr--\n```",
+        ]),
+    ]);
+
+    $this->artisan('quiz:generate')->assertExitCode(0);
+
+    $quiz = DailyQuiz::forDate(today());
+
+    expect(DailyQuiz::query()->count())->toBe(1)
+        ->and($quiz->question)->toBe('فما صلاحيات «الآخرين» في السلسلة أعلاه؟')
+        ->and($quiz->body)->toContain('-rwxr-xr--');
+});
+
+it('rejects a direction-breaking token in the explanation and the hints too', function () {
+    QuizTopic::factory()->create();
+
+    QuizAuthoringAgent::fake([
+        quizToolCall([
+            'explanation' => 'الرموز r-- تعني قراءة فقط.',
+            'hint' => 'راجع خيار --global أولاً.',
+        ]),
+        quizToolCall(['question' => 'سؤال مصحّح بعد رفض الشرح والتلميح؟']),
+    ]);
+
+    $this->artisan('quiz:generate')->assertExitCode(0);
+
+    expect(DailyQuiz::query()->count())->toBe(1)
+        ->and(DailyQuiz::forDate(today())->question)->toBe('سؤال مصحّح بعد رفض الشرح والتلميح؟');
+});
+
+it('accepts english terms in brackets and hyphens inside a word', function () {
+    QuizTopic::factory()->create();
+
+    QuizAuthoringAgent::fake([quizToolCall([
+        'question' => 'أي ترتيب زمني (Big-O) يصف البحث الثنائي في node.js؟',
+        'explanation' => 'المكدس (Stack) يعمل بمبدأ الأخير دخولاً الأول خروجاً.',
+    ])]);
+
+    $this->artisan('quiz:generate')->assertExitCode(0);
+
+    expect(DailyQuiz::forDate(today())->question)
+        ->toBe('أي ترتيب زمني (Big-O) يصف البحث الثنائي في node.js؟');
+});
+
 it('skips silently while the quiz feature is disabled', function () {
     $settings = app(QuizSettings::class);
     $settings->enabled = false;
