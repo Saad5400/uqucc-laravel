@@ -9,6 +9,7 @@ use App\Ai\Chat\TelegramTurnContext;
 use App\Ai\Corpus\DocumentExtractionAgent;
 use App\Ai\Spend\SpendLedger;
 use App\Jobs\AnnounceDeletedAiRequest;
+use App\Jobs\ProcessTelegramMediaGroup;
 use App\Models\Ai\AiUsage;
 use App\Models\Ai\ChatAttachment;
 use App\Models\Page;
@@ -16,6 +17,7 @@ use App\Models\TelegramChatSetting;
 use App\Services\Telegram\Handlers\AiChatHandler;
 use App\Settings\AiSettings;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\Models\Conversation;
@@ -69,6 +71,15 @@ function groupAiChatMessage(array $overrides = []): Message
 function activatedChat(int $chatId = 900123): TelegramChatSetting
 {
     return TelegramChatSetting::factory()->aiEnabled()->create(['chat_id' => $chatId]);
+}
+
+function albumPart(string $groupId, string $fileId, array $overrides = []): Message
+{
+    return aiChatMessage(array_replace_recursive([
+        'text' => null,
+        'media_group_id' => $groupId,
+        'photo' => [['file_id' => $fileId, 'width' => 800, 'height' => 800]],
+    ], $overrides));
 }
 
 it('stays silent in a chat where the assistant is not activated', function () {
@@ -645,4 +656,114 @@ it('does not watch an ask the assistant failed to answer', function () {
     aiChatHandler(new FakeTelegramApi)->handle(groupAiChatMessage());
 
     Queue::assertNotPushed(AnnounceDeletedAiRequest::class);
+});
+
+it('buffers album parts and schedules one aggregated job, without answering yet', function () {
+    Queue::fake();
+
+    StudentAssistant::fake(['يجب ألا يظهر هذا الرد.']);
+
+    activatedChat();
+
+    $api = new FakeTelegramApi;
+
+    // Three photos sent as one album: only the first carries the «سيك» caption.
+    $api->downloadContents = 'x';
+    aiChatHandler($api)->handle(albumPart('991', 'p1', ['caption' => 'سيك اقرأ الصور']));
+    aiChatHandler($api)->handle(albumPart('991', 'p2'));
+    aiChatHandler($api)->handle(albumPart('991', 'p3'));
+
+    // The turn is deferred to the debounced job — nothing is answered inline.
+    StudentAssistant::assertNeverPrompted();
+    expect($api->sentMessages)->toBe([]);
+
+    Queue::assertPushed(ProcessTelegramMediaGroup::class, 1);
+    Queue::assertPushed(ProcessTelegramMediaGroup::class, fn (ProcessTelegramMediaGroup $job) => $job->mediaGroupId === '991');
+
+    $buffer = Cache::get(AiChatHandler::mediaGroupBufferKey('991'));
+
+    expect($buffer['sources'])->toHaveCount(3)
+        ->and($buffer['lead'])->not->toBeNull()
+        ->and($buffer['truncated'])->toBeFalse();
+});
+
+it('caps the number of album photos it buffers', function () {
+    Queue::fake();
+
+    StudentAssistant::fake(['يجب ألا يظهر هذا الرد.']);
+
+    activatedChat();
+
+    $api = new FakeTelegramApi;
+
+    foreach (range(1, 6) as $i) {
+        aiChatHandler($api)->handle(albumPart('992', "p{$i}", $i === 1 ? ['caption' => 'سيك اقرأ الصور'] : []));
+    }
+
+    $buffer = Cache::get(AiChatHandler::mediaGroupBufferKey('992'));
+
+    expect($buffer['sources'])->toHaveCount(4)
+        ->and($buffer['truncated'])->toBeTrue();
+});
+
+it('drops an album that carries no سيك ask without any spend', function () {
+    Queue::fake();
+
+    StudentAssistant::fake(['يجب ألا يظهر هذا الرد.']);
+
+    activatedChat();
+
+    $api = new FakeTelegramApi;
+
+    // A plain album — no caption addresses the bot.
+    aiChatHandler($api)->handle(albumPart('993', 'p1'));
+    aiChatHandler($api)->handle(albumPart('993', 'p2'));
+
+    $buffer = Cache::get(AiChatHandler::mediaGroupBufferKey('993'));
+    expect($buffer['lead'])->toBeNull();
+
+    // Running the scheduled job returns early: no model call, no extraction.
+    (new ProcessTelegramMediaGroup('993'))->handle();
+
+    StudentAssistant::assertNeverPrompted();
+    expect(AiUsage::query()->count())->toBe(0);
+});
+
+it('runs one turn across every album photo via handleMediaGroup', function () {
+    Storage::fake(ChatAttachment::DISK);
+
+    config()->set('ai.providers.openrouter.key', 'test-key');
+
+    DocumentExtractionAgent::fake([
+        "## الصورة الأولى\nالمعدل التراكمي: 3.9",
+        "## الصورة الثانية\nعدد الساعات: 120",
+    ]);
+    StudentAssistant::fake(['اطّلعت على الصورتين.']);
+
+    activatedChat();
+
+    $api = new FakeTelegramApi;
+    $api->downloadContents = (string) UploadedFile::fake()->image('transcript.png')->getContent();
+
+    $lead = albumPart('994', 'imgA', ['caption' => 'سيك اقرأ الصور']);
+
+    $sources = [
+        ['file_id' => 'imgA', 'filename' => 'photo.jpg', 'mime' => 'image/jpeg'],
+        ['file_id' => 'imgB', 'filename' => 'photo.jpg', 'mime' => 'image/jpeg'],
+    ];
+
+    aiChatHandler($api)->handleMediaGroup($lead, $sources);
+
+    expect($api->sentMessages[0]['text'])->toBe('جاري قراءة الملفات…');
+
+    StudentAssistant::assertPrompted(fn ($prompt) => str_contains($prompt->prompt, 'المعدل التراكمي: 3.9')
+        && str_contains($prompt->prompt, 'عدد الساعات: 120')
+        && str_ends_with($prompt->prompt, "رسالة المستخدم:\nاقرأ الصور"));
+
+    // Both temporary attachments (and their files) are cleaned up after the turn.
+    expect(ChatAttachment::query()->count())->toBe(0)
+        ->and(Storage::disk(ChatAttachment::DISK)->files(ChatAttachment::DIRECTORY))->toBe([]);
+
+    expect(AiUsage::query()->where('feature', 'assistant_attachment')->count())->toBe(2)
+        ->and(AiUsage::query()->where('feature', 'telegram')->count())->toBe(1);
 });

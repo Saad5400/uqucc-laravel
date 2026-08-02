@@ -11,12 +11,14 @@ use App\Ai\Chat\SessionOwner;
 use App\Ai\Chat\TelegramTurnContext;
 use App\Ai\Spend\SpendLedger;
 use App\Jobs\AnnounceDeletedAiRequest;
+use App\Jobs\ProcessTelegramMediaGroup;
 use App\Models\Ai\ChatAttachment;
 use App\Models\TelegramChatSetting;
 use App\Services\Telegram\TelegramStreamingProgress;
 use App\Services\TelegramMarkdownService;
 use App\Settings\AiSettings;
 use App\Support\LocalFile;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\File;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
@@ -70,6 +72,21 @@ class AiChatHandler extends BaseHandler
     protected const BURST_LIMIT = 5;
 
     /**
+     * Most photos/documents extracted from a single album. Bounds extraction
+     * cost and the injected context size when a user sends many images at once.
+     */
+    protected const MAX_MEDIA_GROUP_IMAGES = 4;
+
+    /**
+     * How long to wait after an album's first part before running the turn, so
+     * its siblings (delivered as separate updates) have time to land.
+     */
+    protected const MEDIA_GROUP_DEBOUNCE_SECONDS = 4;
+
+    /** How long an album's buffered parts live in the cache, in seconds. */
+    protected const MEDIA_GROUP_BUFFER_TTL = 120;
+
+    /**
      * The explicit ask prefix: «سيك سؤالك…», with the legacy DeepSeekChatHandler
      * forms «اسال سيك …» / «اسأل سيك …» still honoured.
      */
@@ -97,6 +114,25 @@ class AiChatHandler extends BaseHandler
         parent::__construct($telegram);
     }
 
+    /**
+     * Build the handler with its collaborators resolved from the container —
+     * the single construction site shared by the update pipeline and the
+     * media-group job (which build the {@see Api} client by hand).
+     */
+    public static function make(Api $telegram): self
+    {
+        return new self(
+            $telegram,
+            app(AiSettings::class),
+            app(SpendLedger::class),
+            app(ChatAttachmentTextExtractor::class),
+            app(AttachmentContext::class),
+            app(CategoryContext::class),
+            app(TelegramTurnContext::class),
+            app(AnswerLinkGuard::class),
+        );
+    }
+
     public function handle(Message $message): void
     {
         if (! $this->settings->isFeatureEnabled(self::FEATURE)) {
@@ -110,12 +146,74 @@ class AiChatHandler extends BaseHandler
             return;
         }
 
+        // An album's parts arrive as separate updates, only one carrying the
+        // «سيك» caption. Buffer each part and let the debounced job run one
+        // aggregated turn across all of them.
+        if ($this->isMediaGroup($message)) {
+            $this->bufferMediaGroupPart($message);
+
+            return;
+        }
+
         $prompt = $this->promptFrom($message);
 
         if ($prompt === null || $prompt === '') {
             return;
         }
 
+        $source = $this->attachmentSource($message);
+
+        $this->process($message, $chatSettings, $prompt, $source === null ? [] : [$source]);
+    }
+
+    /**
+     * Run one aggregated turn for a Telegram media group (album). Called by
+     * {@see ProcessTelegramMediaGroup} with the caption-bearing lead message
+     * (reconstructed from its raw update) and every extractable photo/document
+     * collected across the album.
+     *
+     * @param  array<int, array{file_id: string, filename: string, mime: string}>  $sources
+     */
+    public function handleMediaGroup(Message $leadMessage, array $sources, bool $truncated = false): void
+    {
+        if (! $this->settings->isFeatureEnabled(self::FEATURE)) {
+            return;
+        }
+
+        $chatId = (int) $leadMessage->getChat()->getId();
+        $chatSettings = TelegramChatSetting::forChat($chatId);
+
+        if ($chatSettings === null || ! $chatSettings->ai_enabled) {
+            return;
+        }
+
+        $prompt = $this->promptFrom($leadMessage);
+
+        if ($prompt === null || $prompt === '') {
+            return;
+        }
+
+        if ($truncated) {
+            Log::info('Telegram AI album exceeded the image cap; extra images ignored', [
+                'chat_id' => $chatId,
+                'cap' => self::MAX_MEDIA_GROUP_IMAGES,
+            ]);
+        }
+
+        $this->process($leadMessage, $chatSettings, $prompt, $sources);
+    }
+
+    /**
+     * Run the assistant turn for a resolved ask: shared by the single-message
+     * path and the aggregated media-group path. Extracts each attachment,
+     * folds any that read into the prompt, and streams the reply. All gates
+     * (pending flows, rate limits, budget) fire once, here.
+     *
+     * @param  array<int, array{file_id: string, filename: string, mime: string}>  $sources
+     */
+    protected function process(Message $message, TelegramChatSetting $chatSettings, string $prompt, array $sources): void
+    {
+        $chatId = (int) $message->getChat()->getId();
         $question = $prompt;
 
         if ($this->anotherHandlerAwaitsInput((int) $message->getFrom()->getId())) {
@@ -134,27 +232,34 @@ class AiChatHandler extends BaseHandler
 
         $this->trackCommand($message, 'ai_chat');
 
-        $attachmentSource = $this->attachmentSource($message);
+        $hasAttachments = $sources !== [];
 
         $placeholder = $this->telegram->sendMessage([
             'chat_id' => $chatId,
-            'text' => $attachmentSource !== null ? 'جاري قراءة الملف…' : 'جاري المعالجة…',
+            'text' => $this->placeholderText($sources),
             'reply_to_message_id' => $message->getMessageId(),
         ]);
 
-        $attachment = null;
+        /** @var \Illuminate\Support\Collection<int, ChatAttachment> $attachments */
+        $attachments = collect();
 
         try {
-            if ($attachmentSource !== null) {
-                $attachment = $this->extractAttachment($message, $chatId, $attachmentSource);
+            foreach ($sources as $source) {
+                $attachment = $this->extractAttachment($message, $chatId, $source);
 
-                if ($attachment === null) {
-                    $this->editMessage($chatId, $placeholder->getMessageId(), 'تعذر قراءة الملف — تأكد أنه صورة أو ملف PDF يحتوي نصاً مقروءاً، ثم أعد المحاولة.');
-
-                    return;
+                if ($attachment !== null) {
+                    $attachments->push($attachment);
                 }
+            }
 
-                $prompt = $this->attachmentContext->wrap($prompt, collect([$attachment]));
+            if ($hasAttachments && $attachments->isEmpty()) {
+                $this->editMessage($chatId, $placeholder->getMessageId(), 'تعذر قراءة الملف — تأكد أنه صورة أو ملف PDF يحتوي نصاً مقروءاً، ثم أعد المحاولة.');
+
+                return;
+            }
+
+            if ($attachments->isNotEmpty()) {
+                $prompt = $this->attachmentContext->wrap($prompt, $attachments);
             }
 
             $prompt = $this->categoryContext->wrap($prompt, $question);
@@ -162,8 +267,23 @@ class AiChatHandler extends BaseHandler
 
             $this->runAssistantTurn($message, $chatSettings, $prompt, $placeholder->getMessageId());
         } finally {
-            $attachment?->delete();
+            $attachments->each(fn (ChatAttachment $attachment) => $attachment->delete());
         }
+    }
+
+    /**
+     * The placeholder text while the turn is prepared: reading-file(s) when the
+     * ask carries attachments, otherwise the generic processing notice.
+     *
+     * @param  array<int, array{file_id: string, filename: string, mime: string}>  $sources
+     */
+    protected function placeholderText(array $sources): string
+    {
+        if ($sources === []) {
+            return 'جاري المعالجة…';
+        }
+
+        return count($sources) > 1 ? 'جاري قراءة الملفات…' : 'جاري قراءة الملف…';
     }
 
     /**
@@ -534,6 +654,90 @@ class AiChatHandler extends BaseHandler
                 Log::warning('Failed to edit Telegram AI message', ['error' => $exception->getMessage()]);
             }
         }
+    }
+
+    /**
+     * Whether this message is part of a Telegram media group (album).
+     */
+    protected function isMediaGroup(Message $message): bool
+    {
+        return trim((string) $message->getMediaGroupId()) !== '';
+    }
+
+    /**
+     * Accumulate one album part into its group's buffer and, once, schedule the
+     * debounced job that runs the aggregated turn. Each part contributes its
+     * extractable file (if any); the part carrying the «سيك» caption also
+     * records the raw lead message the turn is answered as.
+     */
+    protected function bufferMediaGroupPart(Message $message): void
+    {
+        $groupId = (string) $message->getMediaGroupId();
+        $source = $this->attachmentSource($message);
+        $lead = $this->promptFrom($message) !== null ? $message->getRawResponse() : null;
+
+        try {
+            Cache::lock(self::mediaGroupLockKey($groupId), 5)->block(3, function () use ($groupId, $source, $lead): void {
+                $this->appendMediaGroupPart($groupId, $source, $lead);
+            });
+        } catch (LockTimeoutException) {
+            // Under contention, fall back to a best-effort unlocked write rather
+            // than dropping the part entirely.
+            $this->appendMediaGroupPart($groupId, $source, $lead);
+        }
+
+        if (Cache::add(self::mediaGroupScheduledKey($groupId), true, self::MEDIA_GROUP_BUFFER_TTL)) {
+            ProcessTelegramMediaGroup::dispatch($groupId)
+                ->delay(now()->addSeconds(self::MEDIA_GROUP_DEBOUNCE_SECONDS));
+        }
+    }
+
+    /**
+     * The read-modify-write of a media group's buffer, run under a lock. Files
+     * beyond {@see self::MAX_MEDIA_GROUP_IMAGES} are dropped and flagged so the
+     * turn can note the truncation.
+     *
+     * @param  array{file_id: string, filename: string, mime: string}|null  $source
+     * @param  array<string, mixed>|null  $lead
+     */
+    protected function appendMediaGroupPart(string $groupId, ?array $source, ?array $lead): void
+    {
+        $key = self::mediaGroupBufferKey($groupId);
+
+        /** @var array{sources: array<int, array{file_id: string, filename: string, mime: string}>, lead: array<string, mixed>|null, truncated: bool} $buffer */
+        $buffer = Cache::get($key, ['sources' => [], 'lead' => null, 'truncated' => false]);
+
+        if ($source !== null) {
+            if (count($buffer['sources']) < self::MAX_MEDIA_GROUP_IMAGES) {
+                $buffer['sources'][] = $source;
+            } else {
+                $buffer['truncated'] = true;
+            }
+        }
+
+        if ($lead !== null && $buffer['lead'] === null) {
+            $buffer['lead'] = $lead;
+        }
+
+        Cache::put($key, $buffer, self::MEDIA_GROUP_BUFFER_TTL);
+    }
+
+    /** Cache key for a media group's buffered parts. */
+    public static function mediaGroupBufferKey(string $groupId): string
+    {
+        return 'telegram-ai-album:'.$groupId;
+    }
+
+    /** Cache key for the once-per-group flag that elects the debounced job. */
+    public static function mediaGroupScheduledKey(string $groupId): string
+    {
+        return 'telegram-ai-album-scheduled:'.$groupId;
+    }
+
+    /** Lock key serialising concurrent writes to one group's buffer. */
+    protected static function mediaGroupLockKey(string $groupId): string
+    {
+        return 'telegram-ai-album-lock:'.$groupId;
     }
 
     /**

@@ -2,12 +2,6 @@
 
 namespace App\Jobs;
 
-use App\Ai\Chat\AnswerLinkGuard;
-use App\Ai\Chat\AttachmentContext;
-use App\Ai\Chat\CategoryContext;
-use App\Ai\Chat\ChatAttachmentTextExtractor;
-use App\Ai\Chat\TelegramTurnContext;
-use App\Ai\Spend\SpendLedger;
 use App\Services\Logic\TruthTableGenerator;
 use App\Services\Logic\TruthTableImageRenderer;
 use App\Services\OgImageService;
@@ -35,7 +29,6 @@ use App\Services\Telegram\Handlers\TruthTableHandler;
 use App\Services\Telegram\Handlers\UquccListHandler;
 use App\Services\Telegram\Handlers\UquccSearchHandler;
 use App\Services\TipTapContentExtractor;
-use App\Settings\AiSettings;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -176,16 +169,7 @@ class ProcessTelegramUpdate implements ShouldQueue
             new TeamInfoHandler($telegram),
             new TeamMentionHandler($telegram),
             // Last on purpose: the assistant only answers messages no other handler owns.
-            new AiChatHandler(
-                $telegram,
-                app(AiSettings::class),
-                app(SpendLedger::class),
-                app(ChatAttachmentTextExtractor::class),
-                app(AttachmentContext::class),
-                app(CategoryContext::class),
-                app(TelegramTurnContext::class),
-                app(AnswerLinkGuard::class),
-            ),
+            AiChatHandler::make($telegram),
         ];
 
         foreach ($handlers as $handler) {
