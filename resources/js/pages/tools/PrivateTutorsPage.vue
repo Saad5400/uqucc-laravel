@@ -68,7 +68,7 @@
                                             <ExternalLink class="size-3.5 shrink-0" aria-hidden="true" />
                                         </a>
                                         <span v-else>{{ tutor.name }}</span>
-                                        <Badge v-if="isDeveloper(tutor.name)" variant="secondary">
+                                        <Badge v-if="isDeveloper(tutor.name)" variant="default">
                                             <Code2 aria-hidden="true" />
                                             {{ developerLabel }}
                                         </Badge>
@@ -100,7 +100,7 @@
                                         <ExternalLink class="size-3.5 shrink-0" aria-hidden="true" />
                                     </a>
                                     <span v-else>{{ tutor.name }}</span>
-                                    <Badge v-if="isDeveloper(tutor.name)" variant="secondary">
+                                    <Badge v-if="isDeveloper(tutor.name)" variant="default">
                                         <Code2 aria-hidden="true" />
                                         {{ developerLabel }}
                                     </Badge>
