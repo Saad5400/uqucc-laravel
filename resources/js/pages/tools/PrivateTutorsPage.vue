@@ -68,6 +68,10 @@
                                             <ExternalLink class="size-3.5 shrink-0" aria-hidden="true" />
                                         </a>
                                         <span v-else>{{ tutor.name }}</span>
+                                        <Badge v-if="isDeveloper(tutor.name)" variant="secondary">
+                                            <Code2 aria-hidden="true" />
+                                            {{ developerLabel }}
+                                        </Badge>
                                     </li>
                                 </ul>
                             </CardContent>
@@ -96,6 +100,10 @@
                                         <ExternalLink class="size-3.5 shrink-0" aria-hidden="true" />
                                     </a>
                                     <span v-else>{{ tutor.name }}</span>
+                                    <Badge v-if="isDeveloper(tutor.name)" variant="secondary">
+                                        <Code2 aria-hidden="true" />
+                                        {{ developerLabel }}
+                                    </Badge>
                                 </CardTitle>
                             </CardHeader>
                             <CardContent size="sm">
@@ -120,11 +128,12 @@ import DocsLayout from '@/components/layout/DocsLayout.vue';
 import PageHeader from '@/components/page/PageHeader.vue';
 import RichContentRenderer from '@/components/RichContentRenderer.vue';
 import SeoHead, { type SeoData } from '@/components/SeoHead.vue';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { vAutoAnimate } from '@formkit/auto-animate/vue';
-import { ExternalLink, GraduationCap, Search, User } from 'lucide-vue-next';
+import { Code2, ExternalLink, GraduationCap, Search, User } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 defineOptions({
@@ -167,6 +176,17 @@ const props = withDefaults(defineProps<Props>(), {
 
 const activeTab = ref<'courses' | 'tutors'>('courses');
 const searchQuery = ref('');
+
+/**
+ * Transparent disclosure: the tutor who built and maintains this site.
+ * Matched by name so the badge is a visible role label, not a ranking change.
+ */
+const developerName = 'الكاتو';
+const developerLabel = 'مطوّر الموقع';
+
+function isDeveloper(name: string): boolean {
+    return name === developerName;
+}
 
 /**
  * Normalize Arabic text for better search matching
