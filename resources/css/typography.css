@@ -59,6 +59,15 @@
         @apply text-primary hover:text-primary/80;
     }
 
+    /* `.typography *` forces `text-foreground` on every descendant, which would
+       otherwise override the link colour whenever a link also carries another
+       inline mark (bold, italic, underline, code, strike) — TipTap nests those
+       inside the `<a>`. Inheriting keeps the link colour on the visible text and
+       tracks the hover state too. */
+    .typography a * {
+        color: inherit;
+    }
+
     .typography strong,
     .typography b {
         @apply font-bold;
