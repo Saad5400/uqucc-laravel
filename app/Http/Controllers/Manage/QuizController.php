@@ -5,12 +5,15 @@ namespace App\Http\Controllers\Manage;
 use App\Ai\Quiz\QuizAuthor;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Manage\GenerateDailyQuizRequest;
+use App\Http\Requests\Manage\UpdateQuizScheduleRequest;
 use App\Http\Requests\Manage\UpdateQuizSettingsRequest;
 use App\Jobs\GenerateDailyQuizJob;
 use App\Models\DailyQuiz;
 use App\Models\QuizPlayer;
 use App\Models\QuizTopic;
 use App\Models\TelegramChatSetting;
+use App\Services\Quiz\QuizPoster;
+use App\Services\Quiz\QuizSchedule;
 use App\Settings\QuizSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -18,6 +21,7 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
+use Throwable;
 
 /**
  * The daily quiz control room. The front door shows the one question the
@@ -37,9 +41,10 @@ class QuizController extends Controller
     /** How far ahead the generate dialog looks for a free day before giving up. */
     private const MAX_SCHEDULING_HORIZON_DAYS = 365;
 
-    public function index(QuizSettings $settings): Response
+    public function index(QuizSettings $settings, QuizSchedule $schedule): Response
     {
         $current = $this->currentQuiz();
+        $today = DailyQuiz::forDate(today());
 
         return Inertia::render('manage/quiz/Index', [
             'settings' => [
@@ -55,6 +60,11 @@ class QuizController extends Controller
                     'chat_id' => (string) $chat->chat_id,
                     'title' => $chat->title,
                 ]),
+            'schedule' => [
+                'post_time' => $schedule->postTimeFor(null),
+                'today_post_time' => $today?->post_time,
+                'today_posts_at' => $schedule->todayPostsAt()->toISOString(),
+            ],
             'topics' => $this->topics(),
             'currentQuiz' => $current === null ? null : $this->quizPayload($current),
             'upcoming' => $this->upcoming(),
@@ -62,7 +72,7 @@ class QuizController extends Controller
             'limits' => $this->limits(),
             'today' => today()->toDateString(),
             'nextFreeDate' => $this->nextFreeDate(),
-            'todayQuizStatus' => DailyQuiz::forDate(today())?->status,
+            'todayQuizStatus' => $today?->status,
             'weeklyTop' => $this->leaderboard('weekly_points'),
             'allTimeTop' => $this->leaderboard('total_points'),
         ]);
@@ -146,6 +156,76 @@ class QuizController extends Controller
         return back()->with('success', $replace
             ? "بدأ إعادة توليد {$day} — سيتحدّث خلال دقائق."
             : "بدأ توليد {$day} — سيظهر خلال دقائق.");
+    }
+
+    /**
+     * Send today's question to the groups right now, ahead of its scheduled
+     * time — and re-send it when it already went out, the escape hatch for a
+     * poll someone deleted from the group. Runs inline rather than queued so
+     * the admin sees the Telegram outcome on the spot.
+     */
+    public function post(QuizSettings $settings, QuizPoster $poster): RedirectResponse
+    {
+        if (! $settings->isConfigured()) {
+            return back()->withErrors(['post' => 'سؤال اليوم غير مفعّل أو بلا مجموعات مستهدفة.']);
+        }
+
+        $quiz = DailyQuiz::forDate(today());
+
+        if ($quiz === null) {
+            return back()->withErrors(['post' => 'لا يوجد سؤال لهذا اليوم — ولّده أولاً.']);
+        }
+
+        if (! $quiz->isReady() && ! $quiz->isPosted()) {
+            return back()->withErrors(['post' => 'سؤال اليوم أُغلق ولا يمكن نشره من جديد.']);
+        }
+
+        $reposting = $quiz->isPosted();
+
+        try {
+            $poster->post($quiz, force: true);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors(['post' => $exception->getMessage()]);
+        }
+
+        return back()->with('success', $reposting
+            ? 'أُعيد نشر سؤال اليوم في المجموعات — الإجابات المسجّلة سابقاً محفوظة.'
+            : 'نُشر سؤال اليوم في المجموعات.');
+    }
+
+    /**
+     * Move the posting time — for every day (the default) or for today's
+     * question alone, which then goes out at its own time and leaves the
+     * default untouched. Clearing the one-day time returns it to the default.
+     */
+    public function updateSchedule(UpdateQuizScheduleRequest $request, QuizSettings $settings): RedirectResponse
+    {
+        $postTime = $request->validated('post_time');
+
+        if ($request->validated('scope') === UpdateQuizScheduleRequest::SCOPE_DEFAULT) {
+            $settings->post_time = $postTime;
+            $settings->save();
+
+            return back()->with('success', "تم ضبط موعد النشر اليومي على {$postTime}.");
+        }
+
+        $quiz = DailyQuiz::forDate(today());
+
+        if ($quiz === null) {
+            return back()->withErrors(['post_time' => 'لا يوجد سؤال لهذا اليوم لإعادة جدولته.']);
+        }
+
+        if (! $quiz->isReady()) {
+            return back()->withErrors(['post_time' => 'سؤال اليوم نُشر بالفعل — لا يمكن إعادة جدولته.']);
+        }
+
+        $quiz->update(['post_time' => $postTime]);
+
+        return back()->with('success', $postTime === null
+            ? 'عاد سؤال اليوم إلى موعد النشر الافتراضي.'
+            : "سيُنشر سؤال اليوم الساعة {$postTime} بدل الموعد الافتراضي.");
     }
 
     /**
@@ -274,6 +354,7 @@ class QuizController extends Controller
             'hint' => $quiz->hint,
             'obvious_hint' => $quiz->obvious_hint,
             'status' => $quiz->status,
+            'post_time' => $quiz->post_time,
             'topic' => $quiz->topic?->name,
             'posted_at' => $quiz->posted_at?->toISOString(),
             'answers_count' => $quiz->answers_count ?? 0,

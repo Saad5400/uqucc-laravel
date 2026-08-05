@@ -12,10 +12,22 @@ export interface Quiz {
     hint: string | null;
     obvious_hint: string | null;
     status: QuizStatus;
+    /** A one-day posting time («HH:MM»), or null to follow the default. */
+    post_time: string | null;
     topic: string | null;
     posted_at: string | null;
     answers_count: number;
     correct_answers_count: number;
+}
+
+/** When the daily question goes out: the default, and today's own override. */
+export interface Schedule {
+    /** The default posting time for every day, as «HH:MM». */
+    post_time: string;
+    /** Today's own posting time when it was rescheduled on its own. */
+    today_post_time: string | null;
+    /** The moment today's question goes out, resolved server-side. */
+    today_posts_at: string;
 }
 
 /** A day in the upcoming queue, without the question body — just the schedule. */
@@ -23,6 +35,8 @@ export interface QueuedDay {
     id: number;
     quiz_date: string;
     status: QuizStatus;
+    /** A one-day posting time («HH:MM»), or null to follow the default. */
+    post_time: string | null;
     topic: string | null;
 }
 

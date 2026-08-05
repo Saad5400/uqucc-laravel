@@ -2,12 +2,16 @@
 
 use App\Jobs\GenerateDailyQuizJob;
 use App\Models\DailyQuiz;
+use App\Models\QuizAnswer;
 use App\Models\QuizTopic;
 use App\Models\User;
+use App\Services\Quiz\QuizPoster;
+use App\Services\Quiz\QuizSchedule;
 use App\Settings\QuizSettings;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Support\Facades\Queue;
 use Inertia\Testing\AssertableInertia as Assert;
+use Tests\Fakes\FakeTelegramApi;
 
 beforeEach(function () {
     $this->withoutVite();
@@ -506,4 +510,132 @@ it('refuses to regenerate a quiz that is already posted', function () {
         ->assertSessionHasErrors('generate');
 
     Queue::assertNothingPushed();
+});
+
+/** Turn the feature on with one target group — the state on-demand posting needs. */
+function configuredQuizGroups(): void
+{
+    $settings = app(QuizSettings::class);
+    $settings->enabled = true;
+    $settings->chat_ids = ['-100200300'];
+    $settings->save();
+}
+
+it('exposes the posting schedule on the page', function () {
+    DailyQuiz::factory()->create(['quiz_date' => today(), 'post_time' => '19:30']);
+
+    $this->actingAs($this->admin)
+        ->get('/manage/quiz')
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('schedule.post_time', QuizSchedule::DEFAULT_POST_TIME)
+            ->where('schedule.today_post_time', '19:30')
+            ->has('schedule.today_posts_at')
+            ->where('currentQuiz.post_time', '19:30'));
+});
+
+it('moves the default posting time for every day', function () {
+    $this->actingAs($this->admin)
+        ->put('/manage/quiz/schedule', ['scope' => 'default', 'post_time' => '18:45'])
+        ->assertRedirect();
+
+    expect(app(QuizSettings::class)->post_time)->toBe('18:45');
+});
+
+it('moves today\'s posting time only, leaving the default alone', function () {
+    $quiz = DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    $this->actingAs($this->admin)
+        ->put('/manage/quiz/schedule', ['scope' => 'today', 'post_time' => '20:00'])
+        ->assertRedirect();
+
+    expect($quiz->refresh()->post_time)->toBe('20:00')
+        ->and(app(QuizSettings::class)->post_time)->toBe(QuizSchedule::DEFAULT_POST_TIME);
+});
+
+it('clears today\'s one-day time and returns it to the default', function () {
+    $quiz = DailyQuiz::factory()->create(['quiz_date' => today(), 'post_time' => '20:00']);
+
+    $this->actingAs($this->admin)
+        ->put('/manage/quiz/schedule', ['scope' => 'today', 'post_time' => null])
+        ->assertRedirect();
+
+    expect($quiz->refresh()->post_time)->toBeNull();
+});
+
+it('rejects a malformed posting time', function () {
+    $this->actingAs($this->admin)
+        ->put('/manage/quiz/schedule', ['scope' => 'default', 'post_time' => '25:99'])
+        ->assertSessionHasErrors('post_time');
+
+    expect(app(QuizSettings::class)->post_time)->toBe(QuizSchedule::DEFAULT_POST_TIME);
+});
+
+it('refuses to reschedule a question that already went out', function () {
+    DailyQuiz::factory()->posted()->create(['quiz_date' => today()]);
+
+    $this->actingAs($this->admin)
+        ->put('/manage/quiz/schedule', ['scope' => 'today', 'post_time' => '20:00'])
+        ->assertSessionHasErrors('post_time');
+});
+
+it('posts today\'s question on demand', function () {
+    configuredQuizGroups();
+
+    $fake = new FakeTelegramApi;
+    $this->app->bind(QuizPoster::class, fn (): QuizPoster => new QuizPoster(app(QuizSettings::class), $fake));
+
+    $quiz = DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    $this->actingAs($this->admin)
+        ->post('/manage/quiz/post')
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    expect($fake->sentPolls)->toHaveCount(1)
+        ->and($quiz->refresh()->status)->toBe(DailyQuiz::STATUS_POSTED);
+});
+
+it('re-posts a question whose poll was deleted, keeping its answers', function () {
+    configuredQuizGroups();
+
+    $fake = new FakeTelegramApi;
+    $this->app->bind(QuizPoster::class, fn (): QuizPoster => new QuizPoster(app(QuizSettings::class), $fake));
+
+    $quiz = DailyQuiz::factory()->posted()->create(['quiz_date' => today()]);
+    QuizAnswer::factory()->count(2)->create(['daily_quiz_id' => $quiz->id]);
+
+    $this->actingAs($this->admin)
+        ->post('/manage/quiz/post')
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    expect($fake->sentPolls)->toHaveCount(1)
+        ->and($quiz->refresh()->status)->toBe(DailyQuiz::STATUS_POSTED)
+        ->and($quiz->answers()->count())->toBe(2)
+        ->and($quiz->posts()->open()->count())->toBe(1);
+});
+
+it('refuses to post on demand while the quiz is not configured', function () {
+    DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    $this->actingAs($this->admin)
+        ->post('/manage/quiz/post')
+        ->assertSessionHasErrors(['post' => 'سؤال اليوم غير مفعّل أو بلا مجموعات مستهدفة.']);
+});
+
+it('refuses to post on demand when today has no question yet', function () {
+    configuredQuizGroups();
+
+    $this->actingAs($this->admin)
+        ->post('/manage/quiz/post')
+        ->assertSessionHasErrors(['post' => 'لا يوجد سؤال لهذا اليوم — ولّده أولاً.']);
+});
+
+it('refuses to post on demand once the question has closed', function () {
+    configuredQuizGroups();
+    DailyQuiz::factory()->closed()->create(['quiz_date' => today()]);
+
+    $this->actingAs($this->admin)
+        ->post('/manage/quiz/post')
+        ->assertSessionHasErrors(['post' => 'سؤال اليوم أُغلق ولا يمكن نشره من جديد.']);
 });

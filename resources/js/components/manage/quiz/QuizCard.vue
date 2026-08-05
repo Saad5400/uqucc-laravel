@@ -9,7 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { arabicCount } from '@/lib/arabic';
-import { formatShortDate, formatWeekdayDate } from '@/lib/formatters';
+import { formatShortDate, formatTimeOfDay, formatWeekdayDate } from '@/lib/formatters';
 import { CheckCircle2, EllipsisVertical, Pencil, Trash2 } from 'lucide-vue-next';
 import { computed } from 'vue';
 import { lockReason, statusBadges, type Quiz } from './types';
@@ -39,6 +39,9 @@ const locked = computed(() => lockReason(props.quiz));
                         {{ prominent ? formatWeekdayDate(quiz.quiz_date) : formatShortDate(quiz.quiz_date) }}
                     </span>
                     <Badge :variant="statusBadges[quiz.status].variant">{{ statusBadges[quiz.status].label }}</Badge>
+                    <Badge v-if="quiz.post_time && quiz.status === 'ready'" variant="outline" title="موعد نشر خاص بهذا اليوم">
+                        {{ formatTimeOfDay(quiz.post_time) }}
+                    </Badge>
                     <Badge v-if="quiz.topic" variant="outline">{{ quiz.topic }}</Badge>
                     <span v-if="quiz.status !== 'ready'">
                         {{ arabicCount(quiz.answers_count, { singular: 'إجابة', dual: 'إجابتان', plural: 'إجابات' }) }} — منها

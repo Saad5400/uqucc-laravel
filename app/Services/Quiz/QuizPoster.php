@@ -8,6 +8,7 @@ use App\Models\QuizPlayer;
 use App\Models\QuizPost;
 use App\Services\TelegramMarkdownService;
 use App\Settings\QuizSettings;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Telegram\Bot\Api;
@@ -41,18 +42,25 @@ class QuizPoster
      * the day they belong to. A group that fails (bot kicked, no rights) is
      * logged and skipped; the quiz counts as posted while at least one group
      * got it.
+     *
+     * `$force` re-posts a question that already went out — the escape hatch
+     * for a poll that was deleted from the group by mistake. The quiz keeps
+     * its identity, so the answers already recorded on it stay valid and
+     * nobody can score twice; its own earlier polls are stopped quietly,
+     * without the end-of-day recap, because the day is not over.
      */
-    public function post(DailyQuiz $quiz): DailyQuiz
+    public function post(DailyQuiz $quiz, bool $force = false): DailyQuiz
     {
         if (! $this->settings->isConfigured()) {
             throw new RuntimeException('سؤال اليوم غير مهيأ — فعّله وحدد المجموعات من صفحة سؤال اليوم.');
         }
 
-        if (! $quiz->isReady()) {
+        if (! $quiz->isReady() && ! ($force && $quiz->isPosted())) {
             throw new RuntimeException('هذا السؤال ليس بانتظار النشر.');
         }
 
-        $this->closeOpenQuizzes();
+        $this->closeOpenQuizzes($quiz);
+        $this->retireOwnPosts($quiz);
 
         $content = $this->contentHtml($quiz);
 
@@ -68,6 +76,8 @@ class QuizPoster
             $params['explanation'] = $quiz->explanation;
         }
 
+        $delivered = 0;
+
         foreach ($this->settings->targets() as $target) {
             try {
                 if ($content !== null) {
@@ -80,14 +90,21 @@ class QuizPoster
 
                 $message = $this->telegram()->sendPoll($target->apply($params));
 
-                $post = QuizPost::create([
+                // One post row per quiz per group (a unique index enforces
+                // it), so a re-post moves the row onto the new poll instead of
+                // adding a second one that would silently fail to save.
+                QuizPost::updateOrCreate([
                     'daily_quiz_id' => $quiz->id,
                     'chat_id' => $message->getChat()->getId(),
+                ], [
                     'message_id' => $message->getMessageId(),
                     'message_thread_id' => $target->threadId,
                     'telegram_poll_id' => $message->getPoll()?->getId(),
                     'posted_at' => now(),
+                    'closed_at' => null,
                 ]);
+
+                $delivered++;
             } catch (\Throwable $exception) {
                 Log::error('Failed to post quiz to chat', [
                     'quiz_id' => $quiz->id,
@@ -97,7 +114,7 @@ class QuizPoster
             }
         }
 
-        if ($quiz->posts()->doesntExist()) {
+        if ($delivered === 0) {
             throw new RuntimeException('تعذّر نشر السؤال في أي من المجموعات المحددة.');
         }
 
@@ -128,39 +145,70 @@ class QuizPoster
     }
 
     /**
-     * Stop every still-open quiz poll (normally yesterday's, one per group).
-     * A poll Telegram already closed just makes stopPoll throw; the post is
-     * marked closed regardless so scoring stops accepting its votes.
+     * Stop every still-open quiz poll (normally yesterday's, one per group)
+     * and mark its quiz closed. `$except` spares one quiz — the one being
+     * re-posted, which is continuing rather than ending.
      */
-    public function closeOpenQuizzes(): void
+    public function closeOpenQuizzes(?DailyQuiz $except = null): void
     {
-        $openPosts = QuizPost::query()->open()->with('quiz')->get();
+        $openPosts = QuizPost::query()
+            ->open()
+            ->when($except !== null, fn (Builder $query) => $query->where('daily_quiz_id', '!=', $except->id))
+            ->with('quiz')
+            ->get();
 
         foreach ($openPosts as $post) {
-            try {
-                $this->telegram()->stopPoll([
-                    'chat_id' => $post->chat_id,
-                    'message_id' => $post->message_id,
-                ]);
-            } catch (\Throwable $exception) {
-                Log::warning('Failed to stop previous quiz poll', [
-                    'quiz_post_id' => $post->id,
-                    'message' => $exception->getMessage(),
-                ]);
-            }
-
-            $this->sendRecap($post);
-
-            $post->update(['closed_at' => now()]);
+            $this->retirePost($post, recap: true);
         }
 
         DailyQuiz::query()
             ->where('status', DailyQuiz::STATUS_POSTED)
+            ->when($except !== null, fn (Builder $query) => $query->whereKeyNot($except->getKey()))
             ->get()
             ->each(fn (DailyQuiz $quiz) => $quiz->update([
                 'status' => DailyQuiz::STATUS_CLOSED,
                 'closed_at' => now(),
             ]));
+    }
+
+    /**
+     * Stop the quiz's own polls from an earlier posting round, without a
+     * recap — a re-post is not the end of the day, and the recap belongs to
+     * the poll that actually closes it.
+     */
+    private function retireOwnPosts(DailyQuiz $quiz): void
+    {
+        foreach ($quiz->posts()->open()->get() as $post) {
+            $this->retirePost($post, recap: false);
+        }
+    }
+
+    /**
+     * Take one live poll out of circulation: close it on Telegram, optionally
+     * reply with the day's recap, and mark the post closed so scoring stops
+     * accepting its votes. A poll Telegram already closed — or a message
+     * someone deleted — just makes the call throw; the post is marked closed
+     * regardless.
+     */
+    private function retirePost(QuizPost $post, bool $recap): void
+    {
+        try {
+            $this->telegram()->stopPoll([
+                'chat_id' => $post->chat_id,
+                'message_id' => $post->message_id,
+            ]);
+        } catch (\Throwable $exception) {
+            Log::warning('Failed to stop previous quiz poll', [
+                'quiz_post_id' => $post->id,
+                'message' => $exception->getMessage(),
+            ]);
+        }
+
+        if ($recap) {
+            $this->sendRecap($post);
+        }
+
+        $post->update(['closed_at' => now()]);
     }
 
     /**

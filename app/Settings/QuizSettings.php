@@ -26,6 +26,12 @@ class QuizSettings extends Settings
      */
     public array $chat_ids;
 
+    /**
+     * The time of day the question goes out, as «HH:MM» in the app timezone.
+     * A single day can override it — see {@see \App\Services\Quiz\QuizSchedule}.
+     */
+    public string $post_time;
+
     public static function group(): string
     {
         return 'quiz';

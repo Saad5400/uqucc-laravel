@@ -6,7 +6,7 @@ import PageHeader from '@/components/manage/PageHeader.vue';
 import GenerateQuizDialog from '@/components/manage/quiz/GenerateQuizDialog.vue';
 import QuizCard from '@/components/manage/quiz/QuizCard.vue';
 import QuizEditorDialog from '@/components/manage/quiz/QuizEditorDialog.vue';
-import type { Limits, QueuedDay, Quiz, Topic } from '@/components/manage/quiz/types';
+import type { Limits, QueuedDay, Quiz, Schedule, Topic } from '@/components/manage/quiz/types';
 import { statusBadges } from '@/components/manage/quiz/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -16,13 +16,14 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { TagsInput, TagsInputInput, TagsInputItem, TagsInputItemDelete, TagsInputItemText } from '@/components/ui/tags-input';
 import { Textarea } from '@/components/ui/textarea';
 import { arabicCount } from '@/lib/arabic';
-import { formatDateTime, formatDayOffset, formatRelativeTime, formatShortDate, formatWeekdayDate } from '@/lib/formatters';
+import { formatDateTime, formatDayOffset, formatRelativeTime, formatShortDate, formatTimeOfDay, formatWeekdayDate } from '@/lib/formatters';
 import { Head, Link, router, useForm } from '@inertiajs/vue3';
-import { CalendarClock, EllipsisVertical, Library, Loader2, Pencil, PenLine, Plus, Sparkles, Trash2, Trophy } from 'lucide-vue-next';
+import { CalendarClock, Clock, EllipsisVertical, Library, Loader2, Pencil, PenLine, Plus, Send, Sparkles, Trash2, Trophy } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 defineOptions({ layout: ManageLayout });
@@ -49,6 +50,7 @@ interface Player {
 
 const props = defineProps<{
     settings: QuizSettingsValues;
+    schedule: Schedule;
     groupChats: GroupChat[];
     topics: Topic[];
     currentQuiz: Quiz | null;
@@ -82,7 +84,7 @@ const currentQuizContext = computed(() => {
     }
 
     if (!showingFutureDay.value) {
-        return { tone: 'muted' as const, text: 'هذا سؤال اليوم — راجعه وعدّله قبل النشر التلقائي الساعة 4 عصراً.' };
+        return { tone: 'muted' as const, text: `هذا سؤال اليوم — راجعه وعدّله قبل النشر التلقائي ${formatTimeOfDay(todayPostTime.value)}.` };
     }
 
     const day = `${formatWeekdayDate(props.currentQuiz.quiz_date)} (${formatDayOffset(props.currentQuiz.quiz_date, props.today)})`;
@@ -91,11 +93,110 @@ const currentQuizContext = computed(() => {
         return { tone: 'muted' as const, text: `سؤال اليوم نُشر بالفعل ولم يعد قابلاً للتعديل — المعروض هنا هو سؤال ${day}.` };
     }
 
-    return { tone: 'warning' as const, text: `لا يوجد سؤال لليوم! المعروض هو أقرب سؤال قادم — ${day}. ولّد سؤالاً لليوم قبل الساعة 4 عصراً.` };
+    return {
+        tone: 'warning' as const,
+        text: `لا يوجد سؤال لليوم! المعروض هو أقرب سؤال قادم — ${day}. ولّد سؤالاً لليوم قبل ${formatTimeOfDay(todayPostTime.value)}.`,
+    };
 });
 
 /** The queue after the question already shown in full above it. */
 const queueAhead = computed(() => props.upcoming.filter((day) => day.id !== props.currentQuiz?.id));
+
+/* ------------------------------------------------------------------ */
+/* Posting: when today's question goes out, and sending it by hand     */
+/* ------------------------------------------------------------------ */
+
+const configured = computed(() => props.settings.enabled && props.settings.chat_ids.length > 0);
+
+/** The time today's question actually goes out — its own, or the default. */
+const todayPostTime = computed(() => props.schedule.today_post_time ?? props.schedule.post_time);
+
+/** Today's question is live in the groups — re-posting is the deleted-poll fix. */
+const todayIsLive = computed(() => props.todayQuizStatus === 'posted');
+
+/** Today's own time can only be moved while the question is still waiting. */
+const todayReschedulable = computed(() => props.todayQuizStatus === 'ready');
+
+/** Why «نشر الآن» is unavailable, or null when it is available. */
+const postNowBlockedReason = computed(() => {
+    if (!configured.value) {
+        return 'فعّل سؤال اليوم وحدد المجموعات المستهدفة أولاً.';
+    }
+
+    if (props.todayQuizStatus === null) {
+        return 'لا يوجد سؤال لهذا اليوم — ولّده أولاً.';
+    }
+
+    if (props.todayQuizStatus === 'closed') {
+        return 'سؤال اليوم أُغلق ولا يمكن نشره من جديد.';
+    }
+
+    return null;
+});
+
+const postDialogOpen = ref(false);
+const posting = ref(false);
+
+function postNow(): void {
+    posting.value = true;
+
+    router.post(
+        '/manage/quiz/post',
+        {},
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                postDialogOpen.value = false;
+            },
+            onFinish: () => {
+                posting.value = false;
+            },
+        },
+    );
+}
+
+const scheduleDialogOpen = ref(false);
+
+const scheduleForm = useForm({
+    scope: 'default' as 'default' | 'today',
+    post_time: props.schedule.post_time,
+});
+
+function openScheduleDialog(): void {
+    scheduleForm.clearErrors();
+    scheduleForm.scope = 'default';
+    scheduleForm.post_time = props.schedule.post_time;
+    scheduleDialogOpen.value = true;
+}
+
+/** Keep the time field showing whatever the chosen scope currently applies. */
+function onScheduleScopeChange(scope: 'default' | 'today'): void {
+    scheduleForm.scope = scope;
+    scheduleForm.post_time = scope === 'today' ? todayPostTime.value : props.schedule.post_time;
+}
+
+function submitSchedule(): void {
+    scheduleForm.put('/manage/quiz/schedule', {
+        preserveScroll: true,
+        onSuccess: () => {
+            scheduleDialogOpen.value = false;
+        },
+    });
+}
+
+/** Drop today's one-day time so it follows the daily default again. */
+function clearTodaySchedule(): void {
+    router.put(
+        '/manage/quiz/schedule',
+        { scope: 'today', post_time: null },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                scheduleDialogOpen.value = false;
+            },
+        },
+    );
+}
 
 /* ------------------------------------------------------------------ */
 /* Generate / write / edit / delete                                    */
@@ -251,8 +352,6 @@ const chatIdsError = computed(() => {
 
     return key ? errors[key] : null;
 });
-
-const configured = computed(() => props.settings.enabled && props.settings.chat_ids.length > 0);
 </script>
 
 <template>
@@ -267,8 +366,30 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
         <!-- The one question that can be edited right now -->
         <Card>
             <CardHeader class="flex flex-row flex-wrap items-center justify-between gap-2 space-y-0">
-                <CardTitle class="text-lg">{{ showingFutureDay ? 'السؤال القادم' : 'سؤال اليوم' }}</CardTitle>
+                <div class="space-y-1">
+                    <CardTitle class="text-lg">{{ showingFutureDay ? 'السؤال القادم' : 'سؤال اليوم' }}</CardTitle>
+                    <p class="text-xs text-muted-foreground">
+                        <template v-if="todayIsLive">منشور الآن — يُغلق مع نشر سؤال الغد</template>
+                        <template v-else>يُنشر {{ formatTimeOfDay(todayPostTime) }}</template>
+                        <span v-if="schedule.today_post_time && todayReschedulable"> — موعد خاص لليوم فقط</span>
+                    </p>
+                </div>
                 <div class="flex flex-wrap items-center gap-2">
+                    <Button variant="ghost" size="sm" @click="openScheduleDialog">
+                        <Clock class="size-4" />
+                        موعد النشر
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        :disabled="postNowBlockedReason !== null || posting"
+                        :title="postNowBlockedReason ?? undefined"
+                        @click="postDialogOpen = true"
+                    >
+                        <Loader2 v-if="posting" class="size-4 animate-spin" />
+                        <Send v-else class="size-4" />
+                        {{ todayIsLive ? 'إعادة النشر الآن' : 'نشر الآن' }}
+                    </Button>
                     <Button size="sm" variant="outline" @click="openQuizEditor(null)">
                         <PenLine class="size-4" />
                         كتابة سؤال يدوياً
@@ -280,6 +401,9 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                 </div>
             </CardHeader>
             <CardContent class="space-y-4">
+                <p v-if="configured && postNowBlockedReason" class="text-xs text-muted-foreground">{{ postNowBlockedReason }}</p>
+                <p v-if="$page.props.errors.post" class="text-sm text-destructive-foreground">{{ $page.props.errors.post }}</p>
+                <p v-if="$page.props.errors.post_time" class="text-sm text-destructive-foreground">{{ $page.props.errors.post_time }}</p>
                 <p
                     v-if="currentQuizContext"
                     class="rounded-lg border p-3 text-sm"
@@ -477,7 +601,8 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
                         <div class="space-y-1">
                             <Label for="quiz-enabled">تفعيل سؤال اليوم</Label>
                             <p class="text-xs text-muted-foreground">
-                                عند التفعيل: يُولَّد السؤال فجراً، ويُنشر في المجموعة الساعة 4 عصراً، وتُعلن نتائج الأسبوع مساء الخميس.
+                                عند التفعيل: يُولَّد السؤال فجراً، ويُنشر في المجموعة {{ formatTimeOfDay(schedule.post_time) }}، وتُعلن نتائج الأسبوع
+                                مساء الخميس. لتغيير الموعد استخدم «موعد النشر» في بطاقة سؤال اليوم.
                             </p>
                         </div>
                         <Switch id="quiz-enabled" v-model="settingsForm.enabled" />
@@ -536,6 +661,91 @@ const configured = computed(() => props.settings.enabled && props.settings.chat_
             </CardContent>
         </Card>
     </div>
+
+    <!-- Post / re-post today's question now -->
+    <ConfirmDialog
+        v-model:open="postDialogOpen"
+        :title="todayIsLive ? 'إعادة نشر سؤال اليوم' : 'نشر سؤال اليوم الآن'"
+        :confirm-label="todayIsLive ? 'إعادة النشر' : 'نشر الآن'"
+        :processing="posting"
+        @confirm="postNow"
+    >
+        <template v-if="todayIsLive">
+            سيُرسل السؤال نفسه من جديد إلى المجموعات المحددة، ويُغلق التصويت القديم إن كان ما زال موجوداً. النقاط والإجابات المسجّلة سابقاً تبقى كما
+            هي، ومن أجاب من قبل لا يستطيع أخذ نقاط مرة أخرى.
+        </template>
+        <template v-else> سيُنشر سؤال اليوم في المجموعات المحددة فوراً بدل انتظار موعده، ويُغلق تصويت اليوم السابق مع نشر خلاصته. </template>
+    </ConfirmDialog>
+
+    <!-- Posting time: for every day, or for today alone -->
+    <Dialog v-model:open="scheduleDialogOpen">
+        <DialogContent class="sm:max-w-lg">
+            <DialogHeader>
+                <DialogTitle>موعد نشر السؤال</DialogTitle>
+            </DialogHeader>
+
+            <form class="space-y-4" @submit.prevent="submitSchedule">
+                <div class="space-y-2">
+                    <Label for="schedule-scope">نطاق التغيير</Label>
+                    <Select
+                        id="schedule-scope"
+                        :model-value="scheduleForm.scope"
+                        @update:model-value="(value) => onScheduleScopeChange(value as 'default' | 'today')"
+                    >
+                        <SelectTrigger class="w-full" aria-label="نطاق تغيير موعد النشر">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="default">كل الأيام — الموعد الافتراضي</SelectItem>
+                            <SelectItem value="today" :disabled="!todayReschedulable">اليوم فقط — سؤال اليوم وحده</SelectItem>
+                        </SelectContent>
+                    </Select>
+                    <p v-if="!todayReschedulable" class="text-xs text-muted-foreground">
+                        «اليوم فقط» غير متاح: لا يوجد سؤال بانتظار النشر لهذا اليوم.
+                    </p>
+                    <p v-if="scheduleForm.errors.scope" class="text-sm text-destructive-foreground">{{ scheduleForm.errors.scope }}</p>
+                </div>
+
+                <div class="space-y-2">
+                    <Label for="schedule-time">الساعة</Label>
+                    <Input
+                        id="schedule-time"
+                        v-model="scheduleForm.post_time"
+                        type="time"
+                        dir="ltr"
+                        class="w-40 text-start tabular-nums"
+                        :aria-invalid="scheduleForm.errors.post_time ? true : undefined"
+                    />
+                    <p class="text-xs text-muted-foreground">
+                        بتوقيت مكة المكرمة. تغيير «كل الأيام» يسري على كل يوم قادم، وعلى سؤال اليوم أيضاً ما دام لم يُنشر بعد. تذكيرات المشاركة تبقى
+                        على مواعيدها الثابتة.
+                    </p>
+                    <p v-if="scheduleForm.errors.post_time" class="text-sm text-destructive-foreground">{{ scheduleForm.errors.post_time }}</p>
+                </div>
+
+                <DialogFooter class="gap-2 sm:justify-between">
+                    <Button
+                        v-if="schedule.today_post_time && todayReschedulable"
+                        type="button"
+                        variant="ghost"
+                        :disabled="scheduleForm.processing"
+                        @click="clearTodaySchedule"
+                    >
+                        إلغاء موعد اليوم الخاص
+                    </Button>
+                    <span v-else />
+
+                    <span class="flex gap-2">
+                        <Button type="button" variant="outline" @click="scheduleDialogOpen = false">إلغاء</Button>
+                        <Button type="submit" :disabled="scheduleForm.processing">
+                            <Loader2 v-if="scheduleForm.processing" class="size-4 animate-spin" />
+                            حفظ الموعد
+                        </Button>
+                    </span>
+                </DialogFooter>
+            </form>
+        </DialogContent>
+    </Dialog>
 
     <GenerateQuizDialog v-model:open="generateDialogOpen" :topics="topics" :upcoming="upcoming" :today="today" :default-date="nextFreeDate" />
 

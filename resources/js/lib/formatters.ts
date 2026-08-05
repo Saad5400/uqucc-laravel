@@ -75,6 +75,13 @@ export function formatDayOffset(isoDate: string, today: string): string {
     return relativeTimeFormatter.format(days, 'day');
 }
 
+const timeOfDayFormatter = new Intl.DateTimeFormat('ar', { hour: 'numeric', minute: '2-digit' });
+
+/** "16:00" → an Arabic clock label ("٤:٠٠ م"). */
+export function formatTimeOfDay(time: string): string {
+    return timeOfDayFormatter.format(new Date(`2000-01-01T${time}:00`));
+}
+
 const dateTimeFormatter = new Intl.DateTimeFormat('ar', { dateStyle: 'medium', timeStyle: 'short' });
 
 export function formatDateTime(iso: string): string {
