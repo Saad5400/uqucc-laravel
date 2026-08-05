@@ -33,9 +33,12 @@ Schedule::command('quiz:generate')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Runs every minute and posts only when the configured moment arrives — the
+// posting time is a setting, and a single day can be rescheduled on its own,
+// so it cannot be pinned to one hour here (see App\Services\Quiz\QuizSchedule).
 Schedule::command('quiz:post')
-    ->dailyAt('16:00')
-    ->withoutOverlapping()
+    ->everyMinute()
+    ->withoutOverlapping(10)
     ->runInBackground();
 
 Schedule::command('quiz:announce-weekly')

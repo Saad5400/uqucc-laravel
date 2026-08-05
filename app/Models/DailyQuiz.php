@@ -36,6 +36,7 @@ class DailyQuiz extends Model
         'hint',
         'obvious_hint',
         'status',
+        'post_time',
         'posted_at',
         'closed_at',
     ];

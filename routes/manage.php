@@ -74,6 +74,8 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::get('/quiz/archive', [QuizController::class, 'archive'])->name('quiz.archive');
         Route::put('/quiz/settings', [QuizController::class, 'updateSettings'])->name('quiz.settings.update');
         Route::post('/quiz/generate', [QuizController::class, 'generate'])->name('quiz.generate');
+        Route::post('/quiz/post', [QuizController::class, 'post'])->name('quiz.post');
+        Route::put('/quiz/schedule', [QuizController::class, 'updateSchedule'])->name('quiz.schedule.update');
         Route::post('/quiz/topics', [QuizTopicController::class, 'store'])->name('quiz.topics.store');
         Route::put('/quiz/topics/{topic}', [QuizTopicController::class, 'update'])->name('quiz.topics.update');
         Route::delete('/quiz/topics/{topic}', [QuizTopicController::class, 'destroy'])->name('quiz.topics.destroy');

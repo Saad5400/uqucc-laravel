@@ -7,12 +7,20 @@ use App\Models\QuizPlayer;
 use App\Models\QuizPost;
 use App\Models\QuizTopic;
 use App\Services\Quiz\QuizPoster;
+use App\Services\Quiz\QuizSchedule;
 use App\Settings\AiSettings;
 use App\Settings\QuizSettings;
+use Illuminate\Support\Facades\Cache;
 use Laravel\Ai\Responses\Data\ToolCall;
 use Tests\Fakes\FakeTelegramApi;
 
 beforeEach(function () {
+    // The command runs every minute and posts only once its moment arrives;
+    // sit on the default posting time so the clock is never the reason a test
+    // sees nothing. Cache backs the fallback-generation throttle.
+    $this->travelTo(today()->setTimeFromTimeString(QuizSchedule::DEFAULT_POST_TIME));
+    Cache::flush();
+
     config()->set('ai.providers.openrouter.key', 'test-key');
 
     $ai = app(AiSettings::class);
@@ -335,4 +343,148 @@ it('omits the explanation parameter when the quiz has none', function () {
     $this->artisan('quiz:post')->assertExitCode(0);
 
     expect($this->fake->sentPolls[0])->not->toHaveKey('explanation');
+});
+
+it('waits for the configured posting time before going out', function () {
+    $settings = app(QuizSettings::class);
+    $settings->post_time = '18:00';
+    $settings->save();
+
+    DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    $this->artisan('quiz:post')->assertExitCode(0);
+
+    expect($this->fake->sentPolls)->toBeEmpty();
+
+    $this->travelTo(today()->setTime(18, 0));
+
+    $this->artisan('quiz:post')->assertExitCode(0);
+
+    expect($this->fake->sentPolls)->toHaveCount(1)
+        ->and(DailyQuiz::forDate(today())->status)->toBe(DailyQuiz::STATUS_POSTED);
+});
+
+it('honours a one-day posting time without touching the default', function () {
+    $quiz = DailyQuiz::factory()->create(['quiz_date' => today(), 'post_time' => '20:30']);
+
+    $this->artisan('quiz:post')->assertExitCode(0);
+
+    expect($this->fake->sentPolls)->toBeEmpty();
+
+    $this->travelTo(today()->setTime(20, 30));
+
+    $this->artisan('quiz:post')->assertExitCode(0);
+
+    expect($this->fake->sentPolls)->toHaveCount(1)
+        ->and($quiz->refresh()->status)->toBe(DailyQuiz::STATUS_POSTED)
+        ->and(app(QuizSettings::class)->post_time)->toBe(QuizSchedule::DEFAULT_POST_TIME);
+});
+
+it('posts immediately with --force, ahead of the scheduled time', function () {
+    $this->travelTo(today()->setTime(9, 0));
+
+    $quiz = DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    $this->artisan('quiz:post', ['--force' => true])->assertExitCode(0);
+
+    expect($this->fake->sentPolls)->toHaveCount(1)
+        ->and($quiz->refresh()->status)->toBe(DailyQuiz::STATUS_POSTED);
+});
+
+it('re-posts an already posted question with --force, keeping its recorded answers', function () {
+    $quiz = livePostedQuiz(['quiz_date' => today()], ['message_id' => 999]);
+    QuizAnswer::factory()->count(3)->create(['daily_quiz_id' => $quiz->id]);
+
+    $this->artisan('quiz:post', ['--force' => true])->assertExitCode(0);
+
+    $quiz->refresh();
+
+    expect($this->fake->sentPolls)->toHaveCount(1)
+        ->and($this->fake->stoppedPolls)->toHaveCount(1)
+        ->and($this->fake->stoppedPolls[0]['message_id'])->toBe(999)
+        ->and($quiz->status)->toBe(DailyQuiz::STATUS_POSTED)
+        ->and($quiz->answers()->count())->toBe(3)
+        // One row per group: the re-post moves it onto the new poll.
+        ->and($quiz->posts()->count())->toBe(1)
+        ->and($quiz->posts()->open()->count())->toBe(1)
+        ->and($quiz->posts()->first()->message_id)->not->toBe(999)
+        ->and($quiz->posts()->first()->telegram_poll_id)->not->toBeNull()
+        ->and(DailyQuiz::query()->count())->toBe(1);
+});
+
+it('keeps answers landing on the same quiz after a re-post', function () {
+    $quiz = livePostedQuiz(['quiz_date' => today()]);
+
+    $this->artisan('quiz:post', ['--force' => true])->assertExitCode(0);
+
+    expect(DailyQuiz::findByPollId($quiz->posts()->first()->telegram_poll_id)?->id)->toBe($quiz->id);
+});
+
+it('sends no recap when re-posting, because the day is not over', function () {
+    $quiz = livePostedQuiz(['quiz_date' => today()], ['message_id' => 999]);
+    QuizAnswer::factory()->count(3)->create(['daily_quiz_id' => $quiz->id]);
+
+    $this->artisan('quiz:post', ['--force' => true])->assertExitCode(0);
+
+    expect(collect($this->fake->sentMessages)->pluck('reply_to_message_id')->filter())->toBeEmpty();
+});
+
+it('still recaps and closes the previous day when re-posting today', function () {
+    $yesterday = livePostedQuiz(['quiz_date' => today()->subDay()], ['message_id' => 555]);
+    QuizAnswer::factory()->create(['daily_quiz_id' => $yesterday->id]);
+
+    livePostedQuiz(['quiz_date' => today()], ['message_id' => 999]);
+
+    $this->artisan('quiz:post', ['--force' => true])->assertExitCode(0);
+
+    expect(collect($this->fake->sentMessages)->firstWhere('reply_to_message_id', 555))->not->toBeNull()
+        ->and($yesterday->refresh()->status)->toBe(DailyQuiz::STATUS_CLOSED)
+        ->and(DailyQuiz::forDate(today())->status)->toBe(DailyQuiz::STATUS_POSTED);
+});
+
+it('fails a re-post when every group rejects it, leaving the old post closed', function () {
+    $broken = new class extends FakeTelegramApi
+    {
+        public function sendPoll(array $params): \Telegram\Bot\Objects\Message
+        {
+            throw new RuntimeException('Forbidden');
+        }
+    };
+
+    $this->app->bind(QuizPoster::class, fn (): QuizPoster => new QuizPoster(app(QuizSettings::class), $broken));
+
+    $quiz = livePostedQuiz(['quiz_date' => today()]);
+
+    $this->artisan('quiz:post', ['--force' => true])->assertExitCode(1);
+
+    expect($quiz->refresh()->status)->toBe(DailyQuiz::STATUS_POSTED)
+        ->and($quiz->posts()->open()->count())->toBe(0);
+});
+
+it('refuses to force-post a closed question', function () {
+    DailyQuiz::factory()->closed()->create(['quiz_date' => today()]);
+
+    $this->artisan('quiz:post', ['--force' => true])->assertExitCode(1);
+
+    expect($this->fake->sentPolls)->toBeEmpty();
+});
+
+it('refuses to force-post when today has no question at all', function () {
+    $this->artisan('quiz:post', ['--force' => true])->assertExitCode(1);
+
+    expect($this->fake->sentPolls)->toBeEmpty();
+});
+
+it('throttles the inline fallback generation across per-minute runs', function () {
+    QuizTopic::factory()->create();
+
+    QuizAuthoringAgent::fake(['not a tool call at all']);
+
+    $this->artisan('quiz:post')->assertExitCode(1);
+
+    // A second run one minute later must not ask the authoring model again.
+    $this->travelTo(now()->addMinute());
+    $this->artisan('quiz:post')->assertExitCode(0);
+
+    expect(DailyQuiz::query()->count())->toBe(0);
 });
