@@ -78,6 +78,8 @@
                 gtag('config', '{{ config('services.google_analytics.id') }}');
             </script>
         @endif
+    <!-- Analytics (self-hosted Umami, cookieless) -->
+    <script defer src="https://analytics.sb.sa/script.js" data-website-id="e86bfe9b-2220-4bf0-9785-9fd5d89a7961"></script>
     </head>
     <body class="antialiased">
         @inertia
