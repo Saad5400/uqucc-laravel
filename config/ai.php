@@ -16,7 +16,7 @@ return [
     | vendor defaults: `providers` drops the stock multi-provider list because
     | this application routes everything through OpenRouter. The "openrouter"
     | driver itself is re-registered by App\Providers\AiServiceProvider to use
-    | our ReasoningOpenRouterGateway (streams reasoning deltas and captures
+    | ai-kit's ReasoningOpenRouterGateway (streams reasoning deltas and captures
     | OpenRouter's exact usage.cost).
     |
     */

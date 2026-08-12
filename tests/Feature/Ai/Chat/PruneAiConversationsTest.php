@@ -17,14 +17,15 @@ function conversationIdleFor(int $days): string
 
     Conversation::query()->create([
         'id' => $conversationId,
-        'user_id' => Str::random(40),
+        'participant_type' => \App\Ai\Chat\SessionOwner::class,
+        'participant_id' => Str::random(40),
         'title' => 'محادثة',
     ]);
 
     ConversationMessage::query()->create([
         'id' => (string) Str::uuid7(),
         'conversation_id' => $conversationId,
-        'user_id' => null,
+        'participant_id' => null,
         'agent' => StudentAssistant::class,
         'role' => 'user',
         'content' => 'سؤال',

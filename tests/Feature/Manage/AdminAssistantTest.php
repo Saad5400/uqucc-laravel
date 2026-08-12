@@ -64,7 +64,8 @@ function createAdminConversation(User $admin, array $toolResults = []): string
 
     Conversation::query()->create([
         'id' => $conversationId,
-        'user_id' => 'admin:'.$admin->getKey(),
+        'participant_type' => \App\Ai\Admin\AdminOwner::class,
+        'participant_id' => 'admin:'.$admin->getKey(),
         'title' => 'محادثة إدارية',
     ]);
 
@@ -72,7 +73,8 @@ function createAdminConversation(User $admin, array $toolResults = []): string
         ConversationMessage::query()->create([
             'id' => (string) Str::uuid7(),
             'conversation_id' => $conversationId,
-            'user_id' => 'admin:'.$admin->getKey(),
+            'participant_type' => \App\Ai\Admin\AdminOwner::class,
+            'participant_id' => 'admin:'.$admin->getKey(),
             'agent' => AdminAssistant::class,
             'role' => $role,
             'content' => $content,
@@ -199,7 +201,7 @@ describe('chat streaming', function () {
 
         $conversation = Conversation::query()->sole();
 
-        expect($conversation->getAttribute('user_id'))->toBe('admin:'.$this->admin->id)
+        expect($conversation->getAttribute('participant_id'))->toBe('admin:'.$this->admin->id)
             ->and(adminSseEventData($content, 'done')['conversation_id'])->toBe($conversation->getKey());
     });
 

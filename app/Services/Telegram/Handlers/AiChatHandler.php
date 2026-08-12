@@ -479,7 +479,7 @@ class AiChatHandler extends BaseHandler
 
         $exists = Conversation::query()
             ->whereKey($conversationId)
-            ->where('user_id', $owner->id)
+            ->where('participant_id', $owner->id)
             ->exists();
 
         return $exists ? $conversationId : null;

@@ -1,15 +1,15 @@
 <?php
 
-use App\Ai\Gateway\ReasoningOpenRouterGateway;
 use Illuminate\Contracts\Events\Dispatcher;
 use Laravel\Ai\Gateway\StepContext;
 use Laravel\Ai\Messages\UserMessage;
 use Laravel\Ai\Providers\OpenRouterProvider;
+use Saad\AiKit\Gateway\ReasoningOpenRouterGateway;
 
 function finalStepBody(bool $isFinalStep, array $tools): array
 {
     $events = app(Dispatcher::class);
-    $gateway = new ReasoningOpenRouterGateway($events);
+    $gateway = app(ReasoningOpenRouterGateway::class);
 
     $provider = new OpenRouterProvider(
         ['name' => 'openrouter', 'driver' => 'openrouter', 'key' => 'test-key'],

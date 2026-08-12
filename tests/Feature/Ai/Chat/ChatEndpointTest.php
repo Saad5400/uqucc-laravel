@@ -75,7 +75,8 @@ function createStoredConversation(string $sessionId): string
 
     Conversation::query()->create([
         'id' => $conversationId,
-        'user_id' => $sessionId,
+        'participant_type' => \App\Ai\Chat\SessionOwner::class,
+        'participant_id' => $sessionId,
         'title' => 'محادثة سابقة',
     ]);
 
@@ -83,7 +84,8 @@ function createStoredConversation(string $sessionId): string
         ConversationMessage::query()->create([
             'id' => (string) Str::uuid7(),
             'conversation_id' => $conversationId,
-            'user_id' => $sessionId,
+            'participant_type' => \App\Ai\Chat\SessionOwner::class,
+            'participant_id' => $sessionId,
             'agent' => StudentAssistant::class,
             'role' => $role,
             'content' => $content,
@@ -120,7 +122,7 @@ it('streams delta and done events and persists the conversation for the session'
 
     expect($done['conversation_id'])->toBe($conversation->getKey())
         ->and($done['message_id'])->not->toBeNull()
-        ->and($conversation->getAttribute('user_id'))->toBe($sessionId)
+        ->and($conversation->getAttribute('participant_id'))->toBe($sessionId)
         ->and(ConversationMessage::query()->where('conversation_id', $conversation->getKey())->count())->toBe(2);
 });
 

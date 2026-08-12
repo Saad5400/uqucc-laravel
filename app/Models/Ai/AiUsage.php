@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * One row per paid AI call — the spend ledger's storage. `cost` is the exact
- * provider-reported USD cost captured by {@see \App\Ai\Gateway\ReasoningOpenRouterGateway}
+ * provider-reported USD cost captured by {@see \Saad\AiKit\Gateway\ReasoningOpenRouterGateway}
  * (0 when the provider reported none, e.g. free-tier or faked calls); token
  * counts are recorded when the response carried them. Append-only: rows are
  * never updated, so there is no updated_at.

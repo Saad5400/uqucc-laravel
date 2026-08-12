@@ -1,8 +1,9 @@
 <?php
 
-use App\Ai\Gateway\ReasoningOpenRouterGateway;
 use Laravel\Ai\AiManager;
 use Laravel\Ai\Exceptions\AiException;
+use Saad\AiKit\Gateway\ReasoningOpenRouterGateway;
+use Saad\AiKit\Gateway\SpendCollector;
 
 it('resolves the openrouter text provider with the reasoning gateway', function () {
     $provider = app(AiManager::class)->textProvider('openrouter');
@@ -26,7 +27,7 @@ it('exposes per-task model config keys', function () {
 });
 
 it('turns an empty or invalid OpenRouter body into a clean AiException, not a TypeError', function () {
-    $gateway = new class(app('events')) extends ReasoningOpenRouterGateway
+    $gateway = new class(app('events'), app(SpendCollector::class)) extends ReasoningOpenRouterGateway
     {
         /** @param  array<string, mixed>|null  $data */
         public function validate(?array $data): void
@@ -45,7 +46,7 @@ it('turns an empty or invalid OpenRouter body into a clean AiException, not a Ty
 });
 
 it('extracts a positive usage cost and rejects missing or zero costs', function () {
-    $gateway = new ReasoningOpenRouterGateway(app('events'));
+    $gateway = app(ReasoningOpenRouterGateway::class);
 
     expect($gateway->extractOpenRouterCost(['usage' => ['cost' => 0.0123]]))->toBe(0.0123)
         ->and($gateway->extractOpenRouterCost(['usage' => ['cost' => '0.5']]))->toBe(0.5)

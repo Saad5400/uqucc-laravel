@@ -1,11 +1,10 @@
 <?php
 
-use App\Ai\Gateway\ReasoningOpenRouterGateway;
 use App\Ai\Spend\SpendLedger;
 use App\Models\Ai\AiUsage;
 use App\Settings\AiSettings;
-use Illuminate\Support\Facades\Context;
 use Laravel\Ai\Responses\Data\Usage;
+use Saad\AiKit\Gateway\ContextSpendCollector;
 
 beforeEach(function () {
     $settings = app(AiSettings::class);
@@ -60,9 +59,10 @@ it('treats a zero budget as spend-nothing', function () {
 });
 
 it('captures and clears the per-round provider costs from context', function () {
-    Context::push(ReasoningOpenRouterGateway::COSTS_CONTEXT_KEY, 0.002);
-    Context::push(ReasoningOpenRouterGateway::COSTS_CONTEXT_KEY, 0.003);
-    Context::push(ReasoningOpenRouterGateway::NON_STREAM_COSTS_CONTEXT_KEY, 0.001);
+    $collector = app(ContextSpendCollector::class);
+    $collector->recordCost(0.002, streamed: true);
+    $collector->recordCost(0.003, streamed: true);
+    $collector->recordCost(0.001, streamed: false);
 
     $ledger = app(SpendLedger::class);
 

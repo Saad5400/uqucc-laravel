@@ -2,11 +2,10 @@
 
 namespace App\Ai\Spend;
 
-use App\Ai\Gateway\ReasoningOpenRouterGateway;
 use App\Models\Ai\AiUsage;
 use App\Settings\AiSettings;
-use Illuminate\Support\Facades\Context;
 use Laravel\Ai\Responses\Data\Usage;
+use Saad\AiKit\Gateway\ContextSpendCollector;
 
 /**
  * The application's AI spend ledger — every paid turn is recorded here, and
@@ -14,11 +13,11 @@ use Laravel\Ai\Responses\Data\Usage;
  * it reaches AiSettings->daily_budget_usd, budget-gated features answer with
  * a polite Arabic "unavailable today" instead of calling the provider.
  *
- * Costs are the EXACT provider-reported USD amounts the custom gateway pushes
- * onto {@see Context} per model round (streamed and non-streamed keys are
- * separate so a helper call never folds into a chat turn). The pattern per
- * turn is: clearContextCosts() before the call, captureContextCosts() after,
- * record() the total.
+ * Costs are the EXACT provider-reported USD amounts ai-kit's gateway captures
+ * per model round (streamed and non-streamed buckets are separate so a helper
+ * call never folds into a chat turn). The pattern per turn is:
+ * clearContextCosts() before the call, captureContextCosts() after, record()
+ * the total.
  *
  * A daily_budget_usd of zero (or negative) means "spend nothing": the budget
  * is treated as already exhausted, making the setting itself an operator
@@ -26,7 +25,10 @@ use Laravel\Ai\Responses\Data\Usage;
  */
 class SpendLedger
 {
-    public function __construct(private readonly AiSettings $settings) {}
+    public function __construct(
+        private readonly AiSettings $settings,
+        private readonly ContextSpendCollector $spend,
+    ) {}
 
     /**
      * Record one turn's spend. Always recorded — even a zero-cost turn — so
@@ -44,14 +46,12 @@ class SpendLedger
     }
 
     /**
-     * Drop any per-round costs a previous turn left on Context, so the next
+     * Drop any per-round costs a previous turn left behind, so the next
      * capture sums only the upcoming call's rounds.
      */
     public function clearContextCosts(): void
     {
-        Context::forget(ReasoningOpenRouterGateway::COSTS_CONTEXT_KEY);
-        Context::forget(ReasoningOpenRouterGateway::NON_STREAM_COSTS_CONTEXT_KEY);
-        Context::forget(ReasoningOpenRouterGateway::GENERATION_IDS_CONTEXT_KEY);
+        $this->spend->flush();
     }
 
     /**
@@ -60,14 +60,9 @@ class SpendLedger
      */
     public function captureContextCosts(): float
     {
-        $costs = array_merge(
-            (array) Context::get(ReasoningOpenRouterGateway::COSTS_CONTEXT_KEY, []),
-            (array) Context::get(ReasoningOpenRouterGateway::NON_STREAM_COSTS_CONTEXT_KEY, []),
-        );
+        [$total] = $this->spend->drain();
 
-        $this->clearContextCosts();
-
-        return array_sum(array_map(floatval(...), $costs));
+        return $total;
     }
 
     /**

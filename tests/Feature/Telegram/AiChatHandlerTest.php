@@ -143,7 +143,7 @@ it('replies in an activated private chat and stores the conversation for the cha
 
     $conversation = Conversation::query()->sole();
 
-    expect($conversation->getAttribute('user_id'))->toBe('telegram:900123')
+    expect($conversation->getAttribute('participant_id'))->toBe('telegram:900123')
         ->and($chatSettings->refresh()->conversation_id)->toBe($conversation->getKey());
 
     $usage = AiUsage::query()->sole();

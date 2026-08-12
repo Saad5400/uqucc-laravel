@@ -109,7 +109,7 @@ class ChatController extends Controller
 
         $owned = Conversation::query()
             ->whereKey($conversation)
-            ->where('user_id', $request->session()->getId())
+            ->where('participant_id', $request->session()->getId())
             ->exists();
 
         abort_unless($owned, 404);
@@ -262,7 +262,7 @@ class ChatController extends Controller
 
         $owned = Conversation::query()
             ->whereKey($conversationId)
-            ->where('user_id', $sessionId)
+            ->where('participant_id', $sessionId)
             ->exists();
 
         return $owned ? $conversationId : null;

@@ -112,7 +112,7 @@ class AdminAssistantController extends Controller
 
         $owned = Conversation::query()
             ->whereKey($conversation)
-            ->where('user_id', (new AdminOwner($admin))->id)
+            ->where('participant_id', (new AdminOwner($admin))->id)
             ->exists();
 
         abort_unless($owned, 404);
@@ -257,7 +257,7 @@ class AdminAssistantController extends Controller
 
         $owned = Conversation::query()
             ->whereKey($conversationId)
-            ->where('user_id', $owner->id)
+            ->where('participant_id', $owner->id)
             ->exists();
 
         return $owned ? $conversationId : null;
