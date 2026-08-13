@@ -126,6 +126,7 @@ class ChatAttachmentTextExtractor
         }
 
         $this->ledger->clearContextCosts();
+        $this->ledger->labelTurn('assistant_attachment');
 
         $file = $attachment->localFile();
 

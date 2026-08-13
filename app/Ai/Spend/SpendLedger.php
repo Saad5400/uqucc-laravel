@@ -4,6 +4,7 @@ namespace App\Ai\Spend;
 
 use App\Models\Ai\AiUsage;
 use App\Settings\AiSettings;
+use Illuminate\Support\Facades\Context;
 use Laravel\Ai\Responses\Data\Usage;
 use Saad\AiKit\Gateway\ContextSpendCollector;
 
@@ -29,6 +30,16 @@ class SpendLedger
         private readonly AiSettings $settings,
         private readonly ContextSpendCollector $spend,
     ) {}
+
+    /**
+     * Label the upcoming turn so ai-kit's usage module records it under the
+     * same feature name this ledger uses. Call before prompting the agent —
+     * the label is read when laravel/ai's turn-completed event fires.
+     */
+    public function labelTurn(string $feature): void
+    {
+        Context::add(config('ai-kit.usage.feature_context_key', 'ai-kit.feature'), $feature);
+    }
 
     /**
      * Record one turn's spend. Always recorded — even a zero-cost turn — so

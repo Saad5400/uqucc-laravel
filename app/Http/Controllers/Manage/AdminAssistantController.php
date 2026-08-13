@@ -201,6 +201,8 @@ class AdminAssistantController extends Controller
             ? $agent->continue($conversationId, $owner)
             : $agent->forUser($owner);
 
+        $ledger->labelTurn(self::FEATURE);
+
         try {
             $response = $agent->stream($prompt);
 

@@ -291,6 +291,7 @@ class QuizAuthor
     private function generate(string $prompt): array
     {
         $this->ledger->clearContextCosts();
+        $this->ledger->labelTurn(self::FEATURE);
 
         $tool = new SubmitQuizQuestionTool;
         $response = null;

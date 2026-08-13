@@ -377,6 +377,8 @@ class AiChatHandler extends BaseHandler
             ? $agent->continue($conversationId, $owner)
             : $agent->forUser($owner);
 
+        $this->ledger->labelTurn(self::FEATURE);
+
         try {
             $response = $agent->stream($prompt);
 

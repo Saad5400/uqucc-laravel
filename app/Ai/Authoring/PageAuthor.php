@@ -378,6 +378,7 @@ class PageAuthor
     private function generate(string $instructions, string $prompt): string
     {
         $this->ledger->clearContextCosts();
+        $this->ledger->labelTurn(self::FEATURE);
 
         try {
             $response = (new PageAuthoringAgent($instructions))->prompt($prompt);
