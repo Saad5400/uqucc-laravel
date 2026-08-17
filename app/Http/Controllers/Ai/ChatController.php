@@ -19,11 +19,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Ai\Models\ConversationMessage;
-use Laravel\Ai\Streaming\Events\Error as ErrorEvent;
-use Laravel\Ai\Streaming\Events\TextDelta;
-use Laravel\Ai\Streaming\Events\ToolResult as ToolResultEvent;
 use Saad\AiKit\Conversations\ConversationOwnership;
 use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Streaming\SseStream;
+use Saad\AiKit\Streaming\StreamEventMapper;
+use Saad\AiKit\Streaming\StreamResult;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
@@ -84,11 +84,7 @@ class ChatController extends Controller
         return response()->stream(
             fn () => $this->streamTurn($prompt, $sessionId, $conversationId, $attachments, $citations),
             200,
-            [
-                'Content-Type' => 'text/event-stream',
-                'Cache-Control' => 'no-cache, no-transform',
-                'X-Accel-Buffering' => 'no',
-            ],
+            SseStream::headers(),
         );
     }
 
@@ -137,9 +133,11 @@ class ChatController extends Controller
     }
 
     /**
-     * Run the turn against the model and emit the SSE events. Runs inside the
-     * streamed response, so every outcome — including a thrown provider
-     * error — must land as an event the client understands.
+     * Run the turn against the model and emit the SSE events, folded through
+     * ai-kit's StreamEventMapper (the link guard rides the text pipeline,
+     * citations ride beforeDone). Runs inside the streamed response, so every
+     * outcome — including a thrown provider error — must land as an event
+     * the client understands.
      *
      * @param  EloquentCollection<int, ChatAttachment>  $attachments
      */
@@ -150,7 +148,8 @@ class ChatController extends Controller
         EloquentCollection $attachments,
         CitationExtractor $citations,
     ): void {
-        set_time_limit((int) config('ai.chat.timeout', 60) + 30);
+        $sse = new SseStream;
+        $sse->extendTimeLimit((int) config('ai.chat.timeout', 60) + 30);
 
         // ai-kit's usage module records the turn (exact provider cost,
         // tokens, timings) automatically; the label is all it needs.
@@ -166,49 +165,35 @@ class ChatController extends Controller
         try {
             $response = $agent->stream($prompt);
 
-            $toolResults = [];
-            $linkGuard = new StreamingAnswerLinkGuard(app(AnswerLinkGuard::class));
+            (new StreamEventMapper)
+                ->transformText(new StreamingAnswerLinkGuard(app(AnswerLinkGuard::class)))
+                ->onError(fn (): string => $this->genericErrorMessage())
+                ->beforeDone(function (StreamResult $result, callable $emit) use ($citations): void {
+                    $items = $citations->extract($result->toolResults);
 
-            foreach ($response as $event) {
-                if ($event instanceof TextDelta) {
-                    if (($text = $linkGuard->push($event->delta)) !== '') {
-                        $this->emit('delta', ['text' => $text]);
+                    if ($items !== []) {
+                        $emit('citations', ['items' => $items]);
                     }
-                } elseif ($event instanceof ToolResultEvent) {
-                    $toolResults[] = $event->toolResult;
-                } elseif ($event instanceof ErrorEvent) {
-                    $this->emit('error', ['message' => $this->genericErrorMessage()]);
+                })
+                ->doneUsing(function () use ($response, $conversationId, $attachments): array {
+                    $finalConversationId = $response->conversationId ?? $conversationId;
 
-                    return;
-                }
-            }
+                    if ($finalConversationId !== null && $attachments->isNotEmpty()) {
+                        ChatAttachment::query()
+                            ->whereKey($attachments->modelKeys())
+                            ->update(['conversation_id' => $finalConversationId]);
+                    }
 
-            if (($text = $linkGuard->flush()) !== '') {
-                $this->emit('delta', ['text' => $text]);
-            }
-
-            $items = $citations->extract($toolResults);
-
-            if ($items !== []) {
-                $this->emit('citations', ['items' => $items]);
-            }
-
-            $finalConversationId = $response->conversationId ?? $conversationId;
-
-            if ($finalConversationId !== null && $attachments->isNotEmpty()) {
-                ChatAttachment::query()
-                    ->whereKey($attachments->modelKeys())
-                    ->update(['conversation_id' => $finalConversationId]);
-            }
-
-            $this->emit('done', [
-                'conversation_id' => $finalConversationId,
-                'message_id' => $this->latestAssistantMessageId($finalConversationId),
-            ]);
+                    return [
+                        'conversation_id' => $finalConversationId,
+                        'message_id' => $this->latestAssistantMessageId($finalConversationId),
+                    ];
+                })
+                ->run($response, fn (string $event, array $data) => $sse->emit($event, $data));
         } catch (Throwable $exception) {
             report($exception);
 
-            $this->emit('error', ['message' => $this->genericErrorMessage()]);
+            $sse->emit('error', ['message' => $this->genericErrorMessage()]);
         }
     }
 
@@ -280,27 +265,6 @@ class ChatController extends Controller
             ->where('role', 'assistant')
             ->orderByDesc('id')
             ->value('id');
-    }
-
-    /**
-     * Write one SSE event frame and flush it to the client immediately.
-     *
-     * @param  array<string, mixed>  $data
-     */
-    private function emit(string $event, array $data): void
-    {
-        echo 'event: '.$event."\n";
-        echo 'data: '.json_encode($data, JSON_UNESCAPED_UNICODE)."\n\n";
-
-        if (app()->runningUnitTests()) {
-            return;
-        }
-
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-
-        flush();
     }
 
     private function disabledResponse(): JsonResponse

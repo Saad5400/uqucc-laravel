@@ -17,11 +17,11 @@ use Illuminate\Support\Facades\Context;
 use Inertia\Inertia;
 use Inertia\Response;
 use Laravel\Ai\Models\ConversationMessage;
-use Laravel\Ai\Streaming\Events\Error as ErrorEvent;
-use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\Streaming\Events\ToolResult as ToolResultEvent;
 use Saad\AiKit\Conversations\ConversationOwnership;
 use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Streaming\SseStream;
+use Saad\AiKit\Streaming\StreamEventMapper;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
@@ -86,11 +86,7 @@ class AdminAssistantController extends Controller
         return response()->stream(
             fn () => $this->streamTurn($prompt, $owner, $conversationId, $proposals),
             200,
-            [
-                'Content-Type' => 'text/event-stream',
-                'Cache-Control' => 'no-cache, no-transform',
-                'X-Accel-Buffering' => 'no',
-            ],
+            SseStream::headers(),
         );
     }
 
@@ -182,8 +178,10 @@ class AdminAssistantController extends Controller
     }
 
     /**
-     * Run the turn against the model and emit the SSE events. Every outcome
-     * — including a thrown provider error — must land as an event.
+     * Run the turn against the model and emit the SSE events, folded through
+     * ai-kit's StreamEventMapper (proposal cards ride a ToolResult hook).
+     * Every outcome — including a thrown provider error — must land as an
+     * event.
      */
     private function streamTurn(
         string $prompt,
@@ -191,7 +189,8 @@ class AdminAssistantController extends Controller
         ?string $conversationId,
         ProposalExtractor $proposals,
     ): void {
-        set_time_limit((int) config('ai.chat.timeout', 60) + 30);
+        $sse = new SseStream;
+        $sse->extendTimeLimit((int) config('ai.chat.timeout', 60) + 30);
 
         // ai-kit's usage module records the turn (exact provider cost,
         // tokens, timings) automatically; the label is all it needs.
@@ -205,27 +204,21 @@ class AdminAssistantController extends Controller
         try {
             $response = $agent->stream($prompt);
 
-            foreach ($response as $event) {
-                if ($event instanceof TextDelta) {
-                    $this->emit('delta', ['text' => $event->delta]);
-                } elseif ($event instanceof ToolResultEvent) {
+            (new StreamEventMapper)
+                ->onError(fn (): string => $this->genericErrorMessage())
+                ->on(ToolResultEvent::class, function (ToolResultEvent $event, callable $emit) use ($proposals): void {
                     foreach ($proposals->extract([$event->toolResult]) as $card) {
-                        $this->emit('proposal', $card);
+                        $emit('proposal', $card);
                     }
-                } elseif ($event instanceof ErrorEvent) {
-                    $this->emit('error', ['message' => $this->genericErrorMessage()]);
-
-                    return;
-                }
-            }
-
-            $this->emit('done', [
-                'conversation_id' => $response->conversationId ?? $conversationId,
-            ]);
+                })
+                ->doneUsing(fn (): array => [
+                    'conversation_id' => $response->conversationId ?? $conversationId,
+                ])
+                ->run($response, fn (string $event, array $data) => $sse->emit($event, $data));
         } catch (Throwable $exception) {
             report($exception);
 
-            $this->emit('error', ['message' => $this->genericErrorMessage()]);
+            $sse->emit('error', ['message' => $this->genericErrorMessage()]);
         }
     }
 
@@ -244,27 +237,6 @@ class AdminAssistantController extends Controller
         return $ownership->owns($conversationId, $owner->id, AdminOwner::class)
             ? $conversationId
             : null;
-    }
-
-    /**
-     * Write one SSE event frame and flush it to the client immediately.
-     *
-     * @param  array<string, mixed>  $data
-     */
-    private function emit(string $event, array $data): void
-    {
-        echo 'event: '.$event."\n";
-        echo 'data: '.json_encode($data, JSON_UNESCAPED_UNICODE)."\n\n";
-
-        if (app()->runningUnitTests()) {
-            return;
-        }
-
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-
-        flush();
     }
 
     private function disabledResponse(AiSettings $settings): JsonResponse
