@@ -24,7 +24,7 @@ use Stringable;
  * The site operator's copilot inside /manage — the confirm-gated counterpart
  * of {@see \App\Ai\Agents\StudentAssistant}. It can INSPECT pages and
  * settings freely (read tools run immediately) but can only PROPOSE writes:
- * the propose_* tools persist an {@see \App\Models\Ai\AdminPendingAction}
+ * the propose_* tools persist a pending {@see \Saad\AiKit\Approvals\Proposal}
  * that a human must confirm in the UI before anything is applied.
  *
  * Invocation mirrors the public assistant, with the authenticated admin as

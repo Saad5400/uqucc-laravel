@@ -9,7 +9,6 @@ use App\Ai\Chat\CategoryContext;
 use App\Ai\Chat\ChatAttachmentTextExtractor;
 use App\Ai\Chat\SessionOwner;
 use App\Ai\Chat\TelegramTurnContext;
-use App\Ai\Spend\SpendLedger;
 use App\Jobs\AnnounceDeletedAiRequest;
 use App\Jobs\ProcessTelegramMediaGroup;
 use App\Models\Ai\ChatAttachment;
@@ -21,11 +20,13 @@ use App\Support\LocalFile;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\File;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
-use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Streaming\Events\Error as ErrorEvent;
+use Saad\AiKit\Conversations\ConversationOwnership;
+use Saad\AiKit\Safety\BudgetGuard;
 use Telegram\Bot\Api;
 use Telegram\Bot\Objects\Document;
 use Telegram\Bot\Objects\Message;
@@ -42,7 +43,7 @@ use Throwable;
  * the explicit «سيك …» ask prefix on the message text/caption (the ONLY
  * invocation, in every chat type — the bot never answers plain chatter,
  * replies, or mentions) → per-CHAT rate limits (burst + operator daily
- * quota) → the daily spend budget via the {@see SpendLedger}.
+ * quota) → the daily spend budget via ai-kit's {@see BudgetGuard}.
  *
  * Conversation continuity is per chat: the laravel/ai conversation id lives
  * on the chat's settings row and /ai_new resets it. Photos and PDF documents
@@ -59,7 +60,7 @@ use Throwable;
  */
 class AiChatHandler extends BaseHandler
 {
-    /** Spend-ledger feature key for Telegram assistant turns. */
+    /** Usage feature label for Telegram assistant turns (ai-kit usage module). */
     protected const FEATURE = 'telegram';
 
     /** Telegram's hard per-message character limit. */
@@ -104,12 +105,13 @@ class AiChatHandler extends BaseHandler
     public function __construct(
         Api $telegram,
         protected AiSettings $settings,
-        protected SpendLedger $ledger,
+        protected BudgetGuard $budget,
         protected ChatAttachmentTextExtractor $extractor,
         protected AttachmentContext $attachmentContext,
         protected CategoryContext $categoryContext,
         protected TelegramTurnContext $turnContext,
         protected AnswerLinkGuard $linkGuard,
+        protected ConversationOwnership $ownership,
     ) {
         parent::__construct($telegram);
     }
@@ -124,12 +126,13 @@ class AiChatHandler extends BaseHandler
         return new self(
             $telegram,
             app(AiSettings::class),
-            app(SpendLedger::class),
+            app(BudgetGuard::class),
             app(ChatAttachmentTextExtractor::class),
             app(AttachmentContext::class),
             app(CategoryContext::class),
             app(TelegramTurnContext::class),
             app(AnswerLinkGuard::class),
+            app(ConversationOwnership::class),
         );
     }
 
@@ -224,8 +227,8 @@ class AiChatHandler extends BaseHandler
             return;
         }
 
-        if (! $this->ledger->hasBudgetRemaining()) {
-            $this->reply($message, $this->ledger->budgetExhaustedMessage());
+        if ($this->budget->exceeded()) {
+            $this->reply($message, __('ai-kit::safety.budget_exceeded'));
 
             return;
         }
@@ -360,14 +363,16 @@ class AiChatHandler extends BaseHandler
      * the chat's stored conversation. While the model works, the placeholder
      * message is edited with throttled plain-text progress (reasoning tail,
      * tool activity, the growing answer); the final formatted reply then
-     * replaces it. Spend is captured from the gateway's Context costs exactly
-     * like the web chat.
+     * replaces it. Spend is metered automatically by ai-kit's usage module,
+     * exactly like the web chat.
      */
     protected function runAssistantTurn(Message $message, TelegramChatSetting $chatSettings, string $prompt, int $placeholderMessageId): void
     {
         $chatId = (int) $chatSettings->chat_id;
 
-        $this->ledger->clearContextCosts();
+        // ai-kit's usage module records the turn (exact provider cost,
+        // tokens, timings) automatically; the label is all it needs.
+        Context::add(config('ai-kit.usage.feature_context_key'), self::FEATURE);
 
         $owner = new SessionOwner('telegram:'.$chatId);
 
@@ -394,8 +399,6 @@ class AiChatHandler extends BaseHandler
                 $progress->note($event);
             }
 
-            $this->recordSpend($response->usage ?? null);
-
             if ($failed) {
                 $this->editMessage($chatId, $placeholderMessageId, 'حدث خطأ أثناء توليد الرد. حاول مرة أخرى.');
 
@@ -409,8 +412,6 @@ class AiChatHandler extends BaseHandler
             $this->watchForDeletedRequest($message, $placeholderMessageId);
         } catch (Throwable $exception) {
             report($exception);
-
-            $this->recordSpend(null);
 
             $this->editMessage($chatId, $placeholderMessageId, 'حدث خطأ أثناء توليد الرد. حاول مرة أخرى.');
         }
@@ -467,7 +468,8 @@ class AiChatHandler extends BaseHandler
 
     /**
      * Continue only a conversation that still exists and belongs to this
-     * chat's owner key; a pruned or foreign id starts a fresh thread.
+     * chat's owner key (ai-kit's ownership guard checks participant id AND
+     * type); a pruned or foreign id starts a fresh thread.
      */
     protected function continuableConversationId(TelegramChatSetting $chatSettings, SessionOwner $owner): ?string
     {
@@ -477,21 +479,9 @@ class AiChatHandler extends BaseHandler
             return null;
         }
 
-        $exists = Conversation::query()
-            ->whereKey($conversationId)
-            ->where('participant_id', $owner->id)
-            ->exists();
-
-        return $exists ? $conversationId : null;
-    }
-
-    protected function recordSpend(?\Laravel\Ai\Responses\Data\Usage $usage): void
-    {
-        try {
-            $this->ledger->record(self::FEATURE, trim($this->settings->chat_model), $usage, $this->ledger->captureContextCosts());
-        } catch (Throwable $exception) {
-            report($exception);
-        }
+        return $this->ownership->owns($conversationId, $owner->id, SessionOwner::class)
+            ? $conversationId
+            : null;
     }
 
     /**

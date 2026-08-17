@@ -4,23 +4,25 @@ namespace App\Http\Controllers\Manage;
 
 use App\Ai\Admin\AdminAssistant;
 use App\Ai\Admin\AdminOwner;
-use App\Ai\Admin\ProposalExecutor;
-use App\Ai\Admin\ProposalExtractor;
-use App\Ai\Spend\SpendLedger;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Manage\AdminAssistantMessageRequest;
-use App\Models\Ai\AdminPendingAction;
 use App\Models\User;
 use App\Settings\AiSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Context;
 use Inertia\Inertia;
 use Inertia\Response;
-use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
-use Laravel\Ai\Streaming\Events\Error as ErrorEvent;
-use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\Streaming\Events\ToolResult as ToolResultEvent;
+use Saad\AiKit\Approvals\Exceptions\ProposalNotPendingException;
+use Saad\AiKit\Approvals\Proposal;
+use Saad\AiKit\Approvals\ProposalExecutor;
+use Saad\AiKit\Approvals\ProposalTrailer;
+use Saad\AiKit\Conversations\ConversationOwnership;
+use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Streaming\SseStream;
+use Saad\AiKit\Streaming\StreamEventMapper;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
@@ -38,7 +40,7 @@ use Throwable;
  */
 class AdminAssistantController extends Controller
 {
-    /** Spend-ledger feature key for admin assistant turns. */
+    /** Usage feature label for admin assistant turns (ai-kit usage module). */
     private const FEATURE = 'admin_assistant';
 
     /**
@@ -63,32 +65,28 @@ class AdminAssistantController extends Controller
     public function send(
         AdminAssistantMessageRequest $request,
         AiSettings $settings,
-        SpendLedger $ledger,
-        ProposalExtractor $proposals,
+        BudgetGuard $budget,
+        ConversationOwnership $ownership,
     ): JsonResponse|StreamedResponse {
         if (! $settings->isFeatureEnabled('admin_assistant')) {
             return $this->disabledResponse($settings);
         }
 
-        if (! $ledger->hasBudgetRemaining()) {
-            return response()->json(['message' => $ledger->budgetExhaustedMessage()], 503);
+        if ($budget->exceeded()) {
+            return response()->json(['message' => __('ai-kit::safety.budget_exceeded')], 503);
         }
 
         /** @var User $admin */
         $admin = $request->user();
 
         $owner = new AdminOwner($admin);
-        $conversationId = $this->ownedConversationId($request->input('conversation_id'), $owner);
+        $conversationId = $this->ownedConversationId($request->input('conversation_id'), $owner, $ownership);
         $prompt = $request->validated('message');
 
         return response()->stream(
-            fn () => $this->streamTurn($prompt, $owner, $conversationId, $settings, $ledger, $proposals),
+            fn () => $this->streamTurn($prompt, $owner, $conversationId, (string) $admin->getKey()),
             200,
-            [
-                'Content-Type' => 'text/event-stream',
-                'Cache-Control' => 'no-cache, no-transform',
-                'X-Accel-Buffering' => 'no',
-            ],
+            SseStream::headers(),
         );
     }
 
@@ -100,7 +98,7 @@ class AdminAssistantController extends Controller
     public function show(
         Request $request,
         AiSettings $settings,
-        ProposalExtractor $proposals,
+        ConversationOwnership $ownership,
         string $conversation,
     ): JsonResponse {
         if (! $settings->isFeatureEnabled('admin_assistant')) {
@@ -110,12 +108,12 @@ class AdminAssistantController extends Controller
         /** @var User $admin */
         $admin = $request->user();
 
-        $owned = Conversation::query()
-            ->whereKey($conversation)
-            ->where('participant_id', (new AdminOwner($admin))->id)
-            ->exists();
+        abort_unless(
+            $ownership->owns($conversation, (new AdminOwner($admin))->id, AdminOwner::class),
+            404,
+        );
 
-        abort_unless($owned, 404);
+        $proposedBy = (string) $admin->getKey();
 
         $messages = ConversationMessage::query()
             ->where('conversation_id', $conversation)
@@ -125,7 +123,10 @@ class AdminAssistantController extends Controller
                 'role' => (string) $message->getAttribute('role'),
                 'content' => (string) $message->getAttribute('content'),
                 'proposals' => $message->getAttribute('role') === 'assistant'
-                    ? $proposals->extractFromStored((array) $message->getAttribute('tool_results'))
+                    ? ProposalTrailer::cards(
+                        array_column((array) $message->getAttribute('tool_results'), 'result'),
+                        $proposedBy,
+                    )
                     : [],
                 'created_at' => $message->getAttribute('created_at')?->toIso8601String(),
             ])
@@ -141,20 +142,24 @@ class AdminAssistantController extends Controller
     public function confirm(
         AiSettings $settings,
         ProposalExecutor $executor,
-        AdminPendingAction $proposal,
+        Proposal $proposal,
     ): JsonResponse {
         if (! $settings->isFeatureEnabled('admin_assistant')) {
             return $this->disabledResponse($settings);
         }
 
-        if (! $proposal->isPending()) {
-            return response()->json([
-                'message' => 'هذا الاقتراح لم يعد بانتظار التأكيد.',
-                'proposal' => $proposal->toClientPayload(),
-            ], 409);
+        // The action executes as the admin who PROPOSED it (their abilities
+        // were checked at propose time); a deleted proposer fails the
+        // re-validation with the reason on the card.
+        $proposer = User::query()->find((int) $proposal->proposed_by);
+
+        try {
+            $confirmed = $executor->confirm($proposal, $proposer);
+        } catch (ProposalNotPendingException $exception) {
+            return $this->notPendingResponse($exception);
         }
 
-        return response()->json(['proposal' => $executor->confirm($proposal)->toClientPayload()]);
+        return response()->json(['proposal' => $confirmed->toClientPayload()]);
     }
 
     /**
@@ -164,37 +169,51 @@ class AdminAssistantController extends Controller
     public function reject(
         AiSettings $settings,
         ProposalExecutor $executor,
-        AdminPendingAction $proposal,
+        Proposal $proposal,
     ): JsonResponse {
         if (! $settings->isFeatureEnabled('admin_assistant')) {
             return $this->disabledResponse($settings);
         }
 
-        if (! $proposal->isPending()) {
-            return response()->json([
-                'message' => 'هذا الاقتراح لم يعد بانتظار التأكيد.',
-                'proposal' => $proposal->toClientPayload(),
-            ], 409);
+        try {
+            $rejected = $executor->reject($proposal);
+        } catch (ProposalNotPendingException $exception) {
+            return $this->notPendingResponse($exception);
         }
 
-        return response()->json(['proposal' => $executor->reject($proposal)->toClientPayload()]);
+        return response()->json(['proposal' => $rejected->toClientPayload()]);
     }
 
     /**
-     * Run the turn against the model and emit the SSE events. Every outcome
-     * — including a thrown provider error — must land as an event.
+     * The 409 whose body is the proposal's CURRENT card, so the client
+     * repaints instead of guessing.
+     */
+    private function notPendingResponse(ProposalNotPendingException $exception): JsonResponse
+    {
+        return response()->json([
+            'message' => 'هذا الاقتراح لم يعد بانتظار التأكيد.',
+            'proposal' => $exception->proposal->toClientPayload(),
+        ], 409);
+    }
+
+    /**
+     * Run the turn against the model and emit the SSE events, folded through
+     * ai-kit's StreamEventMapper (proposal cards ride a ToolResult hook).
+     * Every outcome — including a thrown provider error — must land as an
+     * event.
      */
     private function streamTurn(
         string $prompt,
         AdminOwner $owner,
         ?string $conversationId,
-        AiSettings $settings,
-        SpendLedger $ledger,
-        ProposalExtractor $proposals,
+        string $proposedBy,
     ): void {
-        set_time_limit((int) config('ai.chat.timeout', 60) + 30);
+        $sse = new SseStream;
+        $sse->extendTimeLimit((int) config('ai.chat.timeout', 60) + 30);
 
-        $ledger->clearContextCosts();
+        // ai-kit's usage module records the turn (exact provider cost,
+        // tokens, timings) automatically; the label is all it needs.
+        Context::add(config('ai-kit.usage.feature_context_key'), self::FEATURE);
 
         $agent = AdminAssistant::make();
         $agent = $conversationId !== null
@@ -204,84 +223,39 @@ class AdminAssistantController extends Controller
         try {
             $response = $agent->stream($prompt);
 
-            foreach ($response as $event) {
-                if ($event instanceof TextDelta) {
-                    $this->emit('delta', ['text' => $event->delta]);
-                } elseif ($event instanceof ToolResultEvent) {
-                    foreach ($proposals->extract([$event->toolResult]) as $card) {
-                        $this->emit('proposal', $card);
+            (new StreamEventMapper)
+                ->onError(fn (): string => $this->genericErrorMessage())
+                ->on(ToolResultEvent::class, function (ToolResultEvent $event, callable $emit) use ($proposedBy): void {
+                    foreach (ProposalTrailer::cards([$event->toolResult->result], $proposedBy) as $card) {
+                        $emit('proposal', $card);
                     }
-                } elseif ($event instanceof ErrorEvent) {
-                    $this->recordSpend($ledger, $settings, $response->usage ?? null);
-                    $this->emit('error', ['message' => $this->genericErrorMessage()]);
-
-                    return;
-                }
-            }
-
-            $this->recordSpend($ledger, $settings, $response->usage ?? null);
-
-            $this->emit('done', [
-                'conversation_id' => $response->conversationId ?? $conversationId,
-            ]);
+                })
+                ->doneUsing(fn (): array => [
+                    'conversation_id' => $response->conversationId ?? $conversationId,
+                ])
+                ->run($response, fn (string $event, array $data) => $sse->emit($event, $data));
         } catch (Throwable $exception) {
             report($exception);
 
-            $this->recordSpend($ledger, $settings, null);
-            $this->emit('error', ['message' => $this->genericErrorMessage()]);
+            $sse->emit('error', ['message' => $this->genericErrorMessage()]);
         }
     }
 
     /**
-     * Record the turn's exact provider spend on the ledger. Never fails the turn.
+     * Continue only a conversation this admin actually owns (ai-kit's
+     * ownership guard checks participant id AND type); a foreign or unknown
+     * id starts a fresh thread instead of leaking (or writing into) another
+     * participant's history.
      */
-    private function recordSpend(SpendLedger $ledger, AiSettings $settings, ?\Laravel\Ai\Responses\Data\Usage $usage): void
-    {
-        try {
-            $ledger->record(self::FEATURE, trim($settings->chat_model), $usage, $ledger->captureContextCosts());
-        } catch (Throwable $exception) {
-            report($exception);
-        }
-    }
-
-    /**
-     * Continue only a conversation this admin actually owns; a foreign or
-     * unknown id starts a fresh thread instead of leaking (or writing into)
-     * another participant's history.
-     */
-    private function ownedConversationId(mixed $conversationId, AdminOwner $owner): ?string
+    private function ownedConversationId(mixed $conversationId, AdminOwner $owner, ConversationOwnership $ownership): ?string
     {
         if (! is_string($conversationId) || $conversationId === '') {
             return null;
         }
 
-        $owned = Conversation::query()
-            ->whereKey($conversationId)
-            ->where('participant_id', $owner->id)
-            ->exists();
-
-        return $owned ? $conversationId : null;
-    }
-
-    /**
-     * Write one SSE event frame and flush it to the client immediately.
-     *
-     * @param  array<string, mixed>  $data
-     */
-    private function emit(string $event, array $data): void
-    {
-        echo 'event: '.$event."\n";
-        echo 'data: '.json_encode($data, JSON_UNESCAPED_UNICODE)."\n\n";
-
-        if (app()->runningUnitTests()) {
-            return;
-        }
-
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-
-        flush();
+        return $ownership->owns($conversationId, $owner->id, AdminOwner::class)
+            ? $conversationId
+            : null;
     }
 
     private function disabledResponse(AiSettings $settings): JsonResponse

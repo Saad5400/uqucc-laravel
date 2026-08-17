@@ -2,7 +2,6 @@
 
 use App\Ai\Authoring\PageAuthoringAgent;
 use App\Jobs\Ai\AuthorPageFromDocumentJob;
-use App\Models\Ai\AiUsage;
 use App\Models\Ai\PageContentProposal;
 use App\Models\Corpus\CorpusDocument;
 use App\Models\Page;
@@ -13,6 +12,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Ai\Prompts\AgentPrompt;
+use Saad\AiKit\Usage\UsageEvent;
 
 beforeEach(function () {
     $this->withoutVite();
@@ -180,7 +180,7 @@ describe('authoring job — new content', function () {
 
         runAuthoringJob(CorpusDocument::factory()->ready()->create());
 
-        expect(AiUsage::query()->where('feature', 'authoring')->count())->toBe(1);
+        expect(UsageEvent::query()->where('feature', 'authoring')->count())->toBe(1);
     });
 
     it('falls back to the document title when the draft has no leading heading', function () {

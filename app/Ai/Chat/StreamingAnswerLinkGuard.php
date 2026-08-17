@@ -2,6 +2,8 @@
 
 namespace App\Ai\Chat;
 
+use Saad\AiKit\Streaming\TextTransformer;
+
 /**
  * {@see AnswerLinkGuard} applied to a live SSE stream. Text deltas arrive a few
  * characters at a time, so a link cannot be judged until it is whole: this
@@ -12,8 +14,11 @@ namespace App\Ai\Chat;
  * The alternative (stream raw, correct at the end) would flash a fabricated
  * source at the reader before retracting it. Holding a few dozen characters
  * for the handful of milliseconds a link takes to arrive is invisible.
+ *
+ * Implements ai-kit's TextTransformer so it slots into StreamEventMapper's
+ * text pipeline, which flushes the held tail when the stream ends.
  */
-class StreamingAnswerLinkGuard
+class StreamingAnswerLinkGuard implements TextTransformer
 {
     /** Text held back because it may still turn into a link. */
     private string $held = '';

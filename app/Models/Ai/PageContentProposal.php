@@ -15,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * authoring feature: {@see \App\Ai\Authoring\PageAuthor} persists the row as
  * `pending` without touching the live page; a human applies it from the
  * review screen (→ `applied`, or `failed` with the error surfaced) or rejects
- * it (→ `rejected`). Mirrors the AdminPendingAction confirm flow.
+ * it (→ `rejected`). Mirrors the assistant proposal confirm flow.
  *
  * @property int $id
  * @property int $page_id

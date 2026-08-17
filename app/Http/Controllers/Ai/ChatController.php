@@ -9,7 +9,6 @@ use App\Ai\Chat\CategoryContext;
 use App\Ai\Chat\CitationExtractor;
 use App\Ai\Chat\SessionOwner;
 use App\Ai\Chat\StreamingAnswerLinkGuard;
-use App\Ai\Spend\SpendLedger;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Ai\ChatMessageRequest;
 use App\Models\Ai\ChatAttachment;
@@ -17,12 +16,14 @@ use App\Settings\AiSettings;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\RateLimiter;
-use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
-use Laravel\Ai\Streaming\Events\Error as ErrorEvent;
-use Laravel\Ai\Streaming\Events\TextDelta;
-use Laravel\Ai\Streaming\Events\ToolResult as ToolResultEvent;
+use Saad\AiKit\Conversations\ConversationOwnership;
+use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Streaming\SseStream;
+use Saad\AiKit\Streaming\StreamEventMapper;
+use Saad\AiKit\Streaming\StreamResult;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
@@ -38,13 +39,13 @@ use Throwable;
  * budget, daily quota) answer as plain JSON before any stream starts.
  *
  * Layered gates, in order: assistant toggle (503, SearchController's
- * pattern) → daily spend budget via the SpendLedger (503) → the `ai-chat`
+ * pattern) → daily spend budget via ai-kit's BudgetGuard (503) → the `ai-chat`
  * burst limiter on the route (429) → the operator's per-session daily
  * message quota (429).
  */
 class ChatController extends Controller
 {
-    /** Spend-ledger feature key for assistant chat turns. */
+    /** Usage feature label for assistant chat turns (ai-kit usage module). */
     private const FEATURE = 'assistant';
 
     /**
@@ -53,7 +54,8 @@ class ChatController extends Controller
     public function send(
         ChatMessageRequest $request,
         AiSettings $settings,
-        SpendLedger $ledger,
+        BudgetGuard $budget,
+        ConversationOwnership $ownership,
         CitationExtractor $citations,
         AttachmentContext $attachmentContext,
         CategoryContext $categoryContext,
@@ -62,8 +64,8 @@ class ChatController extends Controller
             return $this->disabledResponse();
         }
 
-        if (! $ledger->hasBudgetRemaining()) {
-            return response()->json(['message' => $ledger->budgetExhaustedMessage()], 503);
+        if ($budget->exceeded()) {
+            return response()->json(['message' => __('ai-kit::safety.budget_exceeded')], 503);
         }
 
         $sessionId = $request->session()->getId();
@@ -72,7 +74,7 @@ class ChatController extends Controller
             return $quotaResponse;
         }
 
-        $conversationId = $this->ownedConversationId($request->input('conversation_id'), $sessionId);
+        $conversationId = $this->ownedConversationId($request->input('conversation_id'), $sessionId, $ownership);
         $attachments = $this->ownedAttachments($request->validated('attachment_ids', []), $sessionId);
 
         $question = (string) $request->validated('message');
@@ -80,13 +82,9 @@ class ChatController extends Controller
         $prompt = $categoryContext->wrap($attachmentContext->wrap($question, $attachments), $question);
 
         return response()->stream(
-            fn () => $this->streamTurn($prompt, $sessionId, $conversationId, $attachments, $settings, $ledger, $citations),
+            fn () => $this->streamTurn($prompt, $sessionId, $conversationId, $attachments, $citations),
             200,
-            [
-                'Content-Type' => 'text/event-stream',
-                'Cache-Control' => 'no-cache, no-transform',
-                'X-Accel-Buffering' => 'no',
-            ],
+            SseStream::headers(),
         );
     }
 
@@ -97,6 +95,7 @@ class ChatController extends Controller
     public function show(
         Request $request,
         AiSettings $settings,
+        ConversationOwnership $ownership,
         CitationExtractor $citations,
         AttachmentContext $attachmentContext,
         CategoryContext $categoryContext,
@@ -107,12 +106,10 @@ class ChatController extends Controller
             return $this->disabledResponse();
         }
 
-        $owned = Conversation::query()
-            ->whereKey($conversation)
-            ->where('participant_id', $request->session()->getId())
-            ->exists();
-
-        abort_unless($owned, 404);
+        abort_unless(
+            $ownership->owns($conversation, $request->session()->getId(), SessionOwner::class),
+            404,
+        );
 
         $messages = ConversationMessage::query()
             ->where('conversation_id', $conversation)
@@ -136,9 +133,11 @@ class ChatController extends Controller
     }
 
     /**
-     * Run the turn against the model and emit the SSE events. Runs inside the
-     * streamed response, so every outcome — including a thrown provider
-     * error — must land as an event the client understands.
+     * Run the turn against the model and emit the SSE events, folded through
+     * ai-kit's StreamEventMapper (the link guard rides the text pipeline,
+     * citations ride beforeDone). Runs inside the streamed response, so every
+     * outcome — including a thrown provider error — must land as an event
+     * the client understands.
      *
      * @param  EloquentCollection<int, ChatAttachment>  $attachments
      */
@@ -147,13 +146,14 @@ class ChatController extends Controller
         string $sessionId,
         ?string $conversationId,
         EloquentCollection $attachments,
-        AiSettings $settings,
-        SpendLedger $ledger,
         CitationExtractor $citations,
     ): void {
-        set_time_limit((int) config('ai.chat.timeout', 60) + 30);
+        $sse = new SseStream;
+        $sse->extendTimeLimit((int) config('ai.chat.timeout', 60) + 30);
 
-        $ledger->clearContextCosts();
+        // ai-kit's usage module records the turn (exact provider cost,
+        // tokens, timings) automatically; the label is all it needs.
+        Context::add(config('ai-kit.usage.feature_context_key'), self::FEATURE);
 
         $owner = new SessionOwner($sessionId);
 
@@ -165,66 +165,35 @@ class ChatController extends Controller
         try {
             $response = $agent->stream($prompt);
 
-            $toolResults = [];
-            $linkGuard = new StreamingAnswerLinkGuard(app(AnswerLinkGuard::class));
+            (new StreamEventMapper)
+                ->transformText(new StreamingAnswerLinkGuard(app(AnswerLinkGuard::class)))
+                ->onError(fn (): string => $this->genericErrorMessage())
+                ->beforeDone(function (StreamResult $result, callable $emit) use ($citations): void {
+                    $items = $citations->extract($result->toolResults);
 
-            foreach ($response as $event) {
-                if ($event instanceof TextDelta) {
-                    if (($text = $linkGuard->push($event->delta)) !== '') {
-                        $this->emit('delta', ['text' => $text]);
+                    if ($items !== []) {
+                        $emit('citations', ['items' => $items]);
                     }
-                } elseif ($event instanceof ToolResultEvent) {
-                    $toolResults[] = $event->toolResult;
-                } elseif ($event instanceof ErrorEvent) {
-                    $this->recordSpend($ledger, $settings, $response->usage ?? null);
-                    $this->emit('error', ['message' => $this->genericErrorMessage()]);
+                })
+                ->doneUsing(function () use ($response, $conversationId, $attachments): array {
+                    $finalConversationId = $response->conversationId ?? $conversationId;
 
-                    return;
-                }
-            }
+                    if ($finalConversationId !== null && $attachments->isNotEmpty()) {
+                        ChatAttachment::query()
+                            ->whereKey($attachments->modelKeys())
+                            ->update(['conversation_id' => $finalConversationId]);
+                    }
 
-            if (($text = $linkGuard->flush()) !== '') {
-                $this->emit('delta', ['text' => $text]);
-            }
-
-            $this->recordSpend($ledger, $settings, $response->usage ?? null);
-
-            $items = $citations->extract($toolResults);
-
-            if ($items !== []) {
-                $this->emit('citations', ['items' => $items]);
-            }
-
-            $finalConversationId = $response->conversationId ?? $conversationId;
-
-            if ($finalConversationId !== null && $attachments->isNotEmpty()) {
-                ChatAttachment::query()
-                    ->whereKey($attachments->modelKeys())
-                    ->update(['conversation_id' => $finalConversationId]);
-            }
-
-            $this->emit('done', [
-                'conversation_id' => $finalConversationId,
-                'message_id' => $this->latestAssistantMessageId($finalConversationId),
-            ]);
+                    return [
+                        'conversation_id' => $finalConversationId,
+                        'message_id' => $this->latestAssistantMessageId($finalConversationId),
+                    ];
+                })
+                ->run($response, fn (string $event, array $data) => $sse->emit($event, $data));
         } catch (Throwable $exception) {
             report($exception);
 
-            $this->recordSpend($ledger, $settings, null);
-            $this->emit('error', ['message' => $this->genericErrorMessage()]);
-        }
-    }
-
-    /**
-     * Record the turn's exact provider spend (streamed rounds summed from the
-     * gateway's Context costs) on the ledger. Never fails the turn.
-     */
-    private function recordSpend(SpendLedger $ledger, AiSettings $settings, ?\Laravel\Ai\Responses\Data\Usage $usage): void
-    {
-        try {
-            $ledger->record(self::FEATURE, trim($settings->chat_model), $usage, $ledger->captureContextCosts());
-        } catch (Throwable $exception) {
-            report($exception);
+            $sse->emit('error', ['message' => $this->genericErrorMessage()]);
         }
     }
 
@@ -250,22 +219,20 @@ class ChatController extends Controller
     }
 
     /**
-     * Continue only a conversation this session actually owns; a foreign or
-     * unknown id starts a fresh thread instead of leaking (or writing into)
-     * another visitor's history.
+     * Continue only a conversation this session actually owns (ai-kit's
+     * ownership guard checks participant id AND type); a foreign or unknown
+     * id starts a fresh thread instead of leaking (or writing into) another
+     * participant's history.
      */
-    private function ownedConversationId(mixed $conversationId, string $sessionId): ?string
+    private function ownedConversationId(mixed $conversationId, string $sessionId, ConversationOwnership $ownership): ?string
     {
         if (! is_string($conversationId) || $conversationId === '') {
             return null;
         }
 
-        $owned = Conversation::query()
-            ->whereKey($conversationId)
-            ->where('participant_id', $sessionId)
-            ->exists();
-
-        return $owned ? $conversationId : null;
+        return $ownership->owns($conversationId, $sessionId, SessionOwner::class)
+            ? $conversationId
+            : null;
     }
 
     /**
@@ -298,27 +265,6 @@ class ChatController extends Controller
             ->where('role', 'assistant')
             ->orderByDesc('id')
             ->value('id');
-    }
-
-    /**
-     * Write one SSE event frame and flush it to the client immediately.
-     *
-     * @param  array<string, mixed>  $data
-     */
-    private function emit(string $event, array $data): void
-    {
-        echo 'event: '.$event."\n";
-        echo 'data: '.json_encode($data, JSON_UNESCAPED_UNICODE)."\n\n";
-
-        if (app()->runningUnitTests()) {
-            return;
-        }
-
-        if (ob_get_level() > 0) {
-            ob_flush();
-        }
-
-        flush();
     }
 
     private function disabledResponse(): JsonResponse

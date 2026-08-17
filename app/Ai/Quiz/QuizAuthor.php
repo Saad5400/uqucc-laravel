@@ -2,13 +2,13 @@
 
 namespace App\Ai\Quiz;
 
-use App\Ai\Spend\SpendLedger;
 use App\Models\DailyQuiz;
 use App\Models\QuizTopic;
 use App\Settings\AiSettings;
 use Carbon\CarbonInterface;
+use Illuminate\Support\Facades\Context;
 use RuntimeException;
-use Throwable;
+use Saad\AiKit\Safety\BudgetGuard;
 
 /**
  * Generates the daily multiple-choice question: one authoring-tier agent call
@@ -21,12 +21,12 @@ use Throwable;
  * rules. A rejected question is corrected inside the same conversation — the
  * model is told exactly what failed — so there is no blind stateless retry.
  * Gated like every paid feature: the AI master switch, the OpenRouter key,
- * and the daily spend budget; each call's cost lands on the ledger under the
+ * and the daily spend budget; each call's cost is metered by ai-kit under the
  * `quiz` feature.
  */
 class QuizAuthor
 {
-    /** Spend-ledger feature key for quiz generations. */
+    /** Usage feature label for quiz generations (ai-kit usage module). */
     public const FEATURE = 'quiz';
 
     /** Telegram sendPoll hard limits the generated content must fit. */
@@ -148,7 +148,7 @@ class QuizAuthor
 
     public function __construct(
         private readonly AiSettings $settings,
-        private readonly SpendLedger $ledger,
+        private readonly BudgetGuard $budget,
     ) {}
 
     /**
@@ -184,8 +184,8 @@ class QuizAuthor
             throw new RuntimeException($reason);
         }
 
-        if (! $this->ledger->hasBudgetRemaining()) {
-            throw new RuntimeException($this->ledger->budgetExhaustedMessage());
+        if ($this->budget->exceeded()) {
+            throw new RuntimeException(__('ai-kit::safety.budget_exceeded'));
         }
 
         $existing = DailyQuiz::forDate($date);
@@ -280,7 +280,7 @@ class QuizAuthor
 
     /**
      * One authoring-tier generation with its exact provider cost recorded on
-     * the spend ledger under the `quiz` feature.
+     * ai-kit's usage module under the `quiz` feature.
      *
      * The question is validated behind {@see SubmitQuizQuestionTool}, so a
      * rejected candidate is corrected within this same agentic call; we read
@@ -290,16 +290,12 @@ class QuizAuthor
      */
     private function generate(string $prompt): array
     {
-        $this->ledger->clearContextCosts();
+        Context::add(config('ai-kit.usage.feature_context_key'), self::FEATURE);
 
         $tool = new SubmitQuizQuestionTool;
         $response = null;
 
-        try {
-            $response = (new QuizAuthoringAgent(self::INSTRUCTIONS, [$tool]))->prompt($prompt);
-        } finally {
-            $this->recordSpend($response);
-        }
+        $response = (new QuizAuthoringAgent(self::INSTRUCTIONS, [$tool]))->prompt($prompt);
 
         $accepted = $tool->accepted();
 
@@ -308,19 +304,5 @@ class QuizAuthor
         }
 
         return $accepted;
-    }
-
-    private function recordSpend(?\Laravel\Ai\Responses\AgentResponse $response): void
-    {
-        try {
-            $this->ledger->record(
-                self::FEATURE,
-                (string) config('ai.authoring.model', 'deepseek/deepseek-v4-pro'),
-                $response?->usage,
-                $this->ledger->captureContextCosts(),
-            );
-        } catch (Throwable $exception) {
-            report($exception);
-        }
     }
 }

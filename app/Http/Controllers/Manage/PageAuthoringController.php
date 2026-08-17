@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Manage;
 
 use App\Ai\Authoring\PageAuthor;
 use App\Ai\Copilot\TipTapContent;
-use App\Ai\Spend\SpendLedger;
 use App\Http\Controllers\Controller;
 use App\Jobs\Ai\AuthorPageFromDocumentJob;
 use App\Models\Ai\PageContentProposal;
@@ -12,6 +11,7 @@ use App\Models\Corpus\CorpusDocument;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
+use Saad\AiKit\Safety\BudgetGuard;
 
 /**
  * Document → page authoring endpoints: trigger a queued authoring run for an
@@ -28,7 +28,7 @@ class PageAuthoringController extends Controller
 {
     public function __construct(
         private readonly PageAuthor $author,
-        private readonly SpendLedger $ledger,
+        private readonly BudgetGuard $budget,
     ) {}
 
     /**
@@ -48,8 +48,8 @@ class PageAuthoringController extends Controller
             return back()->with('error', 'يوجد توليد قيد التنفيذ لهذا المستند بالفعل.');
         }
 
-        if (! $this->ledger->hasBudgetRemaining()) {
-            return back()->with('error', $this->ledger->budgetExhaustedMessage());
+        if ($this->budget->exceeded()) {
+            return back()->with('error', __('ai-kit::safety.budget_exceeded'));
         }
 
         $document->update([

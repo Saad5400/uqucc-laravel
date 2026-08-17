@@ -51,7 +51,7 @@ Route::get('/mstnd/{document}', App\Http\Controllers\CorpusDocumentFileControlle
     ->name('documents.show');
 
 // AI assistant chat (SSE + JSON; must come before catch-all route) - rate limited, never cached.
-// Feature/budget/daily-quota gating happens inside the controllers against AiSettings + SpendLedger.
+// Feature/budget/daily-quota gating happens inside the controllers against AiSettings + ai-kit BudgetGuard.
 Route::middleware('throttle:ai-chat')->group(function () {
     Route::post('/ai/chat', [ChatController::class, 'send'])->name('ai.chat.send');
     Route::post('/ai/chat/attachments', ChatAttachmentController::class)->name('ai.chat.attachments.store');

@@ -1,7 +1,6 @@
 <?php
 
 use App\Ai\Agents\StudentAssistant;
-use App\Models\Ai\AiUsage;
 use App\Models\Ai\ChatAttachment;
 use App\Models\Page;
 use App\Settings\AiSettings;
@@ -9,6 +8,8 @@ use Illuminate\Support\Str;
 use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
 use Laravel\Ai\Responses\Data\ToolCall;
+use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Usage\UsageEvent;
 
 beforeEach(function () {
     config()->set('ai.embeddings.driver', 'fake');
@@ -134,10 +135,10 @@ it('records the turn on the spend ledger', function () {
         ->assertOk()
         ->streamedContent();
 
-    $usage = AiUsage::query()->sole();
+    $usage = UsageEvent::query()->sole();
 
     expect($usage->feature)->toBe('assistant')
-        ->and($usage->cost)->toBe(0.0);
+        ->and((float) ($usage->cost_usd ?? 0.0))->toBe(0.0);
 });
 
 it('continues an owned conversation instead of starting a new one', function () {
@@ -331,12 +332,12 @@ it('answers 503 on every endpoint while the master ai kill switch is off', funct
 it('refuses politely without calling the model once the daily budget is spent', function () {
     StudentAssistant::fake(['يجب ألا يظهر هذا الرد.']);
 
-    AiUsage::factory()->create(['cost' => 6.0]);
+    app(BudgetGuard::class)->record(6.0);
 
     withChatSession(chatSessionId())
         ->postJson(route('ai.chat.send'), ['message' => 'مرحبا'])
         ->assertServiceUnavailable()
-        ->assertJsonPath('message', fn (string $message) => str_contains($message, 'غير متاح اليوم'));
+        ->assertJsonPath('message', __('ai-kit::safety.budget_exceeded'));
 
     StudentAssistant::assertNeverPrompted();
 
@@ -346,7 +347,9 @@ it('refuses politely without calling the model once the daily budget is spent', 
 it('spending from yesterday does not block today', function () {
     StudentAssistant::fake(['رد.']);
 
-    AiUsage::factory()->create(['cost' => 6.0, 'created_at' => now()->subDay()]);
+    $this->travel(-1)->days();
+    app(BudgetGuard::class)->record(6.0);
+    $this->travelBack();
 
     withChatSession(chatSessionId())
         ->post(route('ai.chat.send'), ['message' => 'مرحبا'])

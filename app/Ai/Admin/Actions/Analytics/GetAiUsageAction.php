@@ -4,16 +4,16 @@ namespace App\Ai\Admin\Actions\Analytics;
 
 use App\Ai\Admin\Actions\ActionResult;
 use App\Ai\Admin\Actions\AdminAction;
-use App\Models\Ai\AiUsage;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Collection;
+use Saad\AiKit\Usage\UsageEvent;
 
 /**
  * The AI spend ledger as text: all-time cost, cost over a recent window, today's
  * spend, and the breakdown by feature (تكلفة الذكاء الاصطناعي: الإجمالي، وآخر
- * فترة، واليوم، والتوزيع حسب الميزة). Sourced from {@see AiUsage}, the
- * append-only per-call cost rows. Read-only.
+ * فترة، واليوم، والتوزيع حسب الميزة). Sourced from ai-kit's {@see UsageEvent}
+ * rows — the append-only canonical usage ledger. Read-only.
  */
 class GetAiUsageAction extends AdminAction
 {
@@ -81,11 +81,11 @@ class GetAiUsageAction extends AdminAction
     {
         $days = (int) $normalized['days'];
 
-        $totalAllTime = (float) AiUsage::query()->sum('cost');
-        $totalWindow = (float) AiUsage::query()->where('created_at', '>=', now()->subDays($days))->sum('cost');
-        $totalToday = (float) AiUsage::query()->where('created_at', '>=', now()->startOfDay())->sum('cost');
+        $totalAllTime = (float) UsageEvent::query()->sum('cost_usd');
+        $totalWindow = (float) UsageEvent::query()->where('created_at', '>=', now()->subDays($days))->sum('cost_usd');
+        $totalToday = (float) UsageEvent::query()->where('created_at', '>=', now()->startOfDay())->sum('cost_usd');
 
-        if ($totalAllTime === 0.0 && AiUsage::query()->doesntExist()) {
+        if ($totalAllTime === 0.0 && UsageEvent::query()->doesntExist()) {
             return ActionResult::text('لا توجد بيانات استخدام للذكاء الاصطناعي بعد.');
         }
 
@@ -107,10 +107,10 @@ class GetAiUsageAction extends AdminAction
      */
     private function byFeatureLines(): array
     {
-        /** @var Collection<int, \App\Models\Ai\AiUsage> $rows */
-        $rows = AiUsage::query()
+        /** @var Collection<int, UsageEvent> $rows */
+        $rows = UsageEvent::query()
             ->select('feature')
-            ->selectRaw('SUM(cost) as total_cost')
+            ->selectRaw('SUM(cost_usd) as total_cost')
             ->groupBy('feature')
             ->orderByDesc('total_cost')
             ->get();
@@ -120,7 +120,7 @@ class GetAiUsageAction extends AdminAction
         }
 
         return $rows
-            ->map(fn (AiUsage $row): string => sprintf('- %s: %s $.', $row->feature, $this->money((float) $row->getAttribute('total_cost'))))
+            ->map(fn (UsageEvent $row): string => sprintf('- %s: %s $.', $row->feature ?? 'غير مصنّف', $this->money((float) $row->getAttribute('total_cost'))))
             ->all();
     }
 

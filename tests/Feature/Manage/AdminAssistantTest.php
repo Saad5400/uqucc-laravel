@@ -4,8 +4,6 @@ use App\Ai\Admin\Actions\AssistantActionTool;
 use App\Ai\Admin\Actions\Settings\GetSettingsAction;
 use App\Ai\Admin\AdminAssistant;
 use App\Ai\Admin\SettingsRegistry;
-use App\Models\Ai\AdminPendingAction;
-use App\Models\Ai\AiUsage;
 use App\Models\Page;
 use App\Models\User;
 use App\Settings\AiSettings;
@@ -17,6 +15,10 @@ use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
 use Laravel\Ai\Responses\Data\ToolCall;
 use Laravel\Ai\Tools\Request as ToolRequest;
+use Saad\AiKit\Approvals\Proposal;
+use Saad\AiKit\Approvals\ProposalStatus;
+use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Usage\UsageEvent;
 
 beforeEach(function () {
     $this->withoutVite();
@@ -89,6 +91,33 @@ function createAdminConversation(User $admin, array $toolResults = []): string
     return $conversationId;
 }
 
+/**
+ * Persist a kit proposal the way the assistant's propose path would —
+ * pending by default, in the manage_page_structure rename shape unless
+ * overridden.
+ */
+function makeProposal(User $admin, array $overrides = []): Proposal
+{
+    $type = $overrides['type'] ?? 'manage_page_structure';
+    $category = $overrides['category'] ?? 'pages';
+    $input = $overrides['input'] ?? ['action' => 'rename', 'page_id' => 1, 'title' => 'عنوان جديد'];
+
+    return Proposal::query()->create([
+        'type' => $type,
+        'category' => $category,
+        'payload' => [
+            'action' => $type,
+            'category' => $category,
+            'input' => $input,
+            'preview' => $input,
+        ],
+        'summary' => $overrides['summary'] ?? 'اقتراح إداري.',
+        'status' => $overrides['status'] ?? ProposalStatus::Pending,
+        'proposed_by' => (string) $admin->getKey(),
+        'executed_at' => $overrides['executed_at'] ?? null,
+    ]);
+}
+
 describe('authorization and gating', function () {
     it('redirects guests to the login page', function () {
         $this->get(route('manage.assistant.index'))->assertRedirect(route('manage.login'));
@@ -151,7 +180,7 @@ describe('authorization and gating', function () {
     it('refuses politely without calling the model once the daily budget is spent', function () {
         AdminAssistant::fake(['يجب ألا يظهر هذا الرد.']);
 
-        AiUsage::factory()->create(['cost' => 6.0]);
+        app(BudgetGuard::class)->record(6.0);
 
         $this->actingAs($this->admin)
             ->postJson(route('manage.assistant.send'), ['message' => 'مرحبا'])
@@ -161,7 +190,7 @@ describe('authorization and gating', function () {
     });
 
     it('answers 503 on confirm and reject while the feature is off', function () {
-        $proposal = AdminPendingAction::factory()->create(['proposed_by' => $this->admin->id]);
+        $proposal = makeProposal($this->admin);
 
         disableAdminAssistant();
 
@@ -173,7 +202,7 @@ describe('authorization and gating', function () {
             ->postJson(route('manage.assistant.proposals.reject', $proposal))
             ->assertServiceUnavailable();
 
-        expect($proposal->refresh()->status)->toBe(AdminPendingAction::STATUS_PENDING);
+        expect($proposal->refresh()->status)->toBe(ProposalStatus::Pending);
     });
 
     it('rejects an over-long message', function () {
@@ -213,10 +242,10 @@ describe('chat streaming', function () {
             ->assertOk()
             ->streamedContent();
 
-        $usage = AiUsage::query()->sole();
+        $usage = UsageEvent::query()->sole();
 
         expect($usage->feature)->toBe('admin_assistant')
-            ->and($usage->cost)->toBe(0.0);
+            ->and((float) ($usage->cost_usd ?? 0.0))->toBe(0.0);
     });
 
     it('starts a fresh thread when the conversation id belongs to another admin', function () {
@@ -236,7 +265,7 @@ describe('chat streaming', function () {
     });
 
     it('returns the stored thread with proposals carrying their CURRENT status', function () {
-        $proposal = AdminPendingAction::factory()->confirmed()->create(['proposed_by' => $this->admin->id]);
+        $proposal = makeProposal($this->admin, ['status' => ProposalStatus::Confirmed, 'executed_at' => now()]);
 
         $conversationId = createAdminConversation($this->admin, [[
             'id' => 'tc_1',
@@ -250,7 +279,7 @@ describe('chat streaming', function () {
             ->assertOk()
             ->assertJsonCount(2, 'messages')
             ->assertJsonPath('messages.1.proposals.0.id', $proposal->id)
-            ->assertJsonPath('messages.1.proposals.0.status', AdminPendingAction::STATUS_CONFIRMED);
+            ->assertJsonPath('messages.1.proposals.0.status', ProposalStatus::Confirmed->value);
     });
 
     it('answers 404 when another admin requests the thread', function () {
@@ -278,11 +307,11 @@ describe('proposal creation via tools', function () {
             ->assertOk()
             ->streamedContent();
 
-        $proposal = AdminPendingAction::query()->sole();
+        $proposal = Proposal::query()->sole();
 
-        expect($proposal->status)->toBe(AdminPendingAction::STATUS_PENDING)
+        expect($proposal->status)->toBe(ProposalStatus::Pending)
             ->and($proposal->type)->toBe('manage_page_structure')
-            ->and($proposal->proposed_by)->toBe($this->admin->id)
+            ->and($proposal->proposed_by)->toBe((string) $this->admin->id)
             ->and($proposal->payload['input']['action'])->toBe('rename')
             ->and($proposal->payload['input']['title'])->toBe('اللوائح الدراسية');
 
@@ -290,7 +319,7 @@ describe('proposal creation via tools', function () {
 
         expect($event)->not->toBeNull()
             ->and($event['id'])->toBe($proposal->id)
-            ->and($event['status'])->toBe(AdminPendingAction::STATUS_PENDING)
+            ->and($event['status'])->toBe(ProposalStatus::Pending->value)
             ->and($event['summary'])->toContain('اللوائح الدراسية');
 
         // Two-phase contract: nothing is applied at proposal time.
@@ -308,7 +337,7 @@ describe('proposal creation via tools', function () {
             ->assertOk()
             ->streamedContent();
 
-        $proposal = AdminPendingAction::query()->sole();
+        $proposal = Proposal::query()->sole();
 
         expect($proposal->type)->toBe('update_setting')
             ->and($proposal->payload['input']['group'])->toBe('ai')
@@ -330,7 +359,7 @@ describe('proposal creation via tools', function () {
             ->assertOk()
             ->streamedContent();
 
-        expect(AdminPendingAction::query()->count())->toBe(0)
+        expect(Proposal::query()->count())->toBe(0)
             ->and(adminSseEventData($content, 'proposal'))->toBeNull();
     });
 
@@ -345,7 +374,7 @@ describe('proposal creation via tools', function () {
             ->assertOk()
             ->streamedContent();
 
-        expect(AdminPendingAction::query()->count())->toBe(0);
+        expect(Proposal::query()->count())->toBe(0);
     })->with([
         'unknown group' => [['group' => 'mail', 'key' => 'driver', 'value' => 'smtp']],
         'unknown key' => [['group' => 'ai', 'key' => 'nonexistent_key', 'value' => 'true']],
@@ -358,16 +387,16 @@ describe('confirming proposals', function () {
     it('applies a rename through Eloquent (model events flush the app caches) and marks it confirmed', function () {
         $page = Page::factory()->create(['title' => 'قديم']);
 
-        $proposal = AdminPendingAction::factory()
-            ->forAction('manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد'])
-            ->create(['proposed_by' => $this->admin->id]);
+        $proposal = makeProposal($this->admin, [
+            'input' => ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد'],
+        ]);
 
         Cache::put(config('app-cache.keys.navigation_tree'), ['stale']);
 
         $this->actingAs($this->admin)
             ->postJson(route('manage.assistant.proposals.confirm', $proposal))
             ->assertOk()
-            ->assertJsonPath('proposal.status', AdminPendingAction::STATUS_CONFIRMED);
+            ->assertJsonPath('proposal.status', ProposalStatus::Confirmed->value);
 
         expect($page->refresh()->title)->toBe('جديد')
             ->and($proposal->refresh()->executed_at)->not->toBeNull()
@@ -380,14 +409,14 @@ describe('confirming proposals', function () {
         $sibling = Page::factory()->create(['parent_id' => $newParent->id, 'order' => 3]);
         $page = Page::factory()->create(['parent_id' => $oldParent->id]);
 
-        $proposal = AdminPendingAction::factory()
-            ->forAction('manage_page_structure', ['action' => 'move', 'page_id' => $page->id, 'parent_id' => $newParent->id])
-            ->create(['proposed_by' => $this->admin->id]);
+        $proposal = makeProposal($this->admin, [
+            'input' => ['action' => 'move', 'page_id' => $page->id, 'parent_id' => $newParent->id],
+        ]);
 
         $this->actingAs($this->admin)
             ->postJson(route('manage.assistant.proposals.confirm', $proposal))
             ->assertOk()
-            ->assertJsonPath('proposal.status', AdminPendingAction::STATUS_CONFIRMED);
+            ->assertJsonPath('proposal.status', ProposalStatus::Confirmed->value);
 
         expect($page->refresh()->parent_id)->toBe($newParent->id)
             ->and($page->order)->toBeGreaterThan($sibling->order);
@@ -396,17 +425,17 @@ describe('confirming proposals', function () {
     it('applies publish and unpublish through the hidden flag', function () {
         $page = Page::factory()->create(['hidden' => true]);
 
-        $publish = AdminPendingAction::factory()
-            ->forAction('manage_page_structure', ['action' => 'publish', 'page_id' => $page->id])
-            ->create(['proposed_by' => $this->admin->id]);
+        $publish = makeProposal($this->admin, [
+            'input' => ['action' => 'publish', 'page_id' => $page->id],
+        ]);
 
         $this->actingAs($this->admin)->postJson(route('manage.assistant.proposals.confirm', $publish))->assertOk();
 
         expect($page->refresh()->hidden)->toBeFalse();
 
-        $unpublish = AdminPendingAction::factory()
-            ->forAction('manage_page_structure', ['action' => 'unpublish', 'page_id' => $page->id])
-            ->create(['proposed_by' => $this->admin->id]);
+        $unpublish = makeProposal($this->admin, [
+            'input' => ['action' => 'unpublish', 'page_id' => $page->id],
+        ]);
 
         $this->actingAs($this->admin)->postJson(route('manage.assistant.proposals.confirm', $unpublish))->assertOk();
 
@@ -418,9 +447,9 @@ describe('confirming proposals', function () {
         $first = Page::factory()->create(['parent_id' => $parent->id, 'order' => 1]);
         $second = Page::factory()->create(['parent_id' => $parent->id, 'order' => 2]);
 
-        $proposal = AdminPendingAction::factory()
-            ->forAction('manage_page_structure', ['action' => 'reorder', 'ids' => [$second->id, $first->id]])
-            ->create(['proposed_by' => $this->admin->id]);
+        $proposal = makeProposal($this->admin, [
+            'input' => ['action' => 'reorder', 'ids' => [$second->id, $first->id]],
+        ]);
 
         $this->actingAs($this->admin)->postJson(route('manage.assistant.proposals.confirm', $proposal))->assertOk();
 
@@ -432,9 +461,9 @@ describe('confirming proposals', function () {
         $page = Page::factory()->create();
         $child = Page::factory()->create(['parent_id' => $page->id]);
 
-        $proposal = AdminPendingAction::factory()
-            ->forAction('manage_page_structure', ['action' => 'delete', 'page_id' => $page->id])
-            ->create(['proposed_by' => $this->admin->id]);
+        $proposal = makeProposal($this->admin, [
+            'input' => ['action' => 'delete', 'page_id' => $page->id],
+        ]);
 
         $this->actingAs($this->admin)->postJson(route('manage.assistant.proposals.confirm', $proposal))->assertOk();
 
@@ -445,14 +474,17 @@ describe('confirming proposals', function () {
     it('applies a settings change round-trip', function () {
         expect(app(AiSettings::class)->search_enabled)->toBeFalse();
 
-        $proposal = AdminPendingAction::factory()
-            ->settingsChange('ai', 'search_enabled', 'true')
-            ->create(['proposed_by' => $this->admin->id]);
+        $proposal = makeProposal($this->admin, [
+            'type' => 'update_setting',
+            'category' => 'settings',
+            'input' => ['group' => 'ai', 'key' => 'search_enabled', 'value' => 'true'],
+            'summary' => 'تغيير الإعداد ai.search_enabled.',
+        ]);
 
         $this->actingAs($this->admin)
             ->postJson(route('manage.assistant.proposals.confirm', $proposal))
             ->assertOk()
-            ->assertJsonPath('proposal.status', AdminPendingAction::STATUS_CONFIRMED);
+            ->assertJsonPath('proposal.status', ProposalStatus::Confirmed->value);
 
         expect(app(AiSettings::class)->refresh()->search_enabled)->toBeTrue();
     });
@@ -460,27 +492,27 @@ describe('confirming proposals', function () {
     it('marks the proposal failed with the reason when re-validation fails (page vanished)', function () {
         $page = Page::factory()->create();
 
-        $proposal = AdminPendingAction::factory()
-            ->forAction('manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد'])
-            ->create(['proposed_by' => $this->admin->id]);
+        $proposal = makeProposal($this->admin, [
+            'input' => ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد'],
+        ]);
 
         $page->forceDelete();
 
         $this->actingAs($this->admin)
             ->postJson(route('manage.assistant.proposals.confirm', $proposal))
             ->assertOk()
-            ->assertJsonPath('proposal.status', AdminPendingAction::STATUS_FAILED);
+            ->assertJsonPath('proposal.status', ProposalStatus::Failed->value);
 
         expect($proposal->refresh()->error)->not->toBeNull();
     });
 
     it('answers 409 when the proposal is no longer pending', function () {
-        $proposal = AdminPendingAction::factory()->rejected()->create(['proposed_by' => $this->admin->id]);
+        $proposal = makeProposal($this->admin, ['status' => ProposalStatus::Rejected]);
 
         $this->actingAs($this->admin)
             ->postJson(route('manage.assistant.proposals.confirm', $proposal))
             ->assertConflict()
-            ->assertJsonPath('proposal.status', AdminPendingAction::STATUS_REJECTED);
+            ->assertJsonPath('proposal.status', ProposalStatus::Rejected->value);
     });
 });
 
@@ -488,21 +520,21 @@ describe('rejecting proposals', function () {
     it('marks the proposal rejected and applies nothing', function () {
         $page = Page::factory()->create(['title' => 'قديم']);
 
-        $proposal = AdminPendingAction::factory()
-            ->forAction('manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد'])
-            ->create(['proposed_by' => $this->admin->id]);
+        $proposal = makeProposal($this->admin, [
+            'input' => ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد'],
+        ]);
 
         $this->actingAs($this->admin)
             ->postJson(route('manage.assistant.proposals.reject', $proposal))
             ->assertOk()
-            ->assertJsonPath('proposal.status', AdminPendingAction::STATUS_REJECTED);
+            ->assertJsonPath('proposal.status', ProposalStatus::Rejected->value);
 
         expect($page->refresh()->title)->toBe('قديم')
             ->and($proposal->refresh()->executed_at)->toBeNull();
     });
 
     it('answers 409 when rejecting a proposal that was already confirmed', function () {
-        $proposal = AdminPendingAction::factory()->confirmed()->create(['proposed_by' => $this->admin->id]);
+        $proposal = makeProposal($this->admin, ['status' => ProposalStatus::Confirmed, 'executed_at' => now()]);
 
         $this->actingAs($this->admin)
             ->postJson(route('manage.assistant.proposals.reject', $proposal))

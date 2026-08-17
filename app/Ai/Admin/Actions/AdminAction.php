@@ -15,9 +15,11 @@ use Illuminate\JsonSchema\Types\Type;
  *   - The MCP server ({@see \App\Mcp\Tools\AdminActionTool}) wraps it as an
  *     immediate-write tool, gated by {@see requiredAbility()} over OAuth.
  *   - The in-app assistant ({@see \App\Ai\Admin\Actions\AssistantActionTool})
- *     wraps a WRITE as a confirm-gated proposal (an {@see \App\Models\Ai\AdminPendingAction}
- *     a human confirms; {@see \App\Ai\Admin\ProposalExecutor} then calls
- *     {@see handle()}), and a READ as an immediate call.
+ *     wraps a WRITE as a confirm-gated proposal (ai-kit's ProposalExecutor
+ *     persists a pending {@see \Saad\AiKit\Approvals\Proposal} a human
+ *     confirms, then re-validates and calls {@see execute()} through the
+ *     {@see \App\Ai\Admin\ProposableAdminAction} adapter), and a READ as an
+ *     immediate call.
  *
  * Contract for writes: {@see validate()} normalizes raw model input against
  * live state (throwing {@see AdminActionException} with an Arabic reason on
@@ -106,13 +108,24 @@ abstract class AdminAction
 
     /**
      * Validate then run — the immediate execution path used by the MCP
-     * adapter, by read actions on the assistant, and by the executor when a
-     * proposal is confirmed (re-validating against current state).
+     * adapter and by read actions on the assistant.
      *
      * @param  array<string, mixed>  $input
      */
     public function handle(array $input, User $user): ActionResult
     {
         return $this->run($this->validate($input, $user), $user);
+    }
+
+    /**
+     * Run on ALREADY-normalized input without re-validating — the confirm
+     * phase of the proposal flow, where ai-kit's ProposalExecutor called
+     * {@see validate()} against the current state moments before.
+     *
+     * @param  array<string, mixed>  $normalized
+     */
+    public function execute(array $normalized, User $user): ActionResult
+    {
+        return $this->run($normalized, $user);
     }
 }
