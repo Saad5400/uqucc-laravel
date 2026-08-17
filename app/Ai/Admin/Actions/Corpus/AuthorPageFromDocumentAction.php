@@ -6,11 +6,11 @@ use App\Ai\Admin\Actions\ActionResult;
 use App\Ai\Admin\Actions\AdminAction;
 use App\Ai\Admin\Actions\AdminActionException;
 use App\Ai\Authoring\PageAuthor;
-use App\Ai\Spend\SpendLedger;
 use App\Jobs\Ai\AuthorPageFromDocumentJob;
 use App\Models\Corpus\CorpusDocument;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Saad\AiKit\Safety\BudgetGuard;
 
 /**
  * Queue a document → page authoring run: {@see PageAuthor} turns one extracted
@@ -76,8 +76,8 @@ class AuthorPageFromDocumentAction extends AdminAction
             throw new AdminActionException('يوجد توليد قيد التنفيذ لهذا المستند بالفعل.');
         }
 
-        if (! app(SpendLedger::class)->hasBudgetRemaining()) {
-            throw new AdminActionException(app(SpendLedger::class)->budgetExhaustedMessage());
+        if (app(BudgetGuard::class)->exceeded()) {
+            throw new AdminActionException(__('ai-kit::safety.budget_exceeded'));
         }
 
         return ['document_id' => $document->id, 'document_title' => $document->title];

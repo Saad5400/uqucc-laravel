@@ -5,7 +5,6 @@ use App\Ai\Admin\Actions\Settings\GetSettingsAction;
 use App\Ai\Admin\AdminAssistant;
 use App\Ai\Admin\SettingsRegistry;
 use App\Models\Ai\AdminPendingAction;
-use App\Models\Ai\AiUsage;
 use App\Models\Page;
 use App\Models\User;
 use App\Settings\AiSettings;
@@ -17,6 +16,8 @@ use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
 use Laravel\Ai\Responses\Data\ToolCall;
 use Laravel\Ai\Tools\Request as ToolRequest;
+use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Usage\UsageEvent;
 
 beforeEach(function () {
     $this->withoutVite();
@@ -151,7 +152,7 @@ describe('authorization and gating', function () {
     it('refuses politely without calling the model once the daily budget is spent', function () {
         AdminAssistant::fake(['يجب ألا يظهر هذا الرد.']);
 
-        AiUsage::factory()->create(['cost' => 6.0]);
+        app(BudgetGuard::class)->record(6.0);
 
         $this->actingAs($this->admin)
             ->postJson(route('manage.assistant.send'), ['message' => 'مرحبا'])
@@ -213,10 +214,10 @@ describe('chat streaming', function () {
             ->assertOk()
             ->streamedContent();
 
-        $usage = AiUsage::query()->sole();
+        $usage = UsageEvent::query()->sole();
 
         expect($usage->feature)->toBe('admin_assistant')
-            ->and($usage->cost)->toBe(0.0);
+            ->and((float) ($usage->cost_usd ?? 0.0))->toBe(0.0);
     });
 
     it('starts a fresh thread when the conversation id belongs to another admin', function () {

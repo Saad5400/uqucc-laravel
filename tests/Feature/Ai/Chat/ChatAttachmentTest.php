@@ -3,12 +3,13 @@
 use App\Ai\Chat\ChatAttachmentTextExtractor;
 use App\Ai\Corpus\DocumentExtractionAgent;
 use App\Jobs\Ai\ExtractChatAttachmentJob;
-use App\Models\Ai\AiUsage;
 use App\Models\Ai\ChatAttachment;
 use App\Settings\AiSettings;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Usage\UsageEvent;
 
 beforeEach(function () {
     Storage::fake(ChatAttachment::DISK);
@@ -71,7 +72,7 @@ it('rejects invalid uploads', function (array $payload, string $field) {
 ]);
 
 it('answers 503 while the daily budget is spent', function () {
-    AiUsage::factory()->create(['cost' => 6.0]);
+    app(BudgetGuard::class)->record(6.0);
 
     $this->postJson(route('ai.chat.attachments.store'), [
         'file' => UploadedFile::fake()->create('doc.pdf', 100, 'application/pdf'),
@@ -91,13 +92,13 @@ it('extracts an image through the faked vision model and records the spend', fun
 
     expect($attachment->status)->toBe(ChatAttachment::STATUS_READY)
         ->and($attachment->extracted_markdown)->toContain('المعدل: 3.75')
-        ->and(AiUsage::query()->where('feature', 'assistant_attachment')->count())->toBe(1);
+        ->and(UsageEvent::query()->where('feature', 'assistant_attachment')->count())->toBe(1);
 });
 
 it('fails the extraction politely when the daily budget is spent', function () {
     DocumentExtractionAgent::fake(['يجب ألا يُستدعى النموذج.']);
 
-    AiUsage::factory()->create(['cost' => 6.0]);
+    app(BudgetGuard::class)->record(6.0);
 
     $attachment = storedImageAttachment();
 
@@ -106,7 +107,7 @@ it('fails the extraction politely when the daily budget is spent', function () {
     $attachment->refresh();
 
     expect($attachment->status)->toBe(ChatAttachment::STATUS_FAILED)
-        ->and($attachment->error)->toContain('غير متاح اليوم');
+        ->and($attachment->error)->toContain(__('ai-kit::safety.budget_exceeded'));
 
     DocumentExtractionAgent::assertNeverPrompted();
 });

@@ -6,7 +6,6 @@ use App\Ai\Admin\AdminAssistant;
 use App\Ai\Admin\AdminOwner;
 use App\Ai\Admin\ProposalExecutor;
 use App\Ai\Admin\ProposalExtractor;
-use App\Ai\Spend\SpendLedger;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Manage\AdminAssistantMessageRequest;
 use App\Models\Ai\AdminPendingAction;
@@ -14,6 +13,7 @@ use App\Models\User;
 use App\Settings\AiSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Context;
 use Inertia\Inertia;
 use Inertia\Response;
 use Laravel\Ai\Models\Conversation;
@@ -21,6 +21,7 @@ use Laravel\Ai\Models\ConversationMessage;
 use Laravel\Ai\Streaming\Events\Error as ErrorEvent;
 use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\Streaming\Events\ToolResult as ToolResultEvent;
+use Saad\AiKit\Safety\BudgetGuard;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
@@ -38,7 +39,7 @@ use Throwable;
  */
 class AdminAssistantController extends Controller
 {
-    /** Spend-ledger feature key for admin assistant turns. */
+    /** Usage feature label for admin assistant turns (ai-kit usage module). */
     private const FEATURE = 'admin_assistant';
 
     /**
@@ -63,15 +64,15 @@ class AdminAssistantController extends Controller
     public function send(
         AdminAssistantMessageRequest $request,
         AiSettings $settings,
-        SpendLedger $ledger,
+        BudgetGuard $budget,
         ProposalExtractor $proposals,
     ): JsonResponse|StreamedResponse {
         if (! $settings->isFeatureEnabled('admin_assistant')) {
             return $this->disabledResponse($settings);
         }
 
-        if (! $ledger->hasBudgetRemaining()) {
-            return response()->json(['message' => $ledger->budgetExhaustedMessage()], 503);
+        if ($budget->exceeded()) {
+            return response()->json(['message' => __('ai-kit::safety.budget_exceeded')], 503);
         }
 
         /** @var User $admin */
@@ -82,7 +83,7 @@ class AdminAssistantController extends Controller
         $prompt = $request->validated('message');
 
         return response()->stream(
-            fn () => $this->streamTurn($prompt, $owner, $conversationId, $settings, $ledger, $proposals),
+            fn () => $this->streamTurn($prompt, $owner, $conversationId, $proposals),
             200,
             [
                 'Content-Type' => 'text/event-stream',
@@ -188,13 +189,13 @@ class AdminAssistantController extends Controller
         string $prompt,
         AdminOwner $owner,
         ?string $conversationId,
-        AiSettings $settings,
-        SpendLedger $ledger,
         ProposalExtractor $proposals,
     ): void {
         set_time_limit((int) config('ai.chat.timeout', 60) + 30);
 
-        $ledger->clearContextCosts();
+        // ai-kit's usage module records the turn (exact provider cost,
+        // tokens, timings) automatically; the label is all it needs.
+        Context::add(config('ai-kit.usage.feature_context_key'), self::FEATURE);
 
         $agent = AdminAssistant::make();
         $agent = $conversationId !== null
@@ -212,14 +213,11 @@ class AdminAssistantController extends Controller
                         $this->emit('proposal', $card);
                     }
                 } elseif ($event instanceof ErrorEvent) {
-                    $this->recordSpend($ledger, $settings, $response->usage ?? null);
                     $this->emit('error', ['message' => $this->genericErrorMessage()]);
 
                     return;
                 }
             }
-
-            $this->recordSpend($ledger, $settings, $response->usage ?? null);
 
             $this->emit('done', [
                 'conversation_id' => $response->conversationId ?? $conversationId,
@@ -227,20 +225,7 @@ class AdminAssistantController extends Controller
         } catch (Throwable $exception) {
             report($exception);
 
-            $this->recordSpend($ledger, $settings, null);
             $this->emit('error', ['message' => $this->genericErrorMessage()]);
-        }
-    }
-
-    /**
-     * Record the turn's exact provider spend on the ledger. Never fails the turn.
-     */
-    private function recordSpend(SpendLedger $ledger, AiSettings $settings, ?\Laravel\Ai\Responses\Data\Usage $usage): void
-    {
-        try {
-            $ledger->record(self::FEATURE, trim($settings->chat_model), $usage, $ledger->captureContextCosts());
-        } catch (Throwable $exception) {
-            report($exception);
         }
     }
 

@@ -7,13 +7,14 @@ use App\Ai\Copilot\TipTapContent;
 use App\Ai\Corpus\CorpusRetriever;
 use App\Ai\Corpus\CorpusSearchResult;
 use App\Ai\Corpus\CorpusSourceType;
-use App\Ai\Spend\SpendLedger;
 use App\Models\Ai\PageContentProposal;
 use App\Models\Corpus\CorpusDocument;
 use App\Models\Page;
 use App\Settings\AiSettings;
+use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Str;
 use RuntimeException;
+use Saad\AiKit\Safety\BudgetGuard;
 use Throwable;
 
 /**
@@ -41,11 +42,11 @@ use Throwable;
  *
  * Gated like every paid admin feature: admin_copilot flag (honours the master
  * kill switch), the OpenRouter key, and the daily spend budget; each model
- * call's exact cost is recorded under the `authoring` feature.
+ * call's exact cost is metered under the `authoring` feature.
  */
 class PageAuthor
 {
-    /** Spend-ledger feature key for authoring generations. */
+    /** Usage feature label for authoring generations (ai-kit usage module). */
     public const FEATURE = 'authoring';
 
     /** How many existing pages the decision step may choose between. */
@@ -99,7 +100,7 @@ class PageAuthor
 
     public function __construct(
         private readonly AiSettings $settings,
-        private readonly SpendLedger $ledger,
+        private readonly BudgetGuard $budget,
         private readonly CorpusRetriever $retriever,
     ) {}
 
@@ -142,8 +143,8 @@ class PageAuthor
             throw new RuntimeException('لا يمكن توليد صفحة قبل اكتمال استخراج نص المستند.');
         }
 
-        if (! $this->ledger->hasBudgetRemaining()) {
-            throw new RuntimeException($this->ledger->budgetExhaustedMessage());
+        if ($this->budget->exceeded()) {
+            throw new RuntimeException(__('ai-kit::safety.budget_exceeded'));
         }
 
         $candidates = $this->candidatePages($document);
@@ -372,34 +373,16 @@ class PageAuthor
     }
 
     /**
-     * One authoring-tier generation with its exact provider cost recorded on
-     * the spend ledger under the `authoring` feature.
+     * One authoring-tier generation; ai-kit's usage module meters its exact
+     * provider cost under the `authoring` feature.
      */
     private function generate(string $instructions, string $prompt): string
     {
-        $this->ledger->clearContextCosts();
+        Context::add(config('ai-kit.usage.feature_context_key'), self::FEATURE);
 
-        try {
-            $response = (new PageAuthoringAgent($instructions))->prompt($prompt);
-        } finally {
-            $this->recordSpend($response ?? null);
-        }
+        $response = (new PageAuthoringAgent($instructions))->prompt($prompt);
 
         return trim((string) $response->text);
-    }
-
-    private function recordSpend(?\Laravel\Ai\Responses\AgentResponse $response): void
-    {
-        try {
-            $this->ledger->record(
-                self::FEATURE,
-                (string) config('ai.authoring.model', 'deepseek/deepseek-v4-pro'),
-                $response?->usage,
-                $this->ledger->captureContextCosts(),
-            );
-        } catch (Throwable $exception) {
-            report($exception);
-        }
     }
 
     /**

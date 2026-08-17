@@ -7,10 +7,8 @@ use App\Ai\Chat\CategoryContext;
 use App\Ai\Chat\ChatAttachmentTextExtractor;
 use App\Ai\Chat\TelegramTurnContext;
 use App\Ai\Corpus\DocumentExtractionAgent;
-use App\Ai\Spend\SpendLedger;
 use App\Jobs\AnnounceDeletedAiRequest;
 use App\Jobs\ProcessTelegramMediaGroup;
-use App\Models\Ai\AiUsage;
 use App\Models\Ai\ChatAttachment;
 use App\Models\Page;
 use App\Models\TelegramChatSetting;
@@ -22,6 +20,8 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
+use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Usage\UsageEvent;
 use Telegram\Bot\Objects\Message;
 use Tests\Fakes\FakeTelegramApi;
 
@@ -42,7 +42,7 @@ function aiChatHandler(FakeTelegramApi $api): AiChatHandler
     return new AiChatHandler(
         $api,
         app(AiSettings::class),
-        app(SpendLedger::class),
+        app(BudgetGuard::class),
         app(ChatAttachmentTextExtractor::class),
         app(AttachmentContext::class),
         app(CategoryContext::class),
@@ -146,7 +146,7 @@ it('replies in an activated private chat and stores the conversation for the cha
     expect($conversation->getAttribute('participant_id'))->toBe('telegram:900123')
         ->and($chatSettings->refresh()->conversation_id)->toBe($conversation->getKey());
 
-    $usage = AiUsage::query()->sole();
+    $usage = UsageEvent::query()->sole();
 
     expect($usage->feature)->toBe('telegram');
 });
@@ -417,7 +417,7 @@ it('enforces the per-chat daily quota with a single arabic notice', function () 
     aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك سؤال 1']));
     aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك سؤال 2']));
 
-    expect(AiUsage::query()->where('feature', 'telegram')->count())->toBe(2);
+    expect(UsageEvent::query()->where('feature', 'telegram')->count())->toBe(2);
 
     aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك سؤال 3']));
     aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك سؤال 4']));
@@ -425,14 +425,14 @@ it('enforces the per-chat daily quota with a single arabic notice', function () 
     $notices = array_filter($api->allTexts(), fn (string $text) => str_contains($text, 'حدها اليومي'));
 
     expect($notices)->toHaveCount(1)
-        ->and(AiUsage::query()->where('feature', 'telegram')->count())->toBe(2);
+        ->and(UsageEvent::query()->where('feature', 'telegram')->count())->toBe(2);
 
     // A different chat still has its own quota.
     activatedChat(555999);
 
     aiChatHandler($api)->handle(aiChatMessage(['chat' => ['id' => 555999]]));
 
-    expect(AiUsage::query()->where('feature', 'telegram')->count())->toBe(3);
+    expect(UsageEvent::query()->where('feature', 'telegram')->count())->toBe(3);
 });
 
 it('enforces the burst limit per chat with a single notice', function () {
@@ -452,13 +452,13 @@ it('enforces the burst limit per chat with a single notice', function () {
     $notices = array_filter($api->allTexts(), fn (string $text) => str_contains($text, 'انتظر دقيقة'));
 
     expect($notices)->toHaveCount(1)
-        ->and(AiUsage::query()->where('feature', 'telegram')->count())->toBe(5);
+        ->and(UsageEvent::query()->where('feature', 'telegram')->count())->toBe(5);
 });
 
 it('refuses politely without calling the model once the daily budget is spent', function () {
     StudentAssistant::fake(['يجب ألا يظهر هذا الرد.']);
 
-    AiUsage::factory()->create(['cost' => 6.0]);
+    app(BudgetGuard::class)->record(6.0);
 
     activatedChat();
 
@@ -468,7 +468,7 @@ it('refuses politely without calling the model once the daily budget is spent', 
 
     StudentAssistant::assertNeverPrompted();
 
-    expect($api->sentMessages[0]['text'])->toContain('غير متاح اليوم');
+    expect($api->sentMessages[0]['text'])->toContain(__('ai-kit::safety.budget_exceeded'));
 });
 
 it('chunks replies longer than the telegram message limit', function () {
@@ -523,8 +523,8 @@ it('extracts a captioned photo and injects the text as turn context', function (
     expect(ChatAttachment::query()->count())->toBe(0)
         ->and(Storage::disk(ChatAttachment::DISK)->files(ChatAttachment::DIRECTORY))->toBe([]);
 
-    expect(AiUsage::query()->where('feature', 'assistant_attachment')->count())->toBe(1)
-        ->and(AiUsage::query()->where('feature', 'telegram')->count())->toBe(1);
+    expect(UsageEvent::query()->where('feature', 'assistant_attachment')->count())->toBe(1)
+        ->and(UsageEvent::query()->where('feature', 'telegram')->count())->toBe(1);
 });
 
 it('tells the chat when the attachment cannot be read', function () {
@@ -726,7 +726,7 @@ it('drops an album that carries no سيك ask without any spend', function () {
     (new ProcessTelegramMediaGroup('993'))->handle();
 
     StudentAssistant::assertNeverPrompted();
-    expect(AiUsage::query()->count())->toBe(0);
+    expect(UsageEvent::query()->count())->toBe(0);
 });
 
 it('runs one turn across every album photo via handleMediaGroup', function () {
@@ -764,6 +764,6 @@ it('runs one turn across every album photo via handleMediaGroup', function () {
     expect(ChatAttachment::query()->count())->toBe(0)
         ->and(Storage::disk(ChatAttachment::DISK)->files(ChatAttachment::DIRECTORY))->toBe([]);
 
-    expect(AiUsage::query()->where('feature', 'assistant_attachment')->count())->toBe(2)
-        ->and(AiUsage::query()->where('feature', 'telegram')->count())->toBe(1);
+    expect(UsageEvent::query()->where('feature', 'assistant_attachment')->count())->toBe(2)
+        ->and(UsageEvent::query()->where('feature', 'telegram')->count())->toBe(1);
 });

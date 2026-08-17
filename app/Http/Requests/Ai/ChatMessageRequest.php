@@ -8,7 +8,7 @@ class ChatMessageRequest extends FormRequest
 {
     /**
      * The endpoint is public (anonymous, session-identified); feature and
-     * budget gating happen in the controller against AiSettings/SpendLedger
+     * budget gating happen in the controller against AiSettings + ai-kit BudgetGuard
      * so disabled states yield a consistent JSON shape.
      */
     public function authorize(): bool

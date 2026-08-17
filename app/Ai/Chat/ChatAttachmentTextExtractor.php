@@ -4,12 +4,13 @@ namespace App\Ai\Chat;
 
 use App\Ai\Corpus\DocumentExtractionAgent;
 use App\Ai\Corpus\UploadedTextExtractor;
-use App\Ai\Spend\SpendLedger;
 use App\Models\Ai\ChatAttachment;
 use App\Settings\AiSettings;
+use Illuminate\Support\Facades\Context;
 use Laravel\Ai\Files\Document;
 use Laravel\Ai\Files\Image;
 use RuntimeException;
+use Saad\AiKit\Safety\BudgetGuard;
 use Smalot\PdfParser\Parser;
 use Throwable;
 
@@ -21,9 +22,9 @@ use Throwable;
  * corpus — the result is context for that visitor's conversation only.
  *
  * Two chat-specific additions over the corpus extractor:
- *  - the vision path is budget-gated through the {@see SpendLedger} (a chat
+ *  - the vision path is budget-gated through ai-kit's {@see BudgetGuard} (a chat
  *    upload must not spend past the daily budget) and its exact cost is
- *    recorded on the ledger under the `assistant_attachment` feature;
+ *    metered by ai-kit's usage module under the `assistant_attachment` feature;
  *  - the extracted markdown is capped, because it is replayed into the model
  *    as conversation context on every referencing turn.
  */
@@ -43,7 +44,7 @@ class ChatAttachmentTextExtractor
 
     public function __construct(
         private readonly AiSettings $settings,
-        private readonly SpendLedger $ledger,
+        private readonly BudgetGuard $budget,
     ) {}
 
     public function extract(ChatAttachment $attachment): string
@@ -109,7 +110,7 @@ class ChatAttachmentTextExtractor
     /**
      * The paid path: transcribe the file with the vision model, gated on the
      * AI kill switch, the OpenRouter key, and the daily budget; the exact
-     * provider cost is recorded on the spend ledger.
+     * provider cost is metered automatically by ai-kit's usage module.
      */
     private function fromVisionModel(ChatAttachment $attachment): string
     {
@@ -121,11 +122,11 @@ class ChatAttachmentTextExtractor
             throw new RuntimeException('مفتاح OpenRouter غير مضبوط — لا يمكن استخراج النص عبر نموذج الرؤية.');
         }
 
-        if (! $this->ledger->hasBudgetRemaining()) {
-            throw new RuntimeException($this->ledger->budgetExhaustedMessage());
+        if ($this->budget->exceeded()) {
+            throw new RuntimeException(__('ai-kit::safety.budget_exceeded'));
         }
 
-        $this->ledger->clearContextCosts();
+        Context::add(config('ai-kit.usage.feature_context_key'), 'assistant_attachment');
 
         $file = $attachment->localFile();
 
@@ -136,13 +137,6 @@ class ChatAttachmentTextExtractor
             provider: (string) config('ai.default', 'openrouter'),
             model: $this->visionModel(),
             timeout: (int) config('ai.vision.timeout', 45),
-        );
-
-        $this->ledger->record(
-            'assistant_attachment',
-            $this->visionModel(),
-            $response->usage,
-            $this->ledger->captureContextCosts(),
         );
 
         return trim((string) $response->text);

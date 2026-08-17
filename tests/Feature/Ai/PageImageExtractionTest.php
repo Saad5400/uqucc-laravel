@@ -2,7 +2,6 @@
 
 use App\Ai\Corpus\DocumentExtractionAgent;
 use App\Ai\Corpus\PageContentExtractor;
-use App\Models\Ai\AiUsage;
 use App\Models\Corpus\CorpusImageExtraction;
 use App\Models\Corpus\CorpusItem;
 use App\Models\Page;
@@ -12,6 +11,7 @@ use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Sleep;
+use Saad\AiKit\Usage\UsageEvent;
 
 beforeEach(function () {
     Sleep::fake();
@@ -88,7 +88,7 @@ describe('page image extraction', function () {
             ->and($extraction->content_hash)->toBe(hash('sha256', Storage::disk(Disk::MEDIA)->get('pages/chart.png')))
             ->and($extraction->extracted_text)->toContain('برمجة 101');
 
-        expect(AiUsage::query()->where('feature', 'ingest')->count())->toBe(1);
+        expect(UsageEvent::query()->where('feature', 'ingest')->count())->toBe(1);
     });
 
     it('streams images served under the media disk public URL (S3 form) from the disk instead of HTTP-fetching them', function () {
@@ -133,7 +133,7 @@ describe('page image extraction', function () {
 
         expect($visionCalls)->toBe(1)
             ->and(CorpusImageExtraction::query()->count())->toBe(1)
-            ->and(AiUsage::query()->where('feature', 'ingest')->count())->toBe(1)
+            ->and(UsageEvent::query()->where('feature', 'ingest')->count())->toBe(1)
             ->and(ingestedText($page->fresh()))->toContain('نص مستخرج من الصورة');
     });
 
@@ -200,7 +200,7 @@ describe('page image extraction', function () {
             ->and($extraction->content_hash)->toBe(hash('sha256', $src))
             ->and($extraction->source_url)->toBe($src);
 
-        expect(AiUsage::query()->where('feature', 'ingest')->count())->toBe(1);
+        expect(UsageEvent::query()->where('feature', 'ingest')->count())->toBe(1);
     });
 
     it('never re-downloads an external image once its transcription is cached', function () {
@@ -220,7 +220,7 @@ describe('page image extraction', function () {
         $page->update(['html_content' => $content]);
 
         Http::assertSentCount(1);
-        expect(AiUsage::query()->where('feature', 'ingest')->count())->toBe(1);
+        expect(UsageEvent::query()->where('feature', 'ingest')->count())->toBe(1);
     });
 
     it('marks an unreachable external image failed and keeps only alt text', function () {

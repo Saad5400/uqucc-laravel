@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\Ai;
 
-use App\Ai\Spend\SpendLedger;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Ai\ChatAttachmentRequest;
 use App\Jobs\Ai\ExtractChatAttachmentJob;
 use App\Models\Ai\ChatAttachment;
 use App\Settings\AiSettings;
 use Illuminate\Http\JsonResponse;
+use Saad\AiKit\Safety\BudgetGuard;
 
 /**
  * POST /ai/chat/attachments (name: ai.chat.attachments.store) — store one
@@ -20,14 +20,14 @@ use Illuminate\Http\JsonResponse;
  */
 class ChatAttachmentController extends Controller
 {
-    public function __invoke(ChatAttachmentRequest $request, AiSettings $settings, SpendLedger $ledger): JsonResponse
+    public function __invoke(ChatAttachmentRequest $request, AiSettings $settings, BudgetGuard $budget): JsonResponse
     {
         if (! $settings->isFeatureEnabled('assistant')) {
             return response()->json(['message' => 'المساعد الذكي غير متاح حالياً.'], 503);
         }
 
-        if (! $ledger->hasBudgetRemaining()) {
-            return response()->json(['message' => $ledger->budgetExhaustedMessage()], 503);
+        if ($budget->exceeded()) {
+            return response()->json(['message' => __('ai-kit::safety.budget_exceeded')], 503);
         }
 
         $file = $request->file('file');

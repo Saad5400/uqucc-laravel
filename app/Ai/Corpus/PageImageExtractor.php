@@ -2,19 +2,20 @@
 
 namespace App\Ai\Corpus;
 
-use App\Ai\Spend\SpendLedger;
 use App\Models\Corpus\CorpusImageExtraction;
 use App\Settings\AiSettings;
 use App\Support\Disk;
 use App\Support\LocalFile;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\RequestException;
+use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Sleep;
 use Laravel\Ai\Files\Image;
 use RuntimeException;
+use Saad\AiKit\Safety\BudgetGuard;
 use Throwable;
 
 /**
@@ -35,7 +36,7 @@ use Throwable;
  *
  * The vision call happens ONLY when $ocr is true (ingestion), the master
  * ai_enabled switch is on, the OpenRouter key is set, and the daily budget
- * has room; its exact cost lands on the spend ledger under `ingest`. Every
+ * has room; its exact cost is metered by ai-kit's usage module under `ingest`. Every
  * failure is contained — a broken image NEVER fails page ingestion, it just
  * yields no text (and a "failed" cache row that is retried next ingest).
  */
@@ -55,7 +56,7 @@ class PageImageExtractor
 
     public function __construct(
         private readonly AiSettings $settings,
-        private readonly SpendLedger $ledger,
+        private readonly BudgetGuard $budget,
     ) {}
 
     /**
@@ -130,7 +131,7 @@ class PageImageExtractor
             return $text !== '' ? $text : null;
         }
 
-        if (! $ocr || ! $this->visionIsAvailable() || ! $this->ledger->hasBudgetRemaining()) {
+        if (! $ocr || ! $this->visionIsAvailable() || $this->budget->exceeded()) {
             return null;
         }
 
@@ -279,12 +280,12 @@ class PageImageExtractor
      */
     private function transcribe(string $absolutePath, string $src, string $hash): ?string
     {
-        if (! $this->ledger->hasBudgetRemaining()) {
+        if ($this->budget->exceeded()) {
             return null;
         }
 
         try {
-            $this->ledger->clearContextCosts();
+            Context::add(config('ai-kit.usage.feature_context_key'), 'ingest');
 
             $response = (new DocumentExtractionAgent)->prompt(
                 'انسخ المحتوى النصي للصورة المرفقة كاملاً بصيغة ماركداون مع الحفاظ على بنيتها: استخدم عناوين وجداول ماركداون عند وجود جداول أو تجميعات (مثل المستويات الدراسية)، واحرص على ربط كل عنصر بمجموعته الصحيحة وقيمه الصحيحة (مثل رمز المقرر واسمه وعدد ساعاته). إن لم تحتوِ الصورة نصاً فصِف محتواها بإيجاز في سطر واحد.'."\n\n"
@@ -293,13 +294,6 @@ class PageImageExtractor
                 provider: (string) config('ai.default', 'openrouter'),
                 model: $this->visionModel(),
                 timeout: (int) config('ai.vision.timeout', 45),
-            );
-
-            $this->ledger->record(
-                'ingest',
-                $this->visionModel(),
-                $response->usage,
-                $this->ledger->captureContextCosts(),
             );
 
             $text = trim((string) $response->text);
