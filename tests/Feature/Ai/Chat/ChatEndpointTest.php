@@ -9,6 +9,7 @@ use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
 use Laravel\Ai\Responses\Data\ToolCall;
 use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Safety\KillSwitch;
 use Saad\AiKit\Usage\UsageEvent;
 
 beforeEach(function () {
@@ -327,6 +328,16 @@ it('answers 503 on every endpoint while the master ai kill switch is off', funct
     $settings->save();
 
     $this->postJson('/ai/chat', ['message' => 'مرحبا'])->assertServiceUnavailable();
+});
+
+it("answers 503 while ai-kit's cache kill switch is engaged, all settings toggles on", function () {
+    StudentAssistant::fake(['يجب ألا يظهر هذا الرد.']);
+
+    app(KillSwitch::class)->engage(reason: 'حادثة تشغيلية');
+
+    $this->postJson('/ai/chat', ['message' => 'مرحبا'])->assertServiceUnavailable();
+
+    StudentAssistant::assertNeverPrompted();
 });
 
 it('refuses politely without calling the model once the daily budget is spent', function () {

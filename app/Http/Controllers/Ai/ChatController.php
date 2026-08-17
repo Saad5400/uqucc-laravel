@@ -20,7 +20,10 @@ use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Ai\Models\ConversationMessage;
 use Saad\AiKit\Conversations\ConversationOwnership;
-use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Safety\Exceptions\AiKilledException;
+use Saad\AiKit\Safety\Exceptions\AiUnavailableException;
+use Saad\AiKit\Safety\KillSwitch;
+use Saad\AiKit\Safety\TurnGuard;
 use Saad\AiKit\Streaming\SseStream;
 use Saad\AiKit\Streaming\StreamEventMapper;
 use Saad\AiKit\Streaming\StreamResult;
@@ -38,10 +41,10 @@ use Throwable;
  * consulted), then `done`, or `error`. Pre-flight failures (feature toggle,
  * budget, daily quota) answer as plain JSON before any stream starts.
  *
- * Layered gates, in order: assistant toggle (503, SearchController's
- * pattern) → daily spend budget via ai-kit's BudgetGuard (503) → the `ai-chat`
- * burst limiter on the route (429) → the operator's per-session daily
- * message quota (429).
+ * Layered gates, in order: ai-kit's TurnGuard (503) — the assistant toggle
+ * via the operator's AiSettings, the kit's cache kill switch, and the daily
+ * spend budget in one call — → the `ai-chat` burst limiter on the route
+ * (429) → the operator's per-session daily message quota (429).
  */
 class ChatController extends Controller
 {
@@ -54,18 +57,18 @@ class ChatController extends Controller
     public function send(
         ChatMessageRequest $request,
         AiSettings $settings,
-        BudgetGuard $budget,
+        TurnGuard $guard,
         ConversationOwnership $ownership,
         CitationExtractor $citations,
         AttachmentContext $attachmentContext,
         CategoryContext $categoryContext,
     ): JsonResponse|StreamedResponse {
-        if (! $settings->isFeatureEnabled('assistant')) {
+        try {
+            $guard->check(self::FEATURE);
+        } catch (AiKilledException) {
             return $this->disabledResponse();
-        }
-
-        if ($budget->exceeded()) {
-            return response()->json(['message' => __('ai-kit::safety.budget_exceeded')], 503);
+        } catch (AiUnavailableException $exception) {
+            return response()->json(['message' => $exception->userFacingReason()], 503);
         }
 
         $sessionId = $request->session()->getId();
@@ -94,7 +97,7 @@ class ChatController extends Controller
      */
     public function show(
         Request $request,
-        AiSettings $settings,
+        KillSwitch $killSwitch,
         ConversationOwnership $ownership,
         CitationExtractor $citations,
         AttachmentContext $attachmentContext,
@@ -102,7 +105,9 @@ class ChatController extends Controller
         AnswerLinkGuard $linkGuard,
         string $conversation,
     ): JsonResponse {
-        if (! $settings->isFeatureEnabled('assistant')) {
+        // Reading a stored thread costs nothing, so only the kill switch
+        // (toggle or cache) gates it — never the daily budget.
+        if ($killSwitch->engaged(self::FEATURE)) {
             return $this->disabledResponse();
         }
 

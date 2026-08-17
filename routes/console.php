@@ -19,9 +19,10 @@ Schedule::command('sitemap:generate')
     ->runInBackground();
 
 // ai-kit's pruner deletes conversations (and messages) idle beyond the
-// window; the App\Listeners\PruneChatAttachments listener cascades chat
-// attachments (rows + stored files) off its ConversationsPruning event.
-Schedule::command('ai-kit:prune-conversations --days=7')
+// window (ai-kit.conversations.retention_days); the
+// App\Listeners\PruneChatAttachments listener cascades chat attachments
+// (rows + stored files) off its ConversationsPruning event.
+Schedule::command('ai-kit:prune-conversations')
     ->daily()
     ->withoutOverlapping()
     ->runInBackground();

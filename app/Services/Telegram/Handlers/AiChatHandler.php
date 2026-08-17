@@ -27,6 +27,7 @@ use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\Streaming\Events\Error as ErrorEvent;
 use Saad\AiKit\Conversations\ConversationOwnership;
 use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Safety\KillSwitch;
 use Telegram\Bot\Api;
 use Telegram\Bot\Objects\Document;
 use Telegram\Bot\Objects\Message;
@@ -38,7 +39,8 @@ use Throwable;
  * agent, tools, and Arabic instructions as the web chat, replying in chats
  * where the assistant is activated.
  *
- * Layered gates, in order: AiSettings telegram feature toggle → the chat's
+ * Layered gates, in order: ai-kit's kill switch (the AiSettings telegram
+ * feature toggle plus the kit's cache switch) → the chat's
  * own activation row ({@see TelegramChatSetting}, default OFF — /ai_on) →
  * the explicit «سيك …» ask prefix on the message text/caption (the ONLY
  * invocation, in every chat type — the bot never answers plain chatter,
@@ -105,6 +107,7 @@ class AiChatHandler extends BaseHandler
     public function __construct(
         Api $telegram,
         protected AiSettings $settings,
+        protected KillSwitch $killSwitch,
         protected BudgetGuard $budget,
         protected ChatAttachmentTextExtractor $extractor,
         protected AttachmentContext $attachmentContext,
@@ -126,6 +129,7 @@ class AiChatHandler extends BaseHandler
         return new self(
             $telegram,
             app(AiSettings::class),
+            app(KillSwitch::class),
             app(BudgetGuard::class),
             app(ChatAttachmentTextExtractor::class),
             app(AttachmentContext::class),
@@ -138,7 +142,7 @@ class AiChatHandler extends BaseHandler
 
     public function handle(Message $message): void
     {
-        if (! $this->settings->isFeatureEnabled(self::FEATURE)) {
+        if ($this->killSwitch->engaged(self::FEATURE)) {
             return;
         }
 
@@ -179,7 +183,7 @@ class AiChatHandler extends BaseHandler
      */
     public function handleMediaGroup(Message $leadMessage, array $sources, bool $truncated = false): void
     {
-        if (! $this->settings->isFeatureEnabled(self::FEATURE)) {
+        if ($this->killSwitch->engaged(self::FEATURE)) {
             return;
         }
 

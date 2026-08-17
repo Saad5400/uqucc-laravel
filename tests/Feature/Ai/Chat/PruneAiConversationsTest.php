@@ -9,7 +9,7 @@ use Laravel\Ai\Models\ConversationMessage;
 
 /**
  * Pruning is ai-kit's `ai-kit:prune-conversations` command (scheduled with
- * --days=7 in routes/console.php); the app's part is the
+ * the 7-day window pinned in config/ai-kit.php); the app's part is the
  * {@see \App\Listeners\PruneChatAttachments} listener cascading chat
  * attachments off the ConversationsPruning event.
  */

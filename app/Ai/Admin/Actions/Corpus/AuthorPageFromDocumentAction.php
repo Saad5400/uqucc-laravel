@@ -26,6 +26,11 @@ use Saad\AiKit\Safety\BudgetGuard;
  */
 class AuthorPageFromDocumentAction extends AdminAction
 {
+    public function __construct(
+        private readonly PageAuthor $author,
+        private readonly BudgetGuard $budget,
+    ) {}
+
     public function name(): string
     {
         return 'author_page_from_document';
@@ -56,10 +61,8 @@ class AuthorPageFromDocumentAction extends AdminAction
      */
     public function validate(array $input, User $user): array
     {
-        $author = app(PageAuthor::class);
-
-        if (! $author->isEnabled()) {
-            throw new AdminActionException($author->disabledReason() ?? 'توليد الصفحات من المستندات غير متاح حالياً.');
+        if (! $this->author->isEnabled()) {
+            throw new AdminActionException($this->author->disabledReason() ?? 'توليد الصفحات من المستندات غير متاح حالياً.');
         }
 
         $document = CorpusDocument::query()->find((int) ($input['document_id'] ?? 0));
@@ -76,7 +79,7 @@ class AuthorPageFromDocumentAction extends AdminAction
             throw new AdminActionException('يوجد توليد قيد التنفيذ لهذا المستند بالفعل.');
         }
 
-        if (app(BudgetGuard::class)->exceeded()) {
+        if ($this->budget->exceeded()) {
             throw new AdminActionException(__('ai-kit::safety.budget_exceeded'));
         }
 

@@ -22,6 +22,7 @@ use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
 use Saad\AiKit\Conversations\ConversationOwnership;
 use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Safety\KillSwitch;
 use Saad\AiKit\Usage\UsageEvent;
 use Telegram\Bot\Objects\Message;
 use Tests\Fakes\FakeTelegramApi;
@@ -43,6 +44,7 @@ function aiChatHandler(FakeTelegramApi $api): AiChatHandler
     return new AiChatHandler(
         $api,
         app(AiSettings::class),
+        app(KillSwitch::class),
         app(BudgetGuard::class),
         app(ChatAttachmentTextExtractor::class),
         app(AttachmentContext::class),
@@ -118,6 +120,22 @@ it('stays silent while the global telegram ai toggle is off', function () {
     $settings = app(AiSettings::class);
     $settings->telegram_ai_enabled = false;
     $settings->save();
+
+    $api = new FakeTelegramApi;
+
+    aiChatHandler($api)->handle(aiChatMessage());
+
+    StudentAssistant::assertNeverPrompted();
+
+    expect($api->sentMessages)->toBe([]);
+});
+
+it("stays silent while ai-kit's cache kill switch is engaged for telegram", function () {
+    StudentAssistant::fake(['يجب ألا يظهر هذا الرد.']);
+
+    activatedChat();
+
+    app(KillSwitch::class)->engage('telegram');
 
     $api = new FakeTelegramApi;
 

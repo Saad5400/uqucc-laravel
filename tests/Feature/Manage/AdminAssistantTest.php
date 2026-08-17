@@ -18,6 +18,7 @@ use Laravel\Ai\Tools\Request as ToolRequest;
 use Saad\AiKit\Approvals\Proposal;
 use Saad\AiKit\Approvals\ProposalStatus;
 use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Safety\KillSwitch;
 use Saad\AiKit\Usage\UsageEvent;
 
 beforeEach(function () {
@@ -173,6 +174,18 @@ describe('authorization and gating', function () {
             ->postJson(route('manage.assistant.send'), ['message' => 'مرحبا'])
             ->assertServiceUnavailable()
             ->assertJsonPath('message', fn (string $message) => str_contains($message, 'الذكاء الاصطناعي'));
+
+        AdminAssistant::assertNeverPrompted();
+    });
+
+    it("answers 503 on send while ai-kit's cache kill switch is engaged, both settings toggles on", function () {
+        AdminAssistant::fake(['يجب ألا يظهر هذا الرد.']);
+
+        app(KillSwitch::class)->engage('admin_assistant', 'حادثة تشغيلية');
+
+        $this->actingAs($this->admin)
+            ->postJson(route('manage.assistant.send'), ['message' => 'مرحبا'])
+            ->assertServiceUnavailable();
 
         AdminAssistant::assertNeverPrompted();
     });
