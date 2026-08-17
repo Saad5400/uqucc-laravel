@@ -19,6 +19,7 @@ use Saad\AiKit\Approvals\Exceptions\ProposalNotPendingException;
 use Saad\AiKit\Approvals\Proposal;
 use Saad\AiKit\Approvals\ProposalExecutor;
 use Saad\AiKit\Approvals\ProposalTrailer;
+use Saad\AiKit\Conversations\ConversationContent;
 use Saad\AiKit\Conversations\ConversationOwnership;
 use Saad\AiKit\Safety\Exceptions\AiKilledException;
 use Saad\AiKit\Safety\Exceptions\AiUnavailableException;
@@ -126,7 +127,7 @@ class AdminAssistantController extends Controller
             ->get()
             ->map(fn (ConversationMessage $message): array => [
                 'role' => (string) $message->getAttribute('role'),
-                'content' => (string) $message->getAttribute('content'),
+                'content' => (string) ConversationContent::reveal($message->getAttribute('content')),
                 'proposals' => $message->getAttribute('role') === 'assistant'
                     ? ProposalTrailer::cards(
                         array_column((array) $message->getAttribute('tool_results'), 'result'),

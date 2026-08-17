@@ -5283,16 +5283,16 @@
         },
         {
             "name": "saad/ai-kit",
-            "version": "v0.3.1",
+            "version": "v0.3.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/Saad5400/ai-kit.git",
-                "reference": "e3978b57b80a3c7f28cec03723b98fb991e2545f"
+                "reference": "1c32493ad7b9c53b04611ed06449be4298482ac9"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Saad5400/ai-kit/zipball/e3978b57b80a3c7f28cec03723b98fb991e2545f",
-                "reference": "e3978b57b80a3c7f28cec03723b98fb991e2545f",
+                "url": "https://api.github.com/repos/Saad5400/ai-kit/zipball/1c32493ad7b9c53b04611ed06449be4298482ac9",
+                "reference": "1c32493ad7b9c53b04611ed06449be4298482ac9",
                 "shasum": ""
             },
             "require": {
@@ -5301,7 +5301,8 @@
                 "illuminate/support": "^12.0|^13.0",
                 "laravel/ai": "~0.10.0",
                 "laravel/mcp": "~0.9.0",
-                "php": "^8.4"
+                "php": "^8.4",
+                "symfony/process": "^7.0"
             },
             "require-dev": {
                 "laravel/pint": "^1.18",
@@ -5348,10 +5349,10 @@
                 "openrouter"
             ],
             "support": {
-                "source": "https://github.com/Saad5400/ai-kit/tree/v0.3.1",
+                "source": "https://github.com/Saad5400/ai-kit/tree/v0.3.2",
                 "issues": "https://github.com/Saad5400/ai-kit/issues"
             },
-            "time": "2026-08-17T10:04:37+00:00"
+            "time": "2026-08-17T18:12:23+00:00"
         },
         {
             "name": "scrivo/highlight.php",
@@ -12632,5 +12633,5 @@
         "php": "^8.2"
     },
     "platform-dev": {},
-    "plugin-api-version": "2.6.0"
+    "plugin-api-version": "2.9.0"
 }

@@ -19,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\RateLimiter;
 use Laravel\Ai\Models\ConversationMessage;
+use Saad\AiKit\Conversations\ConversationContent;
 use Saad\AiKit\Conversations\ConversationOwnership;
 use Saad\AiKit\Safety\Exceptions\AiKilledException;
 use Saad\AiKit\Safety\Exceptions\AiUnavailableException;
@@ -125,8 +126,8 @@ class ChatController extends Controller
                 // Wrappers unwind outside-in: the category block wraps the
                 // attachment block wraps what the visitor actually typed.
                 'content' => $message->getAttribute('role') === 'user'
-                    ? $attachmentContext->unwrap($categoryContext->unwrap((string) $message->getAttribute('content')))
-                    : $linkGuard->sanitize((string) $message->getAttribute('content')),
+                    ? $attachmentContext->unwrap($categoryContext->unwrap((string) ConversationContent::reveal($message->getAttribute('content'))))
+                    : $linkGuard->sanitize((string) ConversationContent::reveal($message->getAttribute('content'))),
                 'citations' => $message->getAttribute('role') === 'assistant'
                     ? $citations->extractFromStored((array) $message->getAttribute('tool_results'))
                     : [],
