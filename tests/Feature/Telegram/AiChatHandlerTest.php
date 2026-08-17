@@ -20,6 +20,7 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
+use Saad\AiKit\Conversations\ConversationOwnership;
 use Saad\AiKit\Safety\BudgetGuard;
 use Saad\AiKit\Usage\UsageEvent;
 use Telegram\Bot\Objects\Message;
@@ -48,6 +49,7 @@ function aiChatHandler(FakeTelegramApi $api): AiChatHandler
         app(CategoryContext::class),
         app(TelegramTurnContext::class),
         app(AnswerLinkGuard::class),
+        app(ConversationOwnership::class),
     );
 }
 

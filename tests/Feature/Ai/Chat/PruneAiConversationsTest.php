@@ -8,6 +8,13 @@ use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
 
 /**
+ * Pruning is ai-kit's `ai-kit:prune-conversations` command (scheduled with
+ * --days=7 in routes/console.php); the app's part is the
+ * {@see \App\Listeners\PruneChatAttachments} listener cascading chat
+ * attachments off the ConversationsPruning event.
+ */
+
+/**
  * Create a conversation (with one message) whose activity timestamp is
  * backdated without the model touching it again.
  */
@@ -56,7 +63,7 @@ it('prunes conversations, messages and attachments older than the window', funct
     $freshAttachment = ChatAttachment::factory()->create();
     Storage::disk($freshAttachment->disk)->put($freshAttachment->path, 'bytes');
 
-    $this->artisan('ai:prune-conversations')->assertSuccessful();
+    $this->artisan('ai-kit:prune-conversations', ['--days' => 7])->assertSuccessful();
 
     expect(Conversation::query()->whereKey($oldConversationId)->exists())->toBeFalse()
         ->and(ConversationMessage::query()->where('conversation_id', $oldConversationId)->exists())->toBeFalse()
@@ -69,10 +76,25 @@ it('prunes conversations, messages and attachments older than the window', funct
     Storage::disk(ChatAttachment::DISK)->assertExists($freshAttachment->path);
 });
 
+it('cascades a pruned conversation onto its attachments even when they are fresh', function () {
+    Storage::fake(ChatAttachment::DISK);
+
+    $oldConversationId = conversationIdleFor(8);
+
+    $boundAttachment = ChatAttachment::factory()->create(['conversation_id' => $oldConversationId]);
+    Storage::disk($boundAttachment->disk)->put($boundAttachment->path, 'bytes');
+
+    $this->artisan('ai-kit:prune-conversations', ['--days' => 7])->assertSuccessful();
+
+    expect(ChatAttachment::query()->whereKey($boundAttachment->id)->exists())->toBeFalse();
+
+    Storage::disk(ChatAttachment::DISK)->assertMissing($boundAttachment->path);
+});
+
 it('honors a custom retention window', function () {
     $conversationId = conversationIdleFor(3);
 
-    $this->artisan('ai:prune-conversations', ['--days' => 2])->assertSuccessful();
+    $this->artisan('ai-kit:prune-conversations', ['--days' => 2])->assertSuccessful();
 
     expect(Conversation::query()->whereKey($conversationId)->exists())->toBeFalse();
 });

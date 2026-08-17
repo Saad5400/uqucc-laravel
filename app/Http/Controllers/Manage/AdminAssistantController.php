@@ -16,11 +16,11 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Context;
 use Inertia\Inertia;
 use Inertia\Response;
-use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
 use Laravel\Ai\Streaming\Events\Error as ErrorEvent;
 use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\Streaming\Events\ToolResult as ToolResultEvent;
+use Saad\AiKit\Conversations\ConversationOwnership;
 use Saad\AiKit\Safety\BudgetGuard;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
@@ -65,6 +65,7 @@ class AdminAssistantController extends Controller
         AdminAssistantMessageRequest $request,
         AiSettings $settings,
         BudgetGuard $budget,
+        ConversationOwnership $ownership,
         ProposalExtractor $proposals,
     ): JsonResponse|StreamedResponse {
         if (! $settings->isFeatureEnabled('admin_assistant')) {
@@ -79,7 +80,7 @@ class AdminAssistantController extends Controller
         $admin = $request->user();
 
         $owner = new AdminOwner($admin);
-        $conversationId = $this->ownedConversationId($request->input('conversation_id'), $owner);
+        $conversationId = $this->ownedConversationId($request->input('conversation_id'), $owner, $ownership);
         $prompt = $request->validated('message');
 
         return response()->stream(
@@ -101,6 +102,7 @@ class AdminAssistantController extends Controller
     public function show(
         Request $request,
         AiSettings $settings,
+        ConversationOwnership $ownership,
         ProposalExtractor $proposals,
         string $conversation,
     ): JsonResponse {
@@ -111,12 +113,10 @@ class AdminAssistantController extends Controller
         /** @var User $admin */
         $admin = $request->user();
 
-        $owned = Conversation::query()
-            ->whereKey($conversation)
-            ->where('participant_id', (new AdminOwner($admin))->id)
-            ->exists();
-
-        abort_unless($owned, 404);
+        abort_unless(
+            $ownership->owns($conversation, (new AdminOwner($admin))->id, AdminOwner::class),
+            404,
+        );
 
         $messages = ConversationMessage::query()
             ->where('conversation_id', $conversation)
@@ -230,22 +230,20 @@ class AdminAssistantController extends Controller
     }
 
     /**
-     * Continue only a conversation this admin actually owns; a foreign or
-     * unknown id starts a fresh thread instead of leaking (or writing into)
-     * another participant's history.
+     * Continue only a conversation this admin actually owns (ai-kit's
+     * ownership guard checks participant id AND type); a foreign or unknown
+     * id starts a fresh thread instead of leaking (or writing into) another
+     * participant's history.
      */
-    private function ownedConversationId(mixed $conversationId, AdminOwner $owner): ?string
+    private function ownedConversationId(mixed $conversationId, AdminOwner $owner, ConversationOwnership $ownership): ?string
     {
         if (! is_string($conversationId) || $conversationId === '') {
             return null;
         }
 
-        $owned = Conversation::query()
-            ->whereKey($conversationId)
-            ->where('participant_id', $owner->id)
-            ->exists();
-
-        return $owned ? $conversationId : null;
+        return $ownership->owns($conversationId, $owner->id, AdminOwner::class)
+            ? $conversationId
+            : null;
     }
 
     /**

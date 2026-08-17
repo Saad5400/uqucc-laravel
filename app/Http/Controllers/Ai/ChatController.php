@@ -18,11 +18,11 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\RateLimiter;
-use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
 use Laravel\Ai\Streaming\Events\Error as ErrorEvent;
 use Laravel\Ai\Streaming\Events\TextDelta;
 use Laravel\Ai\Streaming\Events\ToolResult as ToolResultEvent;
+use Saad\AiKit\Conversations\ConversationOwnership;
 use Saad\AiKit\Safety\BudgetGuard;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
@@ -55,6 +55,7 @@ class ChatController extends Controller
         ChatMessageRequest $request,
         AiSettings $settings,
         BudgetGuard $budget,
+        ConversationOwnership $ownership,
         CitationExtractor $citations,
         AttachmentContext $attachmentContext,
         CategoryContext $categoryContext,
@@ -73,7 +74,7 @@ class ChatController extends Controller
             return $quotaResponse;
         }
 
-        $conversationId = $this->ownedConversationId($request->input('conversation_id'), $sessionId);
+        $conversationId = $this->ownedConversationId($request->input('conversation_id'), $sessionId, $ownership);
         $attachments = $this->ownedAttachments($request->validated('attachment_ids', []), $sessionId);
 
         $question = (string) $request->validated('message');
@@ -98,6 +99,7 @@ class ChatController extends Controller
     public function show(
         Request $request,
         AiSettings $settings,
+        ConversationOwnership $ownership,
         CitationExtractor $citations,
         AttachmentContext $attachmentContext,
         CategoryContext $categoryContext,
@@ -108,12 +110,10 @@ class ChatController extends Controller
             return $this->disabledResponse();
         }
 
-        $owned = Conversation::query()
-            ->whereKey($conversation)
-            ->where('participant_id', $request->session()->getId())
-            ->exists();
-
-        abort_unless($owned, 404);
+        abort_unless(
+            $ownership->owns($conversation, $request->session()->getId(), SessionOwner::class),
+            404,
+        );
 
         $messages = ConversationMessage::query()
             ->where('conversation_id', $conversation)
@@ -234,22 +234,20 @@ class ChatController extends Controller
     }
 
     /**
-     * Continue only a conversation this session actually owns; a foreign or
-     * unknown id starts a fresh thread instead of leaking (or writing into)
-     * another visitor's history.
+     * Continue only a conversation this session actually owns (ai-kit's
+     * ownership guard checks participant id AND type); a foreign or unknown
+     * id starts a fresh thread instead of leaking (or writing into) another
+     * participant's history.
      */
-    private function ownedConversationId(mixed $conversationId, string $sessionId): ?string
+    private function ownedConversationId(mixed $conversationId, string $sessionId, ConversationOwnership $ownership): ?string
     {
         if (! is_string($conversationId) || $conversationId === '') {
             return null;
         }
 
-        $owned = Conversation::query()
-            ->whereKey($conversationId)
-            ->where('participant_id', $sessionId)
-            ->exists();
-
-        return $owned ? $conversationId : null;
+        return $ownership->owns($conversationId, $sessionId, SessionOwner::class)
+            ? $conversationId
+            : null;
     }
 
     /**

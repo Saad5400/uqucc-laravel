@@ -24,8 +24,8 @@ use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Storage;
-use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Streaming\Events\Error as ErrorEvent;
+use Saad\AiKit\Conversations\ConversationOwnership;
 use Saad\AiKit\Safety\BudgetGuard;
 use Telegram\Bot\Api;
 use Telegram\Bot\Objects\Document;
@@ -111,6 +111,7 @@ class AiChatHandler extends BaseHandler
         protected CategoryContext $categoryContext,
         protected TelegramTurnContext $turnContext,
         protected AnswerLinkGuard $linkGuard,
+        protected ConversationOwnership $ownership,
     ) {
         parent::__construct($telegram);
     }
@@ -131,6 +132,7 @@ class AiChatHandler extends BaseHandler
             app(CategoryContext::class),
             app(TelegramTurnContext::class),
             app(AnswerLinkGuard::class),
+            app(ConversationOwnership::class),
         );
     }
 
@@ -466,7 +468,8 @@ class AiChatHandler extends BaseHandler
 
     /**
      * Continue only a conversation that still exists and belongs to this
-     * chat's owner key; a pruned or foreign id starts a fresh thread.
+     * chat's owner key (ai-kit's ownership guard checks participant id AND
+     * type); a pruned or foreign id starts a fresh thread.
      */
     protected function continuableConversationId(TelegramChatSetting $chatSettings, SessionOwner $owner): ?string
     {
@@ -476,12 +479,9 @@ class AiChatHandler extends BaseHandler
             return null;
         }
 
-        $exists = Conversation::query()
-            ->whereKey($conversationId)
-            ->where('participant_id', $owner->id)
-            ->exists();
-
-        return $exists ? $conversationId : null;
+        return $this->ownership->owns($conversationId, $owner->id, SessionOwner::class)
+            ? $conversationId
+            : null;
     }
 
     /**
