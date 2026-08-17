@@ -2,6 +2,7 @@
 
 use App\Models\Page;
 use App\Settings\AiSettings;
+use Saad\AiKit\Safety\KillSwitch;
 
 beforeEach(function () {
     config()->set('ai.embeddings.driver', 'fake');
@@ -100,6 +101,16 @@ it('returns a feature-disabled response when the master ai kill switch is off', 
     $settings = app(AiSettings::class);
     $settings->ai_enabled = false;
     $settings->save();
+
+    $this->getJson(route('search', ['q' => 'البرمجة']))
+        ->assertServiceUnavailable()
+        ->assertJsonPath('enabled', false);
+});
+
+it("returns a feature-disabled response while ai-kit's cache kill switch is engaged for search", function () {
+    seedSearchablePage('الخطة الدراسية', 'تحتوي الخطة على مقررات البرمجة');
+
+    app(KillSwitch::class)->engage('search');
 
     $this->getJson(route('search', ['q' => 'البرمجة']))
         ->assertServiceUnavailable()

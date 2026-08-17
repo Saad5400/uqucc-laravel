@@ -6,9 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Ai\ChatAttachmentRequest;
 use App\Jobs\Ai\ExtractChatAttachmentJob;
 use App\Models\Ai\ChatAttachment;
-use App\Settings\AiSettings;
 use Illuminate\Http\JsonResponse;
-use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Safety\Exceptions\AiKilledException;
+use Saad\AiKit\Safety\Exceptions\AiUnavailableException;
+use Saad\AiKit\Safety\TurnGuard;
 
 /**
  * POST /ai/chat/attachments (name: ai.chat.attachments.store) — store one
@@ -20,14 +21,14 @@ use Saad\AiKit\Safety\BudgetGuard;
  */
 class ChatAttachmentController extends Controller
 {
-    public function __invoke(ChatAttachmentRequest $request, AiSettings $settings, BudgetGuard $budget): JsonResponse
+    public function __invoke(ChatAttachmentRequest $request, TurnGuard $guard): JsonResponse
     {
-        if (! $settings->isFeatureEnabled('assistant')) {
+        try {
+            $guard->check('assistant');
+        } catch (AiKilledException) {
             return response()->json(['message' => 'المساعد الذكي غير متاح حالياً.'], 503);
-        }
-
-        if ($budget->exceeded()) {
-            return response()->json(['message' => __('ai-kit::safety.budget_exceeded')], 503);
+        } catch (AiUnavailableException $exception) {
+            return response()->json(['message' => $exception->userFacingReason()], 503);
         }
 
         $file = $request->file('file');

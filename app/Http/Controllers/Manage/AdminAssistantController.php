@@ -20,7 +20,10 @@ use Saad\AiKit\Approvals\Proposal;
 use Saad\AiKit\Approvals\ProposalExecutor;
 use Saad\AiKit\Approvals\ProposalTrailer;
 use Saad\AiKit\Conversations\ConversationOwnership;
-use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Safety\Exceptions\AiKilledException;
+use Saad\AiKit\Safety\Exceptions\AiUnavailableException;
+use Saad\AiKit\Safety\KillSwitch;
+use Saad\AiKit\Safety\TurnGuard;
 use Saad\AiKit\Streaming\SseStream;
 use Saad\AiKit\Streaming\StreamEventMapper;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -34,9 +37,10 @@ use Throwable;
  * pending action, so the client renders تأكيد/رفض cards inline. Conversations
  * belong to the authenticated admin (AdminOwner, "admin:{id}").
  *
- * Layered gates on every endpoint: panel auth (route middleware) → master
- * ai_enabled AND admin_assistant_enabled (503 with the reason) → daily spend
- * budget (503) → the route's per-admin burst limiter (429).
+ * Layered gates on every endpoint: panel auth (route middleware) → ai-kit's
+ * kill switch, which folds master ai_enabled AND admin_assistant_enabled
+ * (503 with the reason) with the kit's cache switch → daily spend budget on
+ * turn entry (503, via TurnGuard) → the route's per-admin burst limiter (429).
  */
 class AdminAssistantController extends Controller
 {
@@ -48,11 +52,11 @@ class AdminAssistantController extends Controller
      * Always renders; when the feature is off the page explains how to
      * enable it instead of hiding (disabled-with-reason).
      */
-    public function index(AiSettings $settings): Response
+    public function index(AiSettings $settings, KillSwitch $killSwitch): Response
     {
         return Inertia::render('manage/assistant/Index', [
             'assistant' => [
-                'enabled' => $settings->isFeatureEnabled('admin_assistant'),
+                'enabled' => ! $killSwitch->engaged(self::FEATURE),
                 'disabledReason' => $this->disabledReason($settings),
             ],
         ]);
@@ -65,15 +69,15 @@ class AdminAssistantController extends Controller
     public function send(
         AdminAssistantMessageRequest $request,
         AiSettings $settings,
-        BudgetGuard $budget,
+        TurnGuard $guard,
         ConversationOwnership $ownership,
     ): JsonResponse|StreamedResponse {
-        if (! $settings->isFeatureEnabled('admin_assistant')) {
+        try {
+            $guard->check(self::FEATURE);
+        } catch (AiKilledException) {
             return $this->disabledResponse($settings);
-        }
-
-        if ($budget->exceeded()) {
-            return response()->json(['message' => __('ai-kit::safety.budget_exceeded')], 503);
+        } catch (AiUnavailableException $exception) {
+            return response()->json(['message' => $exception->userFacingReason()], 503);
         }
 
         /** @var User $admin */
@@ -98,10 +102,11 @@ class AdminAssistantController extends Controller
     public function show(
         Request $request,
         AiSettings $settings,
+        KillSwitch $killSwitch,
         ConversationOwnership $ownership,
         string $conversation,
     ): JsonResponse {
-        if (! $settings->isFeatureEnabled('admin_assistant')) {
+        if ($killSwitch->engaged(self::FEATURE)) {
             return $this->disabledResponse($settings);
         }
 
@@ -141,10 +146,11 @@ class AdminAssistantController extends Controller
      */
     public function confirm(
         AiSettings $settings,
+        KillSwitch $killSwitch,
         ProposalExecutor $executor,
         Proposal $proposal,
     ): JsonResponse {
-        if (! $settings->isFeatureEnabled('admin_assistant')) {
+        if ($killSwitch->engaged(self::FEATURE)) {
             return $this->disabledResponse($settings);
         }
 
@@ -168,10 +174,11 @@ class AdminAssistantController extends Controller
      */
     public function reject(
         AiSettings $settings,
+        KillSwitch $killSwitch,
         ProposalExecutor $executor,
         Proposal $proposal,
     ): JsonResponse {
-        if (! $settings->isFeatureEnabled('admin_assistant')) {
+        if ($killSwitch->engaged(self::FEATURE)) {
             return $this->disabledResponse($settings);
         }
 
