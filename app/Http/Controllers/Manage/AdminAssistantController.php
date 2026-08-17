@@ -4,11 +4,8 @@ namespace App\Http\Controllers\Manage;
 
 use App\Ai\Admin\AdminAssistant;
 use App\Ai\Admin\AdminOwner;
-use App\Ai\Admin\ProposalExecutor;
-use App\Ai\Admin\ProposalExtractor;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Manage\AdminAssistantMessageRequest;
-use App\Models\Ai\AdminPendingAction;
 use App\Models\User;
 use App\Settings\AiSettings;
 use Illuminate\Http\JsonResponse;
@@ -18,6 +15,10 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Laravel\Ai\Models\ConversationMessage;
 use Laravel\Ai\Streaming\Events\ToolResult as ToolResultEvent;
+use Saad\AiKit\Approvals\Exceptions\ProposalNotPendingException;
+use Saad\AiKit\Approvals\Proposal;
+use Saad\AiKit\Approvals\ProposalExecutor;
+use Saad\AiKit\Approvals\ProposalTrailer;
 use Saad\AiKit\Conversations\ConversationOwnership;
 use Saad\AiKit\Safety\BudgetGuard;
 use Saad\AiKit\Streaming\SseStream;
@@ -66,7 +67,6 @@ class AdminAssistantController extends Controller
         AiSettings $settings,
         BudgetGuard $budget,
         ConversationOwnership $ownership,
-        ProposalExtractor $proposals,
     ): JsonResponse|StreamedResponse {
         if (! $settings->isFeatureEnabled('admin_assistant')) {
             return $this->disabledResponse($settings);
@@ -84,7 +84,7 @@ class AdminAssistantController extends Controller
         $prompt = $request->validated('message');
 
         return response()->stream(
-            fn () => $this->streamTurn($prompt, $owner, $conversationId, $proposals),
+            fn () => $this->streamTurn($prompt, $owner, $conversationId, (string) $admin->getKey()),
             200,
             SseStream::headers(),
         );
@@ -99,7 +99,6 @@ class AdminAssistantController extends Controller
         Request $request,
         AiSettings $settings,
         ConversationOwnership $ownership,
-        ProposalExtractor $proposals,
         string $conversation,
     ): JsonResponse {
         if (! $settings->isFeatureEnabled('admin_assistant')) {
@@ -114,6 +113,8 @@ class AdminAssistantController extends Controller
             404,
         );
 
+        $proposedBy = (string) $admin->getKey();
+
         $messages = ConversationMessage::query()
             ->where('conversation_id', $conversation)
             ->orderBy('id')
@@ -122,7 +123,10 @@ class AdminAssistantController extends Controller
                 'role' => (string) $message->getAttribute('role'),
                 'content' => (string) $message->getAttribute('content'),
                 'proposals' => $message->getAttribute('role') === 'assistant'
-                    ? $proposals->extractFromStored((array) $message->getAttribute('tool_results'))
+                    ? ProposalTrailer::cards(
+                        array_column((array) $message->getAttribute('tool_results'), 'result'),
+                        $proposedBy,
+                    )
                     : [],
                 'created_at' => $message->getAttribute('created_at')?->toIso8601String(),
             ])
@@ -138,20 +142,24 @@ class AdminAssistantController extends Controller
     public function confirm(
         AiSettings $settings,
         ProposalExecutor $executor,
-        AdminPendingAction $proposal,
+        Proposal $proposal,
     ): JsonResponse {
         if (! $settings->isFeatureEnabled('admin_assistant')) {
             return $this->disabledResponse($settings);
         }
 
-        if (! $proposal->isPending()) {
-            return response()->json([
-                'message' => 'هذا الاقتراح لم يعد بانتظار التأكيد.',
-                'proposal' => $proposal->toClientPayload(),
-            ], 409);
+        // The action executes as the admin who PROPOSED it (their abilities
+        // were checked at propose time); a deleted proposer fails the
+        // re-validation with the reason on the card.
+        $proposer = User::query()->find((int) $proposal->proposed_by);
+
+        try {
+            $confirmed = $executor->confirm($proposal, $proposer);
+        } catch (ProposalNotPendingException $exception) {
+            return $this->notPendingResponse($exception);
         }
 
-        return response()->json(['proposal' => $executor->confirm($proposal)->toClientPayload()]);
+        return response()->json(['proposal' => $confirmed->toClientPayload()]);
     }
 
     /**
@@ -161,20 +169,31 @@ class AdminAssistantController extends Controller
     public function reject(
         AiSettings $settings,
         ProposalExecutor $executor,
-        AdminPendingAction $proposal,
+        Proposal $proposal,
     ): JsonResponse {
         if (! $settings->isFeatureEnabled('admin_assistant')) {
             return $this->disabledResponse($settings);
         }
 
-        if (! $proposal->isPending()) {
-            return response()->json([
-                'message' => 'هذا الاقتراح لم يعد بانتظار التأكيد.',
-                'proposal' => $proposal->toClientPayload(),
-            ], 409);
+        try {
+            $rejected = $executor->reject($proposal);
+        } catch (ProposalNotPendingException $exception) {
+            return $this->notPendingResponse($exception);
         }
 
-        return response()->json(['proposal' => $executor->reject($proposal)->toClientPayload()]);
+        return response()->json(['proposal' => $rejected->toClientPayload()]);
+    }
+
+    /**
+     * The 409 whose body is the proposal's CURRENT card, so the client
+     * repaints instead of guessing.
+     */
+    private function notPendingResponse(ProposalNotPendingException $exception): JsonResponse
+    {
+        return response()->json([
+            'message' => 'هذا الاقتراح لم يعد بانتظار التأكيد.',
+            'proposal' => $exception->proposal->toClientPayload(),
+        ], 409);
     }
 
     /**
@@ -187,7 +206,7 @@ class AdminAssistantController extends Controller
         string $prompt,
         AdminOwner $owner,
         ?string $conversationId,
-        ProposalExtractor $proposals,
+        string $proposedBy,
     ): void {
         $sse = new SseStream;
         $sse->extendTimeLimit((int) config('ai.chat.timeout', 60) + 30);
@@ -206,8 +225,8 @@ class AdminAssistantController extends Controller
 
             (new StreamEventMapper)
                 ->onError(fn (): string => $this->genericErrorMessage())
-                ->on(ToolResultEvent::class, function (ToolResultEvent $event, callable $emit) use ($proposals): void {
-                    foreach ($proposals->extract([$event->toolResult]) as $card) {
+                ->on(ToolResultEvent::class, function (ToolResultEvent $event, callable $emit) use ($proposedBy): void {
+                    foreach (ProposalTrailer::cards([$event->toolResult->result], $proposedBy) as $card) {
                         $emit('proposal', $card);
                     }
                 })

@@ -3,21 +3,23 @@
 namespace App\Ai\Admin\Actions;
 
 use App\Ai\Admin\Tools\Concerns\GatedByAdminAssistant;
-use App\Models\Ai\AdminPendingAction;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Auth;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
+use Saad\AiKit\Approvals\Exceptions\ActionValidationException;
+use Saad\AiKit\Approvals\ProposalExecutor;
+use Saad\AiKit\Approvals\ProposalTrailer;
 use Stringable;
 
 /**
  * Exposes one {@see AdminAction} to the in-app admin assistant as a laravel/ai
- * tool. A READ runs immediately; a WRITE is confirm-gated — it validates and
- * persists a pending {@see AdminPendingAction} (never touching live state) and
- * returns the stable `proposal_id:` trailer the {@see \App\Ai\Admin\ProposalExtractor}
- * turns into an action card. Confirming the card runs the SAME action through
- * {@see \App\Ai\Admin\ProposalExecutor}.
+ * tool. A READ runs immediately; a WRITE is confirm-gated — ai-kit's
+ * {@see ProposalExecutor} validates and persists a pending proposal (never
+ * touching live state) and the reply carries the stable `proposal_id:`
+ * trailer {@see ProposalTrailer} turns into an action card. Confirming the
+ * card runs the SAME action through the executor's confirm phase.
  */
 class AssistantActionTool implements Tool
 {
@@ -64,28 +66,20 @@ class AssistantActionTool implements Tool
         }
 
         try {
-            $normalized = $this->action->validate($input, $user);
-        } catch (AdminActionException $exception) {
+            $proposal = app(ProposalExecutor::class)->propose(
+                $this->action->name(),
+                $input,
+                $user,
+                (string) $user->getKey(),
+            );
+        } catch (ActionValidationException $exception) {
             return 'تعذر إنشاء الاقتراح: '.$exception->getMessage();
         }
 
-        $summary = $this->action->summarize($normalized, $user);
-
-        $proposal = AdminPendingAction::query()->create([
-            'type' => $this->action->name(),
-            'payload' => [
-                'action' => $this->action->name(),
-                'category' => $this->action->category(),
-                'input' => $input,
-                'preview' => $normalized,
-            ],
-            'summary' => $summary,
-            'status' => AdminPendingAction::STATUS_PENDING,
-            'proposed_by' => (int) Auth::id(),
-        ]);
-
-        return "تم إنشاء اقتراح بانتظار تأكيد المشرف — لم يُنفَّذ بعد.\n"
-            ."الملخص: {$summary}\n"
-            ."---\nproposal_id: {$proposal->id}";
+        return ProposalTrailer::render(
+            "تم إنشاء اقتراح بانتظار تأكيد المشرف — لم يُنفَّذ بعد.\n"
+            ."الملخص: {$proposal->summary}",
+            $proposal,
+        );
     }
 }
