@@ -130,10 +130,12 @@ return [
 
     'conversations' => [
         // Owner ruling 2026-08-17 (ai-kit docs/DECISIONS.md #8, #9): encryption
-        // ON — pre-encryption plaintext rows still read back, rows written from
-        // now on need the app key — and the anonymous-thread window is ~90 days.
-        // Tool traces stay off until the kit can store them encrypted (#7).
-        'encrypt' => true,
+        // ON and a ~90-day anonymous-thread window. Encryption is held OFF
+        // until the show endpoints read through ConversationContent::reveal()
+        // (ai-kit ≥0.3.2) — flipping it earlier would render stored ciphertext
+        // in the chat panel. Tool traces stay off until the kit stores them
+        // encrypted (#7).
+        'encrypt' => false,
         'persist_tool_traces' => false,
         'retention_days' => 90,
     ],
