@@ -53,6 +53,22 @@ function adminSseEventData(string $content, string $event): ?array
     return json_decode($matches[1], true);
 }
 
+/**
+ * Every payload streamed under one event name, in arrival order — `tool`
+ * and `reasoning` both arrive repeatedly per turn.
+ *
+ * @return list<array<string, mixed>>
+ */
+function adminSseEvents(string $content, string $event): array
+{
+    preg_match_all('/^event: '.preg_quote($event, '/')."\ndata: (.+)$/m", $content, $matches);
+
+    return array_map(
+        fn (string $data): array => json_decode($data, true),
+        $matches[1],
+    );
+}
+
 function disableAdminAssistant(bool $masterToo = false): void
 {
     $settings = app(AiSettings::class);
@@ -317,6 +333,72 @@ describe('chat streaming', function () {
         $this->actingAs($this->admin)
             ->getJson(route('manage.assistant.show', $conversationId))
             ->assertNotFound();
+    });
+});
+
+/**
+ * ai-kit v0.5.0 emits `reasoning` and `tool` by default. Neither is
+ * persisted — they exist so the panel can show what the assistant is doing
+ * while it does it — so these assert the WIRE, not the stored thread.
+ */
+describe('reasoning and tool streaming', function () {
+    it('brackets a read tool call with running and done tool events', function () {
+        AdminAssistant::fake([
+            new ToolCall('tc_1', 'get_settings', []),
+            'هذه الإعدادات الحالية.',
+        ]);
+
+        [, $content] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'get_settings', []), 'ما الإعدادات؟');
+
+        $events = adminSseEvents($content, 'tool');
+
+        expect($events)->toHaveCount(2)
+            ->and($events[0]['id'])->toBe('tc_1')
+            ->and($events[0]['name'])->toBe('get_settings')
+            ->and($events[0]['status'])->toBe('running')
+            ->and($events[1]['id'])->toBe('tc_1')
+            ->and($events[1]['status'])->toBe('done')
+            ->and($events[1]['successful'])->toBeTrue();
+    });
+
+    it('streams thinking as reasoning events, in both provider spellings', function () {
+        fakeOpenRouter([
+            OpenRouterSse::body([
+                OpenRouterSse::reasoningFrame('أراجع شجرة الصفحات '),
+                OpenRouterSse::reasoningFrame('قبل أي اقتراح.', field: 'reasoning_content'),
+                OpenRouterSse::chunk(['content' => 'تم.'], finishReason: 'stop'),
+                OpenRouterSse::usageFrame(['prompt_tokens' => 10, 'completion_tokens' => 5, 'cost' => 0.001]),
+            ]),
+        ]);
+
+        $content = $this->actingAs($this->admin)
+            ->post(route('manage.assistant.send'), ['message' => 'رتب الصفحات'])
+            ->assertOk()
+            ->streamedContent();
+
+        $reasoning = implode('', array_column(adminSseEvents($content, 'reasoning'), 'text'));
+
+        expect($reasoning)->toBe('أراجع شجرة الصفحات قبل أي اقتراح.')
+            ->and($content)->toContain('event: delta');
+    });
+
+    it('emits a running tool event carrying the paused call id, and never its done', function () {
+        $page = Page::factory()->create(['title' => 'اللوائح']);
+
+        AdminAssistant::fake([
+            new ToolCall('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'اللوائح الدراسية']),
+        ]);
+
+        [, $content] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'manage_page_structure', []));
+
+        $events = adminSseEvents($content, 'tool');
+        $card = adminSseEventData($content, 'approval');
+
+        // The client folds this chip into the card that shares its id; a
+        // `done` would only arrive on the resumed turn.
+        expect($events)->toHaveCount(1)
+            ->and($events[0]['status'])->toBe('running')
+            ->and($events[0]['id'])->toBe($card['id']);
     });
 });
 
