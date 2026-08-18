@@ -6,10 +6,10 @@ import { changeStatusLabels, type ReviewChangePayload } from '@/components/manag
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatDateTime } from '@/lib/formatters';
-import { renderMarkdown } from '@/lib/markdown';
 import { Head, Link, router } from '@inertiajs/vue3';
+import Markdown from '@saad5400/ai-kit/vue/Markdown.vue';
 import { Check, ChevronLeft, ExternalLink, X } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
 defineOptions({ layout: ManageLayout });
 
@@ -29,6 +29,15 @@ const contentViews: { value: ContentView; label: string }[] = [
 ];
 
 const hasMarkdownChange = computed(() => props.change.changes.some((field) => field.type === 'markdown'));
+
+/**
+ * The markdown renderer sanitizes against a real DOM, which the SSR pass has
+ * none of — rendering only after mount keeps the preview off the degraded
+ * server path instead of hydrating over it.
+ */
+const mounted = ref(false);
+
+onMounted(() => (mounted.value = true));
 
 /** Why approve/reject are unavailable — null when the reviewer can act. */
 const actionDisabledReason = computed<string | null>(() => {
@@ -159,14 +168,12 @@ function runConfirmedAction(): void {
                     <div class="space-y-1">
                         <p class="text-xs text-muted-foreground">الحالي</p>
                         <p v-if="String(field.old).trim() === ''" class="text-sm text-muted-foreground">فارغ.</p>
-                        <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown escapes + DOMPurify-sanitizes the content -->
-                        <div v-else class="review-markdown text-sm leading-relaxed" v-html="renderMarkdown(String(field.old))" />
+                        <Markdown v-else-if="mounted" class="text-sm leading-relaxed" :source="String(field.old)" />
                     </div>
                     <div class="space-y-1">
                         <p class="text-xs text-muted-foreground">المقترح</p>
                         <p v-if="String(field.new).trim() === ''" class="text-sm text-muted-foreground">فارغ.</p>
-                        <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown escapes + DOMPurify-sanitizes the content -->
-                        <div v-else class="review-markdown text-sm leading-relaxed" v-html="renderMarkdown(String(field.new))" />
+                        <Markdown v-else-if="mounted" class="text-sm leading-relaxed" :source="String(field.new)" />
                     </div>
                 </div>
             </template>
@@ -206,63 +213,3 @@ function runConfirmedAction(): void {
         </ConfirmDialog>
     </div>
 </template>
-
-<style scoped>
-.review-markdown :deep(p) {
-    margin-block: 0.375rem;
-}
-
-.review-markdown :deep(p:first-child) {
-    margin-top: 0;
-}
-
-.review-markdown :deep(p:last-child) {
-    margin-bottom: 0;
-}
-
-.review-markdown :deep(ul),
-.review-markdown :deep(ol) {
-    margin-block: 0.375rem;
-    padding-inline-start: 1.25rem;
-}
-
-.review-markdown :deep(ul) {
-    list-style: disc;
-}
-
-.review-markdown :deep(ol) {
-    list-style: decimal;
-}
-
-.review-markdown :deep(h2),
-.review-markdown :deep(h3),
-.review-markdown :deep(h4) {
-    margin-block: 0.625rem 0.25rem;
-    font-weight: 600;
-}
-
-.review-markdown :deep(a) {
-    color: var(--primary);
-    text-decoration: underline;
-    text-underline-offset: 2px;
-}
-
-.review-markdown :deep(table) {
-    display: block;
-    width: max-content;
-    max-width: 100%;
-    overflow-x: auto;
-    margin-block: 0.5rem;
-    border-collapse: collapse;
-    font-size: 0.8125rem;
-    font-variant-numeric: tabular-nums;
-}
-
-.review-markdown :deep(th),
-.review-markdown :deep(td) {
-    border: 1px solid var(--border);
-    padding: 0.375rem 0.625rem;
-    text-align: start;
-    vertical-align: top;
-}
-</style>

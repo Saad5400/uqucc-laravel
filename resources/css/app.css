@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import '@saad5400/ai-kit/styles/prose.css';
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
 @source '../../storage/framework/views/*.php';
@@ -261,4 +262,36 @@
     .page-card {
         @apply rounded-xl shadow-sm;
     }
+}
+
+/*
+ * Assistant markdown (ai-kit's `.ai-kit-markdown` prose sheet, imported at
+ * the top of this file) mapped onto our tokens, plus the two things the kit
+ * sheet deliberately leaves to the app.
+ */
+.ai-kit-markdown {
+    --ai-kit-link: var(--primary);
+    --ai-kit-border: var(--border);
+    --ai-kit-muted-bg: var(--muted);
+    --ai-kit-muted: var(--muted-foreground);
+}
+
+/* Code is an LTR run no matter how right-to-left its surroundings are. */
+.ai-kit-markdown code,
+.ai-kit-markdown pre {
+    direction: ltr;
+    unicode-bidi: embed;
+}
+
+.ai-kit-markdown pre {
+    text-align: left;
+}
+
+/* Tables scroll inside their bubble on narrow screens instead of overflowing it. */
+.ai-kit-markdown table {
+    display: block;
+    width: max-content;
+    max-width: 100%;
+    overflow-x: auto;
+    font-variant-numeric: tabular-nums;
 }

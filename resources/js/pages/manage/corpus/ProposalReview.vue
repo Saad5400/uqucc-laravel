@@ -6,10 +6,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatDateTime } from '@/lib/formatters';
-import { renderMarkdown } from '@/lib/markdown';
 import { Head, Link, router } from '@inertiajs/vue3';
+import Markdown from '@saad5400/ai-kit/vue/Markdown.vue';
 import { Check, ChevronLeft, ExternalLink, Sparkles, X } from 'lucide-vue-next';
-import { computed, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 
 defineOptions({ layout: ManageLayout });
 
@@ -38,6 +38,15 @@ const props = defineProps<{
 }>();
 
 const isPending = computed(() => props.proposal.status === 'pending');
+
+/**
+ * The markdown renderer sanitizes against a real DOM, which the SSR pass has
+ * none of — rendering only after mount keeps the preview off the degraded
+ * server path instead of hydrating over it.
+ */
+const mounted = ref(false);
+
+onMounted(() => (mounted.value = true));
 
 /** Why apply/reject are unavailable — null when the reviewer can act. */
 const actionDisabledReason = computed<string | null>(() => {
@@ -163,8 +172,7 @@ function runConfirmedAction(): void {
                     <p v-if="!proposal.page || proposal.page.current_markdown.trim() === ''" class="text-sm text-muted-foreground">
                         {{ proposal.page ? 'الصفحة فارغة حالياً.' : 'الصفحة المستهدفة لم تعد موجودة.' }}
                     </p>
-                    <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown escapes + DOMPurify-sanitizes the content -->
-                    <div v-else class="proposal-markdown text-sm leading-relaxed" v-html="renderMarkdown(proposal.page.current_markdown)" />
+                    <Markdown v-else-if="mounted" class="text-sm leading-relaxed" :source="proposal.page.current_markdown" />
                 </CardContent>
             </Card>
 
@@ -173,8 +181,7 @@ function runConfirmedAction(): void {
                     <CardTitle class="text-lg">المحتوى المقترح</CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown escapes + DOMPurify-sanitizes model output -->
-                    <div class="proposal-markdown text-sm leading-relaxed" v-html="renderMarkdown(proposal.proposed_markdown)" />
+                    <Markdown v-if="mounted" class="text-sm leading-relaxed" :source="proposal.proposed_markdown" />
                 </CardContent>
             </Card>
         </div>
@@ -204,99 +211,3 @@ function runConfirmedAction(): void {
         </ConfirmDialog>
     </div>
 </template>
-
-<style scoped>
-.proposal-markdown :deep(p) {
-    margin-block: 0.375rem;
-}
-
-.proposal-markdown :deep(p:first-child) {
-    margin-top: 0;
-}
-
-.proposal-markdown :deep(p:last-child) {
-    margin-bottom: 0;
-}
-
-.proposal-markdown :deep(ul),
-.proposal-markdown :deep(ol) {
-    margin-block: 0.375rem;
-    padding-inline-start: 1.25rem;
-}
-
-.proposal-markdown :deep(ul) {
-    list-style: disc;
-}
-
-.proposal-markdown :deep(ol) {
-    list-style: decimal;
-}
-
-.proposal-markdown :deep(h2),
-.proposal-markdown :deep(h3),
-.proposal-markdown :deep(h4) {
-    margin-block: 0.625rem 0.25rem;
-    font-weight: 600;
-}
-
-.proposal-markdown :deep(code) {
-    border-radius: 0.25rem;
-    background: var(--muted);
-    padding: 0.125rem 0.375rem;
-    font-size: 0.8125em;
-    direction: ltr;
-    unicode-bidi: embed;
-}
-
-.proposal-markdown :deep(pre) {
-    margin-block: 0.5rem;
-    overflow-x: auto;
-    border-radius: 0.5rem;
-    background: var(--muted);
-    padding: 0.75rem;
-    direction: ltr;
-    text-align: left;
-}
-
-.proposal-markdown :deep(pre code) {
-    padding: 0;
-    background: transparent;
-}
-
-.proposal-markdown :deep(a) {
-    color: var(--primary);
-    text-decoration: underline;
-    text-underline-offset: 2px;
-}
-
-.proposal-markdown :deep(blockquote) {
-    margin-block: 0.5rem;
-    border-inline-start: 3px solid var(--border);
-    padding-inline-start: 0.75rem;
-    color: var(--muted-foreground);
-}
-
-.proposal-markdown :deep(table) {
-    display: block;
-    width: max-content;
-    max-width: 100%;
-    overflow-x: auto;
-    margin-block: 0.5rem;
-    border-collapse: collapse;
-    font-size: 0.8125rem;
-    font-variant-numeric: tabular-nums;
-}
-
-.proposal-markdown :deep(th),
-.proposal-markdown :deep(td) {
-    border: 1px solid var(--border);
-    padding: 0.375rem 0.625rem;
-    text-align: start;
-    vertical-align: top;
-}
-
-.proposal-markdown :deep(th) {
-    background: color-mix(in oklab, var(--foreground) 5%, transparent);
-    font-weight: 600;
-}
-</style>
