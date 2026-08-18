@@ -36,7 +36,7 @@ class GetQuizLeaderboardAction extends AdminAction
     public function description(): string
     {
         return 'Get the daily-quiz leaderboards — this week\'s top players and the all-time top players '
-            .'with points and streaks (عرض متصدري سؤال اليوم هذا الأسبوع وكل الأوقات). Read-only.';
+            .'with points and streaks. Read-only.';
     }
 
     /**

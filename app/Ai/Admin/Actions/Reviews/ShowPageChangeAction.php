@@ -76,7 +76,7 @@ class ShowPageChangeAction extends AdminAction
     public function description(): string
     {
         return 'Show a full field-by-field diff of a pending or decided page edit — the page\'s current '
-            .'values against the proposed ones (عرض تفاصيل تعديل صفحة: مقارنة القيم الحالية بالمقترحة حقلاً حقلاً). '
+            .'values against the proposed ones, field by field. '
             .'Provide change_request_id from list_pending_changes. Read-only — call this to see exactly what a '
             .'change proposes before approve_page_change or reject_page_change.';
     }

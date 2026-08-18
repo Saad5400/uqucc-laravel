@@ -45,7 +45,7 @@ class UpdateUserAction extends AdminAction
 
     public function description(): string
     {
-        return 'Update an existing panel user (تعديل بيانات مستخدم). '
+        return 'Update an existing admin-panel user. '
             .'Requires user_id (from list_users). Only the fields you send change. Password changes only when provided; '
             .'roles / requires_review apply only if you hold assign-roles.';
     }

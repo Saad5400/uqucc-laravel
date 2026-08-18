@@ -44,8 +44,7 @@ class GetCorpusDocumentAction extends AdminAction
     public function description(): string
     {
         return 'Show one AI knowledge-base document by id: its title, extraction status, authoring status, any error, '
-            .'reference url, the id of any authored page, and a truncated preview of its extracted markdown '
-            .'(عرض مستند واحد من قاعدة المعرفة بمعرّفه مع حالته ومقتطف من نصه المستخرج). '
+            .'reference url, the id of any authored page, and a truncated preview of its extracted markdown. '
             .'Provide document_id from list_corpus_documents. Read-only.';
     }
 

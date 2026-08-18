@@ -31,8 +31,7 @@ class ListStalePagesTool implements Tool
 
     public function description(): Stringable|string
     {
-        return 'List the published pages of the UQU College of Computing student guide that have not been updated for a long time '
-            .'(عرض صفحات دليل طلاب كلية الحاسبات التي لم تُحدَّث منذ فترة طويلة — الأقدم تحديثاً أولاً). '
+        return 'List the published pages of the UQU College of Computing student guide that have not been updated for a long time. '
             .'Returns pages whose last update is at least months_threshold months old, oldest first, '
             .'each with its slug, title, last-updated date and days since the update. Read-only.';
     }

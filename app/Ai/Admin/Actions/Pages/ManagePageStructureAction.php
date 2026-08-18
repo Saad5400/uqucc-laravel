@@ -42,7 +42,7 @@ class ManagePageStructureAction extends AdminAction
 
     public function description(): string
     {
-        return 'Make ONE structural change to the site\'s page tree (تعديل بنية شجرة صفحات الموقع). '
+        return 'Make ONE structural change to the site\'s page tree. '
             .'Actions: create (new page), rename, move (to a new parent), reorder (siblings of one parent), '
             .'publish, unpublish, delete (cascading soft delete). Use list_pages first for correct ids. '
             .'For editing a page\'s TEXT content use update_page_content; for its slug/icon/visibility flags use update_page.';

@@ -39,7 +39,7 @@ class ListPendingChangesAction extends AdminAction
 
     public function description(): string
     {
-        return 'List the page edits awaiting review (التعديلات المعلّقة بانتظار المراجعة). '
+        return 'List the page edits awaiting review. '
             .'Each entry has the change request id, the target page, the author, the fields it changes, '
             .'and when it was submitted — pass the id to show_page_change to see the diff, then to '
             .'approve_page_change or reject_page_change. Read-only.';

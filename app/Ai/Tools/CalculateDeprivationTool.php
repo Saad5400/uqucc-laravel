@@ -22,8 +22,8 @@ class CalculateDeprivationTool implements Tool
 
     public function description(): Stringable|string
     {
-        return 'Calculate absence/deprivation (الحرمان) status for a UQU course: how many absence hours remain before the student '
-            .'is barred from the final exam (حساب ساعات الغياب المتبقية قبل الحرمان). '
+        return 'Calculate absence/deprivation status for a UQU course: how many absence hours remain before the student '
+            .'is barred from sitting the final exam. '
             .'UQU rules over a 17-week term: at most 15% unexcused absence and 25% total absence. '
             .'Pass the course\'s weekly contact hours and the absence hours so far.';
     }
@@ -69,12 +69,12 @@ class CalculateDeprivationTool implements Tool
     {
         return [
             'lectures_per_week' => $schema->integer()
-                ->description('Weekly contact hours of the course (عدد ساعات المقرر في الأسبوع), at least 1.')
+                ->description('Weekly contact hours of the course, at least 1.')
                 ->required(),
             'unexcused_hours' => $schema->integer()
-                ->description('Absence hours WITHOUT an accepted excuse so far (ساعات الغياب بدون عذر). Defaults to 0.'),
+                ->description('Absence hours WITHOUT an accepted excuse so far. Defaults to 0.'),
             'excused_hours' => $schema->integer()
-                ->description('Absence hours WITH an accepted excuse so far (ساعات الغياب بعذر). Defaults to 0.'),
+                ->description('Absence hours WITH an accepted excuse so far. Defaults to 0.'),
         ];
     }
 }

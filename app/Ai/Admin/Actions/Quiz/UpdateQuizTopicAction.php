@@ -30,7 +30,7 @@ class UpdateQuizTopicAction extends AdminAction
 
     public function description(): string
     {
-        return 'Update a daily-quiz topic (تعديل موضوع سؤال اليوم). '
+        return 'Update a daily-quiz topic. '
             .'Provide topic_id (from list_quiz_topics) and any of name, prompt_hint, is_spotlight, is_active — '
             .'only the fields you pass change. Set is_active=false to keep a topic without it being picked.';
     }

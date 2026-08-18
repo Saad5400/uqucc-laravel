@@ -36,7 +36,7 @@ class CreateTutorAction extends AdminAction
 
     public function description(): string
     {
-        return 'Create a new private tutor (إضافة مدرّس خصوصي جديد). '
+        return 'Create a new private tutor. '
             .'Provide the name, an optional URL, and optional course_ids (from list_tutors) to attach the courses the tutor teaches.';
     }
 

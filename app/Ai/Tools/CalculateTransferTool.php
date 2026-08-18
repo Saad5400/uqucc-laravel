@@ -21,8 +21,8 @@ class CalculateTransferTool implements Tool
 
     public function description(): Stringable|string
     {
-        return 'Calculate the UQU internal-transfer composite score (حساب مركبة التحويل الداخلي بين التخصصات). '
-            .'Combines the weighted high-school score (النسبة الموزونة, out of 100) with the cumulative GPA (المعدل التراكمي, out of 4) '
+        return 'Calculate the UQU composite score for transferring internally between majors. '
+            .'Combines the weighted high-school admission score (out of 100) with the cumulative GPA (out of 4) '
             .'using a percentage split that defaults to 50/50: score = weighted × (weighted_percentage / 100) + gpa × (gpa_percentage / 4).';
     }
 
@@ -55,10 +55,10 @@ class CalculateTransferTool implements Tool
     {
         return [
             'weighted_score' => $schema->number()
-                ->description('The weighted score (النسبة الموزونة) out of 100.')
+                ->description('The weighted high-school admission score, out of 100.')
                 ->required(),
             'cumulative_gpa' => $schema->number()
-                ->description('The cumulative GPA (المعدل التراكمي) out of 4.')
+                ->description('The cumulative GPA, out of 4.')
                 ->required(),
             'weighted_percentage' => $schema->number()
                 ->description('Weight of the weighted score in the composite, as a percentage. Defaults to 50.'),

@@ -40,8 +40,7 @@ class ListPagesAction extends AdminAction
     public function description(): string
     {
         return 'List the full CMS page tree (all pages including hidden and trashed) with each page\'s id, title, '
-            .'slug, order, visibility flags and last update date '
-            .'(عرض شجرة صفحات الموقع كاملة بمعرفاتها وترتيبها وحالة نشرها وإخفائها وتاريخ آخر تحديث). '
+            .'slug, order, visibility flags and last update date. '
             .'Use the returned ids for the page-editing actions. Read-only.';
     }
 

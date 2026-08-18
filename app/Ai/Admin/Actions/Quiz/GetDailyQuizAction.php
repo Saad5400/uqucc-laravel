@@ -37,8 +37,7 @@ class GetDailyQuizAction extends AdminAction
     public function description(): string
     {
         return 'Get the daily quiz for a day (default today) — id, status (ready/posted/closed), question, '
-            .'options with the correct answer marked, explanation, reminder hints, topic, and turnout once posted '
-            .'(عرض سؤال اليوم مع حالته وخياراته والإجابة الصحيحة). '
+            .'options with the correct answer marked, explanation, reminder hints, topic, and turnout once posted. '
             .'Optional date in YYYY-MM-DD. Use the returned id with update_daily_quiz. Read-only.';
     }
 

@@ -37,10 +37,9 @@ class GetDocumentTool implements Tool
 
     public function description(): Stringable|string
     {
-        return 'Read an uploaded corpus document — official regulations, rules and guides PDFs — by its numeric id '
-            .'(قراءة مستند مرفوع مثل اللوائح والأدلة الرسمية بمعرفه الرقمي). '
+        return 'Read an uploaded corpus document — official regulations, rules and guides PDFs — by its numeric id. '
             .'Use the id from search_content results marked "(document: {id})". '
-            .'Short documents return in full. Long documents return a numbered table of contents (فهرس) instead — '
+            .'Short documents return in full. Long documents return a numbered table of contents instead — '
             .'call again with `section` (and optionally `end_section`) to read specific sections; the section heading '
             .'from a search_content snippet tells you which section to fetch. Read-only.';
     }

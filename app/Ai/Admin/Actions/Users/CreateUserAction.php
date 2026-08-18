@@ -37,7 +37,7 @@ class CreateUserAction extends AdminAction
 
     public function description(): string
     {
-        return 'Create a new panel user (إضافة مستخدم جديد للوحة). '
+        return 'Create a new admin-panel user. '
             .'Provide name, email and password. Roles and the requires_review flag are applied only if you hold the '
             .'assign-roles permission. The email is marked verified on creation.';
     }

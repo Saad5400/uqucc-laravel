@@ -40,8 +40,7 @@ class ListTutorsAction extends AdminAction
 
     public function description(): string
     {
-        return 'List all private tutors and the available courses with their ids '
-            .'(قائمة المدرّسين الخصوصيين والمقررات مع المعرّفات وترتيبها). '
+        return 'List all private tutors and the available courses with their ids and display order. '
             .'Each tutor includes its id, name, url, order and attached courses; each course includes its id, name, '
             .'order and tutors_count. Use the course ids here as course_ids when creating or updating a tutor, '
             .'and the ids for the reorder, update and delete actions. Read-only.';

@@ -32,7 +32,11 @@ abstract class AdminAction
     /** The canonical snake_case tool name, identical on both surfaces. */
     abstract public function name(): string;
 
-    /** Bilingual (English + Arabic) description shown to the model. */
+    /**
+     * The English description shown to the model. Model-facing strings (name,
+     * description, schema property names and their descriptions) stay English —
+     * Arabic degrades tool calling; Arabic belongs in what humans read.
+     */
     abstract public function description(): string;
 
     /**

@@ -40,8 +40,7 @@ class GetPageContentAction extends AdminAction
 
     public function description(): string
     {
-        return 'Read the current text content of one page (by id, including hidden pages) as markdown '
-            .'(قراءة المحتوى الحالي لصفحة بصيغة ماركداون عبر معرفها). '
+        return 'Read the current text content of one page (by id, including hidden pages) as markdown. '
             .'Use it before proposing an edit with update_page_content. Read-only.';
     }
 

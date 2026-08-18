@@ -34,7 +34,7 @@ class RejectPageChangeAction extends AdminAction
 
     public function description(): string
     {
-        return 'Reject a pending page edit — the live page is left untouched (رفض تعديل معلّق دون تغيير الصفحة). '
+        return 'Reject a pending page edit — the live page is left untouched. '
             .'Provide change_request_id from list_pending_changes and an optional note recorded on the request.';
     }
 

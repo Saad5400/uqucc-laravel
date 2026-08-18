@@ -30,9 +30,9 @@ class DateTimeTool implements Tool
 
     public function description(): Stringable|string
     {
-        return 'Get the current date and time, or do date/time arithmetic (معرفة التاريخ والوقت الآن أو إجراء عمليات على التواريخ). '
+        return 'Get the current date and time, or do date/time arithmetic. '
             .'Always use this instead of guessing "today", "now", the day of the week, or how far apart two dates are. '
-            ."Everything is resolved in the site's timezone (Asia/Riyadh) and reported in both the Gregorian (ميلادي) and Hijri Umm al-Qura (هجري) calendars. Operations: "
+            ."Everything is resolved in the site's timezone (Asia/Riyadh) and reported in both the Gregorian and Hijri Umm al-Qura calendars. Operations: "
             .'"now" (current date/time), "add"/"subtract" (shift a datetime by an amount and unit), "difference" (time between two datetimes). '
             .'Datetimes may be written naturally, e.g. "2026-07-15", "2026-07-15 14:30", or "now".';
     }

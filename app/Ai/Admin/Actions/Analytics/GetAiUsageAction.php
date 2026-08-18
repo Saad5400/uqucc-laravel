@@ -44,8 +44,7 @@ class GetAiUsageAction extends AdminAction
     public function description(): string
     {
         return 'Get the AI spend summary in USD: all-time cost, cost over the last N days (default 30), today\'s '
-            .'spend, and the cost broken down by feature (ملخّص تكلفة الذكاء الاصطناعي بالدولار: الإجمالي، وتكلفة '
-            .'آخر فترة، وإنفاق اليوم، والتوزيع حسب الميزة). Optional days sets the recent window. Read-only.';
+            .'spend, and the cost broken down by feature. Optional days sets the recent window. Read-only.';
     }
 
     /**

@@ -36,7 +36,7 @@ class CreateCourseAction extends AdminAction
 
     public function description(): string
     {
-        return 'Create a new private-tutor course (إضافة مقرر جديد للمدرّسين الخصوصيين). '
+        return 'Create a new private-tutor course. '
             .'Provide the course name. Courses are the taxonomy tutors are tagged with — attach them to tutors via create_tutor / update_tutor.';
     }
 

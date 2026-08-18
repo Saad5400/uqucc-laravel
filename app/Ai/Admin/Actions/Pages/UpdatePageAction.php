@@ -53,8 +53,7 @@ class UpdatePageAction extends AdminAction
 
     public function description(): string
     {
-        return 'Update a page\'s title, slug, icon or visibility flags '
-            .'(تعديل عنوان الصفحة أو رابطها أو أيقونتها أو خيارات إخفائها). '
+        return 'Update a page\'s title, slug, icon or visibility flags. '
             .'Provide page_id (from list_pages) and only the fields to change. '
             .'For the page\'s text content use update_page_content instead.';
     }
@@ -152,7 +151,7 @@ class UpdatePageAction extends AdminAction
             'hidden_from_bot' => $schema->boolean()->description('Whether the page is hidden from the Telegram bot.'),
             'hidden_from_ai' => $schema->boolean()->description('Whether the page is hidden from the AI assistant.'),
             'smart_search' => $schema->boolean()->description('Whether the page is included in smart search.'),
-            'requires_prefix' => $schema->boolean()->description('Whether the bot requires the «دليل» keyword to surface this page.'),
+            'requires_prefix' => $schema->boolean()->description('Whether the Telegram bot only surfaces this page when the message carries the guide keyword prefix.'),
         ];
     }
 }

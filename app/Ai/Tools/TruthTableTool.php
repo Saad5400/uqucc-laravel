@@ -23,7 +23,7 @@ class TruthTableTool implements Tool
 
     public function description(): Stringable|string
     {
-        return 'Generate the truth table of a propositional logic formula (توليد جدول الصواب لصيغة منطقية). '
+        return 'Generate the truth table of a propositional logic formula. '
             .'Connectives may be written in any common notation: ¬ ~ ! not, ∧ /\ && and, ↑ ⊼ nand, ∨ \/ || or, ↓ ⊽ nor, ⊕ ⊻ xor, '
             .'→ -> => implies, ↔ <-> iff, and the constants ⊤/T/true and ⊥/F/false. Example: "p /\ q -> ~r". '
             .'Returns the canonical formula, a monospace table with a column per variable and per subformula, '

@@ -28,8 +28,7 @@ class ResetTelegramChatAction extends AdminAction
 
     public function description(): string
     {
-        return 'Reset a Telegram chat\'s assistant conversation so it starts fresh next time '
-            .'(إعادة تعيين محادثة مساعد الذكاء الاصطناعي لمحادثة تيليجرام لتبدأ من جديد). '
+        return 'Reset a Telegram chat\'s assistant conversation so it starts fresh next time. '
             .'Provide chat_id (from list_telegram_chats). This clears the current conversation memory only; it does not disable the assistant.';
     }
 

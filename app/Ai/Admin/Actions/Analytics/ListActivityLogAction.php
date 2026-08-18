@@ -46,8 +46,7 @@ class ListActivityLogAction extends AdminAction
 
     public function description(): string
     {
-        return 'List the most recent audit-log entries, newest first (سجل النشاط: أحدث القيود مع التاريخ والفاعل '
-            .'والوصف والكائن المتأثر). Each entry has its date, the causer (if any), the description/event, and the '
+        return 'List the most recent audit-log entries, newest first. Each entry has its date, the causer (if any), the description/event, and the '
             .'subject type and id. Optional limit (default 20, capped at 50), log_name, event and subject_type filters. Read-only.';
     }
 

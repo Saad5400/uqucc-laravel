@@ -29,8 +29,7 @@ class CreateQuizTopicAction extends AdminAction
 
     public function description(): string
     {
-        return 'Create a new daily-quiz topic the questions can be generated from '
-            .'(إضافة موضوع جديد لسؤال اليوم). '
+        return 'Create a new daily-quiz topic the questions can be generated from. '
             .'Provide name, an optional prompt_hint to steer generation, and is_spotlight '
             .'(true for a major-specific theme shown only on the weekly spotlight day). New topics start active.';
     }
@@ -42,7 +41,7 @@ class CreateQuizTopicAction extends AdminAction
     {
         return [
             'name' => $schema->string()
-                ->description('The topic name, e.g. «أساسيات البرمجة».')
+                ->description('The topic name, written in Arabic like the rest of the site content, e.g. "programming basics".')
                 ->required(),
             'prompt_hint' => $schema->string()
                 ->description('Optional guidance for the author model about this topic.'),

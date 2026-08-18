@@ -32,7 +32,7 @@ class UpdateDailyQuizAction extends AdminAction
 
     public function description(): string
     {
-        return 'Edit a not-yet-posted daily quiz (تعديل سؤال اليوم قبل نشره). '
+        return 'Edit a not-yet-posted daily quiz. '
             .'Provide quiz_id (from get_daily_quiz), question, exactly four distinct options, '
             .'correct_option (0-3 index into options) and an optional explanation. '
             .'Put any code or scenario in the optional body field (markdown; fence code with ``` ) — '

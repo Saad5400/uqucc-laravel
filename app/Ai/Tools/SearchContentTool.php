@@ -31,7 +31,7 @@ class SearchContentTool implements Tool
     public function description(): Stringable|string
     {
         return 'Search the UQU College of Computing student guide (uqucc) content. '
-            .'The content is written in Arabic — prefer Arabic queries (البحث في محتوى دليل طلاب كلية الحاسبات بجامعة أم القرى). '
+            .'The content is written in Arabic — prefer Arabic queries. '
             .'Returns the most relevant content snippets with their page title, slug and section heading, best match first. '
             .'Use get_page with a returned slug to read a full page; results marked "(document: {id})" come from an uploaded '
             .'document (regulations/rules PDF) — read those with get_document instead (long documents return a table of '
