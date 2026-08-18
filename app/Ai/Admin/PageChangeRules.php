@@ -5,10 +5,10 @@ namespace App\Ai\Admin;
 use App\Models\Page;
 
 /**
- * The single source of truth for what a page-change proposal may do. Both
- * phases run through it: the propose_page_change tool validates before
- * persisting a pending action, and {@see ProposalExecutor} re-validates at
- * confirm time (the tree may have changed between proposal and تأكيد).
+ * The single source of truth for what a page-structure change may do. Both
+ * phases run through it: validation at pause time (before the approval card
+ * renders) and re-validation at execution time after تأكيد (the tree may
+ * have changed while the card waited).
  *
  * Semantics mirror {@see \App\Http\Controllers\Manage\PageController}:
  * publish/unpublish maps to the `hidden` flag, reorder only rearranges

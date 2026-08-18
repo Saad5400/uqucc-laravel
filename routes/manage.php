@@ -53,8 +53,7 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::get('/assistant', [AdminAssistantController::class, 'index'])->name('assistant.index');
         Route::post('/assistant/chat', [AdminAssistantController::class, 'send'])->middleware('throttle:15,1')->name('assistant.send');
         Route::get('/assistant/chat/{conversation}', [AdminAssistantController::class, 'show'])->name('assistant.show');
-        Route::post('/assistant/proposals/{proposal}/confirm', [AdminAssistantController::class, 'confirm'])->name('assistant.proposals.confirm');
-        Route::post('/assistant/proposals/{proposal}/reject', [AdminAssistantController::class, 'reject'])->name('assistant.proposals.reject');
+        Route::post('/assistant/chat/{conversation}/decide', [AdminAssistantController::class, 'decide'])->middleware('throttle:15,1')->name('assistant.decide');
 
         Route::get('/corpus', [CorpusDocumentController::class, 'index'])->name('corpus.index');
         Route::post('/corpus', [CorpusDocumentController::class, 'store'])->name('corpus.store');

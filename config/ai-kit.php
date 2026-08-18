@@ -108,34 +108,41 @@ return [
     | `encrypt` binds the kit's EncryptedConversationStore over laravel/ai's
     | ConversationStore contract: message content is encrypted with the app
     | key before it touches the database, and pre-encryption plaintext rows
-    | still read back. It is OPT-IN, and turning it on is a one-way door for
-    | every row written while it is on: those rows are readable only through
-    | this store and only with the app key that wrote them. Decide before you
-    | have traffic, keep the key, and do not flip it back and forth. With it
-    | off the vendor store stays bound (or bind your own). Table names and
-    | the connection follow the vendor keys (`ai.conversations.tables.*`,
-    | `ai.conversations.connection`).
+    | still read back. It is ON BY DEFAULT (owner decision, DECISIONS.md #8)
+    | with per-app opt-out, and every row written while it is on passes a
+    | one-way door: those rows are readable only through this store and only
+    | with the app key that wrote them. Keep the key, and do not flip the
+    | toggle back and forth. Opting out leaves the vendor store bound (or
+    | bind your own). Table names and the connection follow the vendor keys
+    | (`ai.conversations.tables.*`, `ai.conversations.connection`).
     |
     | `persist_tool_traces` keeps attachments / tool_calls / tool_results /
-    | usage / meta on message rows. Off by default — traces can carry user
-    | data at rest. laravel/ai's built-in tool-approval pause/resume
-    | reconstructs turns from those traces, so enable this if you use it.
+    | meta / the approval pause marker on message rows — ENCRYPTED by the
+    | store above (usage stays plaintext: aggregate numbers, no user
+    | content). ON by default per owner decision DECISIONS.md #7 (traces
+    | persist encrypted with short retention); laravel/ai's Approvable
+    | pause/resume — the kit's classified approval seam — reconstructs
+    | paused turns from these traces, so turning this off also disables
+    | resumable approvals. `trace_retention_days` is the SEPARATE short
+    | window (#7: 7–30d) beyond which `ai-kit:prune-conversations` strips
+    | traces from old rows while the conversation itself lives on.
     |
     | `retention_days` is the idle window `ai-kit:prune-conversations`
-    | deletes beyond (the --days option overrides per run). The command
-    | fires a ConversationsPruning event with the doomed ids first, so apps
-    | can cascade their own per-conversation resources.
+    | deletes beyond (the --days option overrides per run). Retention is
+    | FOREVER by default (owner decision, DECISIONS.md #9): null makes the
+    | delete pass a warning no-op, so only apps that set a window (e.g.
+    | uqucc's ~90 days for anonymous threads) ever delete anything. The
+    | command fires a ConversationsPruning event with the doomed ids first,
+    | so apps can cascade their own per-conversation resources.
     |
     */
 
     'conversations' => [
-        // Owner ruling 2026-08-17 (ai-kit docs/DECISIONS.md #8, #9): encryption
-        // ON — pre-encryption plaintext rows still read back; rows written from
-        // now on need the app key — and a ~90-day anonymous-thread window. The
-        // show endpoints read through ConversationContent::reveal() (ai-kit
-        // ≥0.3.2). Tool traces stay off until the kit stores them encrypted (#7).
         'encrypt' => true,
-        'persist_tool_traces' => false,
+        'persist_tool_traces' => true,
+        'trace_retention_days' => 14,
+        // uqucc override (ai-kit docs/DECISIONS.md #9): anonymous student
+        // threads keep a ~90-day idle window instead of the kit's forever.
         'retention_days' => 90,
     ],
 
@@ -179,10 +186,22 @@ return [
     | ride laravel/ai's native failover. `cheapest`/`smartest` feed the SDK's
     | UseCheapestModel / UseSmartestModel attributes.
     |
+    | `source` picks where models() reads from: 'config' serves this file
+    | live; 'database' serves the `table` rows that `ai-kit:sync-models`
+    | materializes from this same file (the reviewed config stays the source
+    | of truth — the table adds enable/disable ops control and app metadata).
+    | Entries may also declare `tasks` (routing labels like chat/mcq),
+    | `tags` (of which `recommended` is enforced: exactly one recommended
+    | model per declared task), `provider_max_price` ({prompt, completion}
+    | routing caps), `provider`/`provider_model_id`, `enabled`, `sort_order`
+    | and a `meta` bag the kit never reads.
+    |
     */
 
     'catalog' => [
         'provider' => 'openrouter',
+        'source' => 'config',
+        'table' => 'ai_models',
         'cheapest' => null,
         'smartest' => null,
         'models' => [
@@ -202,6 +221,19 @@ return [
     | Approvals
     |--------------------------------------------------------------------------
     |
+    | Two seams live here. The DECIDED contract (DECISIONS.md #3) is the
+    | classified pause on laravel/ai's native `Approvable`: tools extend
+    | `Classified\ClassifiedTool`, declare a server-derived Capability
+    | (read / write+undoable / destructive), reads run free, undoable
+    | writes execute immediately into the undo ledger, destructive calls
+    | pause the turn and resume via `Classified\ResumeDecisions`;
+    | `Classified\ApprovalCards` renders the cards and `Classified\AskUser`
+    | rides the same pause for mid-turn questions.
+    |
+    | TRANSITIONAL: the propose → confirm → execute machinery below
+    | predates that ruling; it stays until the apps running it (uqucc)
+    | migrate onto the classified seam, then it is retired.
+    |
     | The propose → confirm → execute pattern: proposals persist in
     | `proposals_table`, executed plan steps claim exactly-once rows in
     | `write_executions_table`, and proposed plans wait for their confirm
@@ -217,6 +249,64 @@ return [
         'plan_cache_store' => env('AI_KIT_PLAN_CACHE_STORE'),
         'plan_ttl_seconds' => (int) env('AI_KIT_PLAN_TTL_SECONDS', 3600),
         'auto_approve' => true,
+
+        // Turn undo (opt-in): executed writes ledger their compensations in
+        // `undo_table` and UndoTurn replays a whole turn in reverse. Keep
+        // the undo endpoint OUTSIDE any credit gate — undo spends nothing.
+        'undo' => false,
+        'undo_table' => 'ai_undo_actions',
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Attachments
+    |--------------------------------------------------------------------------
+    |
+    | The extraction split: images route to the app's vision agent, PDFs
+    | take the born-digital decision (a real text layer parses for free via
+    | poppler; a scanned or garbled one routes to vision), OOXML/HTML/plain
+    | formats parse locally. Text results are cached content-addressed
+    | (sha-256 of the bytes + `version` — bump it when the extraction
+    | strategy changes). Poppler is best-effort: a missing binary just
+    | routes PDFs to vision.
+    |
+    */
+
+    'attachments' => [
+        'cache' => [
+            'store' => env('AI_KIT_EXTRACTION_CACHE_STORE'),
+            'version' => 'v1',
+            'ttl_days' => (int) env('AI_KIT_EXTRACTION_CACHE_TTL_DAYS', 14),
+        ],
+        'pdf' => [
+            'min_chars_per_page' => 80,
+            'max_junk_ratio' => 0.10,
+            'timeout' => 60,
+            'pdftotext_binary' => env('AI_KIT_PDFTOTEXT_BINARY', 'pdftotext'),
+            'pdfinfo_binary' => env('AI_KIT_PDFINFO_BINARY', 'pdfinfo'),
+        ],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Credits
+    |--------------------------------------------------------------------------
+    |
+    | The cost → credits math and the turn-metering waivers. Margin applies
+    | AT CONSUMPTION (never at sale) and conversion always rounds up, so a
+    | charge can never fall below cost. `free_turn_max_cost_usd` is the
+    | chit-chat waiver ceiling on RESOLVED USD cost (0 disables it). Wallet
+    | policy — which wallets pay, resets, caps — stays in the app: bind the
+    | CreditDebitor contract to use the CreditMeter.
+    |
+    */
+
+    'credits' => [
+        'margin' => (float) env('AI_KIT_CREDITS_MARGIN', 0.10),
+        'credit_unit_usd' => (float) env('AI_KIT_CREDIT_UNIT_USD', 0.0004),
+        'usd_to_sar' => 3.75,
+        'free_turn_max_cost_usd' => (float) env('AI_KIT_FREE_TURN_MAX_COST_USD', 0.0006),
+        'credits_per_message_estimate' => 10,
     ],
 
     /*

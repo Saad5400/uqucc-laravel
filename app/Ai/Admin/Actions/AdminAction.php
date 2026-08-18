@@ -54,10 +54,22 @@ abstract class AdminAction
     }
 
     /**
-     * A read-only action runs immediately on both surfaces (no proposal) and
+     * A read-only action runs immediately on both surfaces (no approval) and
      * carries the MCP `readOnlyHint`.
      */
     public function isReadOnly(): bool
+    {
+        return false;
+    }
+
+    /**
+     * A destructive write discards something that cannot be recovered from
+     * inside the app (hard deletes, wiped history). On the assistant it
+     * renders as a one-click approval card — never an editable form — and
+     * with an undo ledger it would still always pause. Server-derived: the
+     * model never influences this classification.
+     */
+    public function isDestructive(): bool
     {
         return false;
     }

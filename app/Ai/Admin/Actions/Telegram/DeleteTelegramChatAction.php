@@ -22,6 +22,12 @@ class DeleteTelegramChatAction extends AdminAction
         return 'delete_telegram_chat';
     }
 
+    /** A hard delete — nothing in the app can bring the row back. */
+    public function isDestructive(): bool
+    {
+        return true;
+    }
+
     public function category(): string
     {
         return 'telegram';

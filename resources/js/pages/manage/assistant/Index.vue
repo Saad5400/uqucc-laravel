@@ -1,22 +1,24 @@
 <script setup lang="ts">
 import ManageLayout from '@/components/manage/ManageLayout.vue';
 import PageHeader from '@/components/manage/PageHeader.vue';
-import ProposalCard from '@/components/manage/assistant/ProposalCard.vue';
-import type { AssistantProposal } from '@/components/manage/assistant/types';
+import ApprovalCard from '@/components/manage/assistant/ApprovalCard.vue';
+import type { AssistantCard, AssistantDecision, TrackedCard } from '@/components/manage/assistant/types';
 import { Button } from '@/components/ui/button';
 import { renderMarkdown } from '@/lib/markdown';
-import { send as sendChat, show as showConversation } from '@/routes/manage/assistant';
+import { decide as decideChat, send as sendChat, show as showConversation } from '@/routes/manage/assistant';
 import { Head, Link } from '@inertiajs/vue3';
 import { CircleStop, RotateCcw, SendHorizontal, Settings, ShieldCheck, Sparkles } from 'lucide-vue-next';
-import { nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
 
 /**
- * The admin assistant chat: the operator copilot that inspects pages and
- * settings and PROPOSES changes. POST /manage/assistant/chat streams the
- * reply as SSE frames (delta/proposal/done/error) parsed off a fetch
- * ReadableStream — the same transport as the public AssistantPage — and each
- * `proposal` event renders an inline action card with تأكيد/رفض buttons.
- * Nothing is applied without a confirmation click.
+ * The admin assistant chat: the operator copilot whose writes pause the turn
+ * for approval. POST /manage/assistant/chat streams the reply as SSE frames
+ * (delta/approval/question/done/error) parsed off a fetch ReadableStream —
+ * the same transport as the public AssistantPage. A pause renders inline
+ * cards with تأكيد/رفض (or an answer box); once every pending card is
+ * decided, the batch resumes the SAME turn via
+ * POST /manage/assistant/chat/{conversation}/decide and the continuation
+ * streams into the thread. Nothing is applied without a decision here.
  */
 
 defineOptions({ layout: ManageLayout });
@@ -32,7 +34,7 @@ interface ChatMessage {
     id: number;
     role: 'user' | 'assistant';
     content: string;
-    proposals: AssistantProposal[];
+    cards: TrackedCard[];
     streaming?: boolean;
     failed?: boolean;
 }
@@ -56,6 +58,9 @@ const draftInput = useTemplateRef<HTMLTextAreaElement>('draftInput');
 let nextLocalId = 1;
 let abortController: AbortController | undefined;
 
+/** While a pause waits for decisions, the composer holds — a new prompt cannot pre-empt the paused turn. */
+const hasPendingCards = computed(() => messages.value.some((message) => message.cards.some((tracked) => tracked.status === 'pending')));
+
 const xsrfToken = (): string => {
     const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
 
@@ -76,6 +81,8 @@ const readJsonMessage = async (response: Response): Promise<string | null> => {
         return null;
     }
 };
+
+const trackPending = (card: AssistantCard): TrackedCard => ({ card, status: 'pending', decision: null });
 
 /** Rehydrate a conversation persisted across reloads; 404 means a clean slate. */
 const rehydrateConversation = async (): Promise<void> => {
@@ -99,7 +106,8 @@ const rehydrateConversation = async (): Promise<void> => {
         }
 
         const payload = (await response.json()) as {
-            messages: { role: string; content: string; proposals: AssistantProposal[] }[];
+            messages: { role: string; content: string }[];
+            pending_approvals: AssistantCard[];
         };
 
         conversationId.value = storedId;
@@ -109,8 +117,21 @@ const rehydrateConversation = async (): Promise<void> => {
                 id: nextLocalId++,
                 role: message.role as 'user' | 'assistant',
                 content: message.content,
-                proposals: message.proposals ?? [],
+                cards: [],
             }));
+
+        // A paused turn's undecided cards repaint on the last assistant
+        // bubble (a pause always ends the stored thread on one).
+        if (payload.pending_approvals.length > 0) {
+            let target = [...messages.value].reverse().find((message) => message.role === 'assistant');
+
+            if (!target) {
+                target = { id: nextLocalId++, role: 'assistant', content: '', cards: [] };
+                messages.value.push(target);
+            }
+
+            target.cards = payload.pending_approvals.map(trackPending);
+        }
 
         await scrollToBottom();
     } catch {
@@ -148,8 +169,8 @@ const handleSseEvent = (event: string, data: Record<string, unknown>, reply: Cha
     if (event === 'delta' && typeof data.text === 'string') {
         reply.content += data.text;
         void scrollToBottom();
-    } else if (event === 'proposal' && typeof data.id === 'string') {
-        reply.proposals.push(data as unknown as AssistantProposal);
+    } else if ((event === 'approval' || event === 'question') && typeof data.id === 'string') {
+        reply.cards.push(trackPending(data as unknown as AssistantCard));
         void scrollToBottom();
     } else if (event === 'done') {
         if (typeof data.conversation_id === 'string' && data.conversation_id !== '') {
@@ -162,28 +183,18 @@ const handleSseEvent = (event: string, data: Record<string, unknown>, reply: Cha
     }
 };
 
-const sendMessage = async (): Promise<void> => {
-    const message = draft.value.trim();
-
-    if (message === '' || message.length > MAX_MESSAGE_LENGTH || isStreaming.value || !props.assistant.enabled) {
-        return;
-    }
-
-    errorBanner.value = null;
-
-    messages.value.push({ id: nextLocalId++, role: 'user', content: message, proposals: [] });
-
-    const reply: ChatMessage = { id: nextLocalId++, role: 'assistant', content: '', proposals: [], streaming: true };
-    messages.value.push(reply);
-    const liveReply = messages.value[messages.value.length - 1];
-
-    draft.value = '';
+/**
+ * POST a body to an SSE endpoint and fold the frames into `liveReply` —
+ * shared by the first send and every decision resume, which speak the same
+ * stream contract.
+ */
+const streamInto = async (url: string, body: Record<string, unknown>, liveReply: ChatMessage): Promise<void> => {
     isStreaming.value = true;
     abortController = new AbortController();
     await scrollToBottom();
 
     try {
-        const response = await fetch(sendChat.url(), {
+        const response = await fetch(url, {
             method: 'POST',
             credentials: 'same-origin',
             headers: {
@@ -191,10 +202,7 @@ const sendMessage = async (): Promise<void> => {
                 'X-XSRF-TOKEN': xsrfToken(),
                 Accept: 'text/event-stream',
             },
-            body: JSON.stringify({
-                message,
-                ...(conversationId.value ? { conversation_id: conversationId.value } : {}),
-            }),
+            body: JSON.stringify(body),
             signal: abortController.signal,
         });
 
@@ -254,7 +262,7 @@ const sendMessage = async (): Promise<void> => {
     } finally {
         liveReply.streaming = false;
 
-        if (liveReply.failed && liveReply.content === '' && liveReply.proposals.length === 0) {
+        if (liveReply.failed && liveReply.content === '' && liveReply.cards.length === 0) {
             messages.value = messages.value.filter((item) => item.id !== liveReply.id);
         }
 
@@ -262,6 +270,66 @@ const sendMessage = async (): Promise<void> => {
         abortController = undefined;
         await scrollToBottom();
     }
+};
+
+const sendMessage = async (): Promise<void> => {
+    const message = draft.value.trim();
+
+    if (message === '' || message.length > MAX_MESSAGE_LENGTH || isStreaming.value || hasPendingCards.value || !props.assistant.enabled) {
+        return;
+    }
+
+    errorBanner.value = null;
+
+    messages.value.push({ id: nextLocalId++, role: 'user', content: message, cards: [] });
+
+    messages.value.push({ id: nextLocalId++, role: 'assistant', content: '', cards: [], streaming: true });
+    const liveReply = messages.value[messages.value.length - 1];
+
+    draft.value = '';
+
+    await streamInto(
+        sendChat.url(),
+        {
+            message,
+            ...(conversationId.value ? { conversation_id: conversationId.value } : {}),
+        },
+        liveReply,
+    );
+};
+
+/**
+ * Record one card's decision; once every pending card in the thread is
+ * decided, resume the paused turn with the whole batch (the server rejects
+ * partial batches, because an undecided call would be silently rejected).
+ */
+const onCardDecision = async (tracked: TrackedCard, decision: AssistantDecision): Promise<void> => {
+    if (tracked.status !== 'pending' || isStreaming.value || !conversationId.value) {
+        return;
+    }
+
+    tracked.decision = decision;
+    tracked.status = 'decided';
+
+    const undecided = messages.value.flatMap((message) => message.cards).filter((item) => item.status === 'pending');
+
+    if (undecided.length > 0) {
+        return;
+    }
+
+    const batch = messages.value.flatMap((message) => message.cards).filter((item) => item.status === 'decided');
+    const decisions = Object.fromEntries(batch.map((item) => [item.card.id, item.decision]));
+
+    batch.forEach((item) => {
+        item.status = 'submitted';
+    });
+
+    errorBanner.value = null;
+
+    messages.value.push({ id: nextLocalId++, role: 'assistant', content: '', cards: [], streaming: true });
+    const liveReply = messages.value[messages.value.length - 1];
+
+    await streamInto(decideChat.url(conversationId.value), { decisions }, liveReply);
 };
 
 const stopStreaming = (): void => {
@@ -282,14 +350,6 @@ const startNewConversation = (): void => {
 const useExamplePrompt = (prompt: string): void => {
     draft.value = prompt;
     draftInput.value?.focus();
-};
-
-const onProposalUpdated = (message: ChatMessage, updated: AssistantProposal): void => {
-    const index = message.proposals.findIndex((proposal) => proposal.id === updated.id);
-
-    if (index !== -1) {
-        message.proposals[index] = updated;
-    }
 };
 
 const onComposerKeydown = (event: KeyboardEvent): void => {
@@ -381,7 +441,7 @@ onBeforeUnmount(() => abortController?.abort());
                 <div v-else class="flex justify-start">
                     <div class="max-w-[85%] space-y-3 rounded-2xl rounded-ss-sm bg-muted px-4 py-2.5">
                         <div
-                            v-if="message.streaming && message.content === '' && message.proposals.length === 0"
+                            v-if="message.streaming && message.content === '' && message.cards.length === 0"
                             class="flex items-center gap-1 py-1"
                             aria-label="المساعد يكتب الآن"
                         >
@@ -397,12 +457,12 @@ onBeforeUnmount(() => abortController?.abort());
                             v-html="renderMarkdown(message.content)"
                         />
 
-                        <div v-if="message.proposals.length > 0" class="space-y-2">
-                            <ProposalCard
-                                v-for="proposal in message.proposals"
-                                :key="proposal.id"
-                                :proposal="proposal"
-                                @updated="(updated) => onProposalUpdated(message, updated)"
+                        <div v-if="message.cards.length > 0" class="space-y-2">
+                            <ApprovalCard
+                                v-for="tracked in message.cards"
+                                :key="tracked.card.id"
+                                :tracked="tracked"
+                                @decide="(decision) => onCardDecision(tracked, decision)"
                             />
                         </div>
                     </div>
@@ -424,17 +484,17 @@ onBeforeUnmount(() => abortController?.abort());
                     dir="rtl"
                     rows="1"
                     :maxlength="MAX_MESSAGE_LENGTH"
-                    placeholder="اطلب تعديلاً على الصفحات أو الإعدادات…"
+                    :placeholder="hasPendingCards ? 'قرر البطاقات المعلّقة أولاً ليكمل المساعد رده…' : 'اطلب تعديلاً على الصفحات أو الإعدادات…'"
                     aria-label="نص الرسالة"
                     class="max-h-40 min-h-10 flex-1 resize-y rounded-lg border border-input bg-background px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring"
-                    :disabled="isStreaming"
+                    :disabled="isStreaming || hasPendingCards"
                     @keydown="onComposerKeydown"
                 />
 
                 <Button v-if="isStreaming" variant="outline" size="icon" aria-label="إيقاف التوليد" @click="stopStreaming">
                     <CircleStop class="size-4 text-destructive" />
                 </Button>
-                <Button v-else size="icon" aria-label="إرسال الرسالة" :disabled="draft.trim() === ''" @click="sendMessage">
+                <Button v-else size="icon" aria-label="إرسال الرسالة" :disabled="draft.trim() === '' || hasPendingCards" @click="sendMessage">
                     <SendHorizontal class="size-4 -scale-x-100" />
                 </Button>
             </div>

@@ -22,6 +22,12 @@ class DeleteCourseAction extends AdminAction
         return 'delete_course';
     }
 
+    /** A hard delete — nothing in the app can bring the row back. */
+    public function isDestructive(): bool
+    {
+        return true;
+    }
+
     public function requiredAbility(): ?string
     {
         return 'manage-private-tutors';
