@@ -5,21 +5,25 @@ use App\Ai\Admin\Actions\Settings\GetSettingsAction;
 use App\Ai\Admin\AdminAssistant;
 use App\Ai\Admin\SettingsRegistry;
 use App\Models\Page;
+use App\Models\PrivateTutor\PrivateTutor;
 use App\Models\User;
 use App\Settings\AiSettings;
+use Database\Factories\PrivateTutor\PrivateTutorFactory;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
 use Laravel\Ai\Responses\Data\ToolCall;
 use Laravel\Ai\Tools\Request as ToolRequest;
-use Saad\AiKit\Approvals\Proposal;
-use Saad\AiKit\Approvals\ProposalStatus;
+use Saad\AiKit\Approvals\Classified\StoredApprovals;
 use Saad\AiKit\Safety\BudgetGuard;
 use Saad\AiKit\Safety\KillSwitch;
 use Saad\AiKit\Usage\UsageEvent;
+use Tests\Support\OpenRouterSse;
 
 beforeEach(function () {
     $this->withoutVite();
@@ -61,7 +65,7 @@ function disableAdminAssistant(bool $masterToo = false): void
     $settings->save();
 }
 
-function createAdminConversation(User $admin, array $toolResults = []): string
+function createAdminConversation(User $admin): string
 {
     $conversationId = (string) Str::uuid7();
 
@@ -72,7 +76,7 @@ function createAdminConversation(User $admin, array $toolResults = []): string
         'title' => 'محادثة إدارية',
     ]);
 
-    foreach ([['user', 'أخفِ الصفحة.', []], ['assistant', 'أنشأت اقتراحاً بانتظار تأكيدك.', $toolResults]] as [$role, $content, $results]) {
+    foreach ([['user', 'أخفِ الصفحة.'], ['assistant', 'تم.']] as [$role, $content]) {
         ConversationMessage::query()->create([
             'id' => (string) Str::uuid7(),
             'conversation_id' => $conversationId,
@@ -83,7 +87,7 @@ function createAdminConversation(User $admin, array $toolResults = []): string
             'content' => $content,
             'attachments' => [],
             'tool_calls' => [],
-            'tool_results' => $results,
+            'tool_results' => [],
             'usage' => [],
             'meta' => [],
         ]);
@@ -93,30 +97,44 @@ function createAdminConversation(User $admin, array $toolResults = []): string
 }
 
 /**
- * Persist a kit proposal the way the assistant's propose path would —
- * pending by default, in the manage_page_structure rename shape unless
- * overridden.
+ * Fake the OpenRouter HTTP layer with a sequence of SSE bodies — used by
+ * the pause/resume tests, because the vendor executes resumed tools only
+ * against a NON-faked agent gateway: the agent-level fake deliberately
+ * disables the Approvable resume, so those tests run the REAL generation
+ * loop and fake only the wire.
+ *
+ * @param  list<string>  $bodies
  */
-function makeProposal(User $admin, array $overrides = []): Proposal
+function fakeOpenRouter(array $bodies): void
 {
-    $type = $overrides['type'] ?? 'manage_page_structure';
-    $category = $overrides['category'] ?? 'pages';
-    $input = $overrides['input'] ?? ['action' => 'rename', 'page_id' => 1, 'title' => 'عنوان جديد'];
+    config()->set('ai.providers.openrouter.key', 'test-key');
 
-    return Proposal::query()->create([
-        'type' => $type,
-        'category' => $category,
-        'payload' => [
-            'action' => $type,
-            'category' => $category,
-            'input' => $input,
-            'preview' => $input,
-        ],
-        'summary' => $overrides['summary'] ?? 'اقتراح إداري.',
-        'status' => $overrides['status'] ?? ProposalStatus::Pending,
-        'proposed_by' => (string) $admin->getKey(),
-        'executed_at' => $overrides['executed_at'] ?? null,
-    ]);
+    $sequence = Http::sequence();
+
+    foreach ($bodies as $body) {
+        $sequence->push($body, 200, ['Content-Type' => 'text/event-stream']);
+    }
+
+    Http::fake(['*/chat/completions' => $sequence]);
+}
+
+/**
+ * Run one send whose turn pauses (both fake styles produce a genuine pause:
+ * the fake feeds the REAL generation loop, which stores approval_state and
+ * emits the cards), returning [conversationId, streamed SSE content].
+ */
+function pauseTurnOn(User $admin, ToolCall $toolCall, string $message = 'نفّذ التغيير'): array
+{
+    $content = test()->actingAs($admin)
+        ->post(route('manage.assistant.send'), ['message' => $message])
+        ->assertOk()
+        ->streamedContent();
+
+    $conversationId = adminSseEventData($content, 'done')['conversation_id'] ?? null;
+
+    expect($conversationId)->toBeString();
+
+    return [$conversationId, $content];
 }
 
 describe('authorization and gating', function () {
@@ -202,20 +220,23 @@ describe('authorization and gating', function () {
         AdminAssistant::assertNeverPrompted();
     });
 
-    it('answers 503 on confirm and reject while the feature is off', function () {
-        $proposal = makeProposal($this->admin);
+    it('answers 503 on decide while the feature is off, applying nothing', function () {
+        $page = Page::factory()->create(['title' => 'قديم']);
+
+        AdminAssistant::fake([
+            new ToolCall('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد']),
+            'نفّذت.',
+        ]);
+
+        [$conversationId] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'manage_page_structure', []));
 
         disableAdminAssistant();
 
         $this->actingAs($this->admin)
-            ->postJson(route('manage.assistant.proposals.confirm', $proposal))
+            ->postJson(route('manage.assistant.decide', $conversationId), ['decisions' => ['tc_1' => 'approve']])
             ->assertServiceUnavailable();
 
-        $this->actingAs($this->admin)
-            ->postJson(route('manage.assistant.proposals.reject', $proposal))
-            ->assertServiceUnavailable();
-
-        expect($proposal->refresh()->status)->toBe(ProposalStatus::Pending);
+        expect($page->refresh()->title)->toBe('قديم');
     });
 
     it('rejects an over-long message', function () {
@@ -277,22 +298,15 @@ describe('chat streaming', function () {
             ->and(ConversationMessage::query()->where('conversation_id', $foreignConversationId)->count())->toBe(2);
     });
 
-    it('returns the stored thread with proposals carrying their CURRENT status', function () {
-        $proposal = makeProposal($this->admin, ['status' => ProposalStatus::Confirmed, 'executed_at' => now()]);
-
-        $conversationId = createAdminConversation($this->admin, [[
-            'id' => 'tc_1',
-            'name' => 'propose_page_change',
-            'arguments' => [],
-            'result' => "تم إنشاء اقتراح بانتظار تأكيد المشرف.\n---\nproposal_id: {$proposal->id}",
-        ]]);
+    it('returns the stored thread with an empty pending set when nothing is paused', function () {
+        $conversationId = createAdminConversation($this->admin);
 
         $this->actingAs($this->admin)
             ->getJson(route('manage.assistant.show', $conversationId))
             ->assertOk()
             ->assertJsonCount(2, 'messages')
-            ->assertJsonPath('messages.1.proposals.0.id', $proposal->id)
-            ->assertJsonPath('messages.1.proposals.0.status', ProposalStatus::Confirmed->value);
+            ->assertJsonPath('messages.0.content', 'أخفِ الصفحة.')
+            ->assertJsonPath('pending_approvals', []);
     });
 
     it('answers 404 when another admin requests the thread', function () {
@@ -306,252 +320,259 @@ describe('chat streaming', function () {
     });
 });
 
-describe('proposal creation via tools', function () {
-    it('persists a pending page proposal from a tool call and emits it as an SSE proposal event', function () {
+describe('approval pause via tools', function () {
+    it('pauses a payload write with an editable approval card and applies nothing', function () {
         $page = Page::factory()->create(['title' => 'اللوائح']);
 
         AdminAssistant::fake([
             new ToolCall('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'اللوائح الدراسية']),
-            'أنشأت اقتراحاً بإعادة التسمية — بانتظار تأكيدك.',
         ]);
 
-        $content = $this->actingAs($this->admin)
-            ->post(route('manage.assistant.send'), ['message' => 'أعد تسمية صفحة اللوائح'])
-            ->assertOk()
-            ->streamedContent();
+        [$conversationId, $content] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'manage_page_structure', []));
 
-        $proposal = Proposal::query()->sole();
+        $card = adminSseEventData($content, 'approval');
 
-        expect($proposal->status)->toBe(ProposalStatus::Pending)
-            ->and($proposal->type)->toBe('manage_page_structure')
-            ->and($proposal->proposed_by)->toBe((string) $this->admin->id)
-            ->and($proposal->payload['input']['action'])->toBe('rename')
-            ->and($proposal->payload['input']['title'])->toBe('اللوائح الدراسية');
+        expect($card)->not->toBeNull()
+            ->and($card['id'])->toBe('tc_1')
+            ->and($card['tool'])->toBe('manage_page_structure')
+            ->and($card['category'])->toBe('pages')
+            ->and($card['destructive'])->toBeFalse()
+            ->and($card['editable'])->toBeTrue()
+            ->and($card['arguments']['title'])->toBe('اللوائح الدراسية')
+            ->and($card['reason'])->toContain('اللوائح الدراسية');
 
-        $event = adminSseEventData($content, 'proposal');
-
-        expect($event)->not->toBeNull()
-            ->and($event['id'])->toBe($proposal->id)
-            ->and($event['status'])->toBe(ProposalStatus::Pending->value)
-            ->and($event['summary'])->toContain('اللوائح الدراسية');
-
-        // Two-phase contract: nothing is applied at proposal time.
-        expect($page->refresh()->title)->toBe('اللوائح');
+        // Two-phase contract: nothing is applied while the card waits.
+        expect($page->refresh()->title)->toBe('اللوائح')
+            ->and((new StoredApprovals)->pending($conversationId)->pluck('id')->all())->toBe(['tc_1']);
     });
 
-    it('persists a pending settings proposal from a tool call', function () {
+    it('pauses a destructive delete as a one-click card', function () {
+        $tutor = PrivateTutorFactory::new()->create();
+
         AdminAssistant::fake([
-            new ToolCall('tc_1', 'update_setting', ['group' => 'ai', 'key' => 'search_enabled', 'value' => 'true']),
-            'أنشأت الاقتراح — بانتظار تأكيدك.',
+            new ToolCall('tc_1', 'delete_tutor', ['tutor_id' => $tutor->id]),
         ]);
 
-        $content = $this->actingAs($this->admin)
-            ->post(route('manage.assistant.send'), ['message' => 'فعّل البحث الذكي'])
-            ->assertOk()
-            ->streamedContent();
+        [, $content] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'delete_tutor', []));
 
-        $proposal = Proposal::query()->sole();
+        $card = adminSseEventData($content, 'approval');
 
-        expect($proposal->type)->toBe('update_setting')
-            ->and($proposal->payload['input']['group'])->toBe('ai')
-            ->and($proposal->payload['input']['key'])->toBe('search_enabled')
-            ->and($proposal->payload['preview']['value'])->toBeTrue()
-            ->and(adminSseEventData($content, 'proposal'))->not->toBeNull();
+        expect($card)->not->toBeNull()
+            ->and($card['destructive'])->toBeTrue()
+            ->and($card['editable'])->toBeFalse();
 
-        expect(app(AiSettings::class)->search_enabled)->toBeFalse();
+        expect(PrivateTutor::query()->whereKey($tutor->id)->exists())->toBeTrue();
     });
 
-    it('creates no proposal when the page id does not exist', function () {
+    it('pauses an AskUser call as a question card', function () {
+        AdminAssistant::fake([
+            new ToolCall('tc_1', 'AskUser', ['question' => 'أي قسم تقصد؟']),
+        ]);
+
+        [, $content] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'AskUser', []));
+
+        $card = adminSseEventData($content, 'question');
+
+        expect($card)->not->toBeNull()
+            ->and($card['id'])->toBe('tc_1')
+            ->and($card['question'])->toBe('أي قسم تقصد؟');
+    });
+
+    it('skips the pause and answers the model directly when validation fails', function () {
         AdminAssistant::fake([
             new ToolCall('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => 999, 'title' => 'جديد']),
-            'تعذر إنشاء الاقتراح.',
+            'تعذر تنفيذ الإجراء.',
         ]);
 
-        $content = $this->actingAs($this->admin)
-            ->post(route('manage.assistant.send'), ['message' => 'أعد التسمية'])
-            ->assertOk()
-            ->streamedContent();
+        [$conversationId, $content] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'manage_page_structure', []));
 
-        expect(Proposal::query()->count())->toBe(0)
-            ->and(adminSseEventData($content, 'proposal'))->toBeNull();
+        expect(adminSseEventData($content, 'approval'))->toBeNull()
+            ->and((new StoredApprovals)->pending($conversationId))->toBeEmpty();
     });
 
-    it('creates no proposal for an unknown settings key or a type-mismatched value', function (array $arguments) {
+    it('runs read tools immediately without a card', function () {
         AdminAssistant::fake([
-            new ToolCall('tc_1', 'update_setting', $arguments),
-            'تعذر إنشاء الاقتراح.',
+            new ToolCall('tc_1', 'get_settings', []),
+            'هذه الإعدادات الحالية.',
         ]);
 
-        $this->actingAs($this->admin)
-            ->post(route('manage.assistant.send'), ['message' => 'غيّر الإعداد'])
-            ->assertOk()
-            ->streamedContent();
+        [$conversationId, $content] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'get_settings', []), 'ما الإعدادات؟');
 
-        expect(Proposal::query()->count())->toBe(0);
-    })->with([
-        'unknown group' => [['group' => 'mail', 'key' => 'driver', 'value' => 'smtp']],
-        'unknown key' => [['group' => 'ai', 'key' => 'nonexistent_key', 'value' => 'true']],
-        'boolean type mismatch' => [['group' => 'ai', 'key' => 'search_enabled', 'value' => 'ربما']],
-        'integer type mismatch' => [['group' => 'ai', 'key' => 'per_session_rate_limit', 'value' => 'كثير']],
-    ]);
+        expect(adminSseEventData($content, 'approval'))->toBeNull()
+            ->and($content)->toContain('event: delta')
+            ->and((new StoredApprovals)->pending($conversationId))->toBeEmpty();
+    });
+
+    it('repaints the pending card on show for a reloaded client', function () {
+        $page = Page::factory()->create(['title' => 'اللوائح']);
+
+        AdminAssistant::fake([
+            new ToolCall('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد']),
+        ]);
+
+        [$conversationId] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'manage_page_structure', []));
+
+        $this->actingAs($this->admin)
+            ->getJson(route('manage.assistant.show', $conversationId))
+            ->assertOk()
+            ->assertJsonPath('pending_approvals.0.id', 'tc_1')
+            ->assertJsonPath('pending_approvals.0.tool', 'manage_page_structure')
+            ->assertJsonPath('pending_approvals.0.category', 'pages');
+    });
 });
 
-describe('confirming proposals', function () {
-    it('applies a rename through Eloquent (model events flush the app caches) and marks it confirmed', function () {
+describe('deciding paused turns', function () {
+    it('applies the write on approve, streams the continuation, and clears the pause', function () {
         $page = Page::factory()->create(['title' => 'قديم']);
 
-        $proposal = makeProposal($this->admin, [
-            'input' => ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد'],
+        fakeOpenRouter([
+            OpenRouterSse::toolCallBody('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد']),
+            OpenRouterSse::textBody('نفّذت إعادة التسمية.'),
         ]);
 
         Cache::put(config('app-cache.keys.navigation_tree'), ['stale']);
 
-        $this->actingAs($this->admin)
-            ->postJson(route('manage.assistant.proposals.confirm', $proposal))
+        [$conversationId] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'manage_page_structure', []));
+
+        $content = $this->actingAs($this->admin)
+            ->post(route('manage.assistant.decide', $conversationId), ['decisions' => ['tc_1' => 'approve']])
             ->assertOk()
-            ->assertJsonPath('proposal.status', ProposalStatus::Confirmed->value);
+            ->streamedContent();
 
-        expect($page->refresh()->title)->toBe('جديد')
-            ->and($proposal->refresh()->executed_at)->not->toBeNull()
-            ->and(Cache::has(config('app-cache.keys.navigation_tree')))->toBeFalse();
+        expect($content)->toContain('event: delta')
+            ->and($content)->toContain('event: done')
+            ->and($page->refresh()->title)->toBe('جديد')
+            // Eloquent write path: model events flushed the app caches.
+            ->and(Cache::has(config('app-cache.keys.navigation_tree')))->toBeFalse()
+            ->and((new StoredApprovals)->pending($conversationId))->toBeEmpty();
+
+        $execution = DB::table('ai_write_executions')->sole();
+
+        expect($execution->turn_id)->toBe('tool:tc_1')
+            ->and($execution->executed_by)->toBe('admin:'.$this->admin->id)
+            ->and(json_decode($execution->result, true)['edited_by_user'])->toBeFalse();
     });
 
-    it('applies a move to a new parent, placing the page at the end of its new siblings', function () {
-        $oldParent = Page::factory()->create();
-        $newParent = Page::factory()->create();
-        $sibling = Page::factory()->create(['parent_id' => $newParent->id, 'order' => 3]);
-        $page = Page::factory()->create(['parent_id' => $oldParent->id]);
-
-        $proposal = makeProposal($this->admin, [
-            'input' => ['action' => 'move', 'page_id' => $page->id, 'parent_id' => $newParent->id],
-        ]);
-
-        $this->actingAs($this->admin)
-            ->postJson(route('manage.assistant.proposals.confirm', $proposal))
-            ->assertOk()
-            ->assertJsonPath('proposal.status', ProposalStatus::Confirmed->value);
-
-        expect($page->refresh()->parent_id)->toBe($newParent->id)
-            ->and($page->order)->toBeGreaterThan($sibling->order);
-    });
-
-    it('applies publish and unpublish through the hidden flag', function () {
-        $page = Page::factory()->create(['hidden' => true]);
-
-        $publish = makeProposal($this->admin, [
-            'input' => ['action' => 'publish', 'page_id' => $page->id],
-        ]);
-
-        $this->actingAs($this->admin)->postJson(route('manage.assistant.proposals.confirm', $publish))->assertOk();
-
-        expect($page->refresh()->hidden)->toBeFalse();
-
-        $unpublish = makeProposal($this->admin, [
-            'input' => ['action' => 'unpublish', 'page_id' => $page->id],
-        ]);
-
-        $this->actingAs($this->admin)->postJson(route('manage.assistant.proposals.confirm', $unpublish))->assertOk();
-
-        expect($page->refresh()->hidden)->toBeTrue();
-    });
-
-    it('applies a sibling reorder with sequential orders', function () {
-        $parent = Page::factory()->create();
-        $first = Page::factory()->create(['parent_id' => $parent->id, 'order' => 1]);
-        $second = Page::factory()->create(['parent_id' => $parent->id, 'order' => 2]);
-
-        $proposal = makeProposal($this->admin, [
-            'input' => ['action' => 'reorder', 'ids' => [$second->id, $first->id]],
-        ]);
-
-        $this->actingAs($this->admin)->postJson(route('manage.assistant.proposals.confirm', $proposal))->assertOk();
-
-        expect($second->refresh()->order)->toBe(1)
-            ->and($first->refresh()->order)->toBe(2);
-    });
-
-    it('soft deletes a page together with its descendants', function () {
-        $page = Page::factory()->create();
-        $child = Page::factory()->create(['parent_id' => $page->id]);
-
-        $proposal = makeProposal($this->admin, [
-            'input' => ['action' => 'delete', 'page_id' => $page->id],
-        ]);
-
-        $this->actingAs($this->admin)->postJson(route('manage.assistant.proposals.confirm', $proposal))->assertOk();
-
-        expect($page->refresh()->trashed())->toBeTrue()
-            ->and($child->refresh()->trashed())->toBeTrue();
-    });
-
-    it('applies a settings change round-trip', function () {
-        expect(app(AiSettings::class)->search_enabled)->toBeFalse();
-
-        $proposal = makeProposal($this->admin, [
-            'type' => 'update_setting',
-            'category' => 'settings',
-            'input' => ['group' => 'ai', 'key' => 'search_enabled', 'value' => 'true'],
-            'summary' => 'تغيير الإعداد ai.search_enabled.',
-        ]);
-
-        $this->actingAs($this->admin)
-            ->postJson(route('manage.assistant.proposals.confirm', $proposal))
-            ->assertOk()
-            ->assertJsonPath('proposal.status', ProposalStatus::Confirmed->value);
-
-        expect(app(AiSettings::class)->refresh()->search_enabled)->toBeTrue();
-    });
-
-    it('marks the proposal failed with the reason when re-validation fails (page vanished)', function () {
-        $page = Page::factory()->create();
-
-        $proposal = makeProposal($this->admin, [
-            'input' => ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد'],
-        ]);
-
-        $page->forceDelete();
-
-        $this->actingAs($this->admin)
-            ->postJson(route('manage.assistant.proposals.confirm', $proposal))
-            ->assertOk()
-            ->assertJsonPath('proposal.status', ProposalStatus::Failed->value);
-
-        expect($proposal->refresh()->error)->not->toBeNull();
-    });
-
-    it('answers 409 when the proposal is no longer pending', function () {
-        $proposal = makeProposal($this->admin, ['status' => ProposalStatus::Rejected]);
-
-        $this->actingAs($this->admin)
-            ->postJson(route('manage.assistant.proposals.confirm', $proposal))
-            ->assertConflict()
-            ->assertJsonPath('proposal.status', ProposalStatus::Rejected->value);
-    });
-});
-
-describe('rejecting proposals', function () {
-    it('marks the proposal rejected and applies nothing', function () {
+    it('executes user-edited arguments through the same validated path and flags the audit trail', function () {
         $page = Page::factory()->create(['title' => 'قديم']);
 
-        $proposal = makeProposal($this->admin, [
-            'input' => ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد'],
+        fakeOpenRouter([
+            OpenRouterSse::toolCallBody('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'اقتراح النموذج']),
+            OpenRouterSse::textBody('نفّذت.'),
         ]);
 
-        $this->actingAs($this->admin)
-            ->postJson(route('manage.assistant.proposals.reject', $proposal))
-            ->assertOk()
-            ->assertJsonPath('proposal.status', ProposalStatus::Rejected->value);
+        [$conversationId] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'manage_page_structure', []));
 
-        expect($page->refresh()->title)->toBe('قديم')
-            ->and($proposal->refresh()->executed_at)->toBeNull();
+        $this->actingAs($this->admin)
+            ->post(route('manage.assistant.decide', $conversationId), ['decisions' => ['tc_1' => [
+                'action' => 'edit',
+                'arguments' => ['action' => 'rename', 'page_id' => $page->id, 'title' => 'تعديل المشرف'],
+            ]]])
+            ->assertOk()
+            ->streamedContent();
+
+        expect($page->refresh()->title)->toBe('تعديل المشرف')
+            ->and(json_decode(DB::table('ai_write_executions')->sole()->result, true)['edited_by_user'])->toBeTrue();
     });
 
-    it('answers 409 when rejecting a proposal that was already confirmed', function () {
-        $proposal = makeProposal($this->admin, ['status' => ProposalStatus::Confirmed, 'executed_at' => now()]);
+    it('applies nothing on reject and the model reads the denial', function () {
+        $page = Page::factory()->create(['title' => 'قديم']);
+
+        fakeOpenRouter([
+            OpenRouterSse::toolCallBody('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد']),
+            OpenRouterSse::textBody('حسناً، لن أنفّذ التغيير.'),
+        ]);
+
+        [$conversationId] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'manage_page_structure', []));
+
+        $content = $this->actingAs($this->admin)
+            ->post(route('manage.assistant.decide', $conversationId), ['decisions' => ['tc_1' => ['action' => 'reject']]])
+            ->assertOk()
+            ->streamedContent();
+
+        expect($content)->toContain('event: done')
+            ->and($page->refresh()->title)->toBe('قديم')
+            ->and(DB::table('ai_write_executions')->count())->toBe(0)
+            ->and((new StoredApprovals)->pending($conversationId))->toBeEmpty();
+    });
+
+    it('resumes an AskUser pause with the answer as an edit decision', function () {
+        fakeOpenRouter([
+            OpenRouterSse::toolCallBody('tc_1', 'AskUser', ['question' => 'أي قسم تقصد؟']),
+            OpenRouterSse::textBody('شكراً — سأعمل على قسم اللوائح.'),
+        ]);
+
+        [$conversationId] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'AskUser', []));
+
+        $content = $this->actingAs($this->admin)
+            ->post(route('manage.assistant.decide', $conversationId), ['decisions' => ['tc_1' => [
+                'action' => 'edit',
+                'arguments' => ['question' => 'أي قسم تقصد؟', 'answer' => 'قسم اللوائح'],
+            ]]])
+            ->assertOk()
+            ->streamedContent();
+
+        expect($content)->toContain('event: done')
+            ->and((new StoredApprovals)->pending($conversationId))->toBeEmpty();
+    });
+
+    it('answers 409 with the current pending set when the decisions do not match the pause', function () {
+        $conversationId = createAdminConversation($this->admin);
 
         $this->actingAs($this->admin)
-            ->postJson(route('manage.assistant.proposals.reject', $proposal))
+            ->postJson(route('manage.assistant.decide', $conversationId), ['decisions' => ['tc_9' => 'approve']])
+            ->assertConflict()
+            ->assertJsonPath('pending_approvals', []);
+    });
+
+    it('answers 422 on a malformed decision payload', function () {
+        $page = Page::factory()->create();
+
+        fakeOpenRouter([
+            OpenRouterSse::toolCallBody('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد']),
+        ]);
+
+        [$conversationId] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'manage_page_structure', []));
+
+        $this->actingAs($this->admin)
+            ->postJson(route('manage.assistant.decide', $conversationId), ['decisions' => ['tc_1' => 'maybe']])
+            ->assertUnprocessable();
+    });
+
+    it('answers 404 when deciding another admin conversation', function () {
+        $otherAdmin = User::factory()->create();
+        $otherAdmin->assignRole('admin');
+        $conversationId = createAdminConversation($otherAdmin);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('manage.assistant.decide', $conversationId), ['decisions' => ['tc_1' => 'approve']])
+            ->assertNotFound();
+    });
+
+    it('replays the first result instead of writing twice on a double-submitted approval', function () {
+        $page = Page::factory()->create(['title' => 'قديم']);
+
+        fakeOpenRouter([
+            OpenRouterSse::toolCallBody('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد']),
+            OpenRouterSse::textBody('نفّذت.'),
+        ]);
+
+        [$conversationId] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'manage_page_structure', []));
+
+        $this->actingAs($this->admin)
+            ->post(route('manage.assistant.decide', $conversationId), ['decisions' => ['tc_1' => 'approve']])
+            ->assertOk()
+            ->streamedContent();
+
+        // The pause is resolved, so a second submit repaints via 409 — and
+        // even if it raced past that check, the execution ledger holds one
+        // claim for tool:tc_1.
+        $this->actingAs($this->admin)
+            ->postJson(route('manage.assistant.decide', $conversationId), ['decisions' => ['tc_1' => 'approve']])
             ->assertConflict();
+
+        expect(DB::table('ai_write_executions')->where('turn_id', 'tool:tc_1')->count())->toBe(1)
+            ->and($page->refresh()->title)->toBe('جديد');
     });
 });
 

@@ -21,6 +21,12 @@ class DeleteUserAction extends AdminAction
         return 'delete_user';
     }
 
+    /** A hard delete — nothing in the app can bring the row back. */
+    public function isDestructive(): bool
+    {
+        return true;
+    }
+
     public function requiredAbility(): ?string
     {
         return 'manage-users';

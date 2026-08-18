@@ -4,7 +4,9 @@ namespace App\Http\Controllers\Manage;
 
 use App\Ai\Admin\AdminAssistant;
 use App\Ai\Admin\AdminOwner;
+use App\Ai\Admin\AssistantCards;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Manage\AdminAssistantDecisionRequest;
 use App\Http\Requests\Manage\AdminAssistantMessageRequest;
 use App\Models\User;
 use App\Settings\AiSettings;
@@ -13,12 +15,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Context;
 use Inertia\Inertia;
 use Inertia\Response;
+use InvalidArgumentException;
+use Laravel\Ai\Approvals\Decisions;
 use Laravel\Ai\Models\ConversationMessage;
-use Laravel\Ai\Streaming\Events\ToolResult as ToolResultEvent;
-use Saad\AiKit\Approvals\Exceptions\ProposalNotPendingException;
-use Saad\AiKit\Approvals\Proposal;
-use Saad\AiKit\Approvals\ProposalExecutor;
-use Saad\AiKit\Approvals\ProposalTrailer;
+use Saad\AiKit\Approvals\Classified\ResumeDecisions;
 use Saad\AiKit\Conversations\ConversationContent;
 use Saad\AiKit\Conversations\ConversationOwnership;
 use Saad\AiKit\Safety\Exceptions\AiKilledException;
@@ -31,11 +31,13 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 /**
- * The /manage admin assistant chat API — the operator copilot with
- * confirm-gated write powers. The transport mirrors the public
- * {@see \App\Http\Controllers\Ai\ChatController} SSE contract
- * (delta/done/error) plus a `proposal` event whenever the model persisted a
- * pending action, so the client renders تأكيد/رفض cards inline. Conversations
+ * The /manage admin assistant chat API — the operator copilot whose writes
+ * pause the turn on ai-kit's classified approval seam. The transport mirrors
+ * the public {@see \App\Http\Controllers\Ai\ChatController} SSE contract
+ * (delta/done/error) plus an `approval` or `question` event per card
+ * whenever the turn paused, so the client renders تأكيد/رفض cards inline.
+ * Decisions resume the SAME turn through {@see decide()} and the
+ * continuation streams back over the identical SSE contract. Conversations
  * belong to the authenticated admin (AdminOwner, "admin:{id}").
  *
  * Layered gates on every endpoint: panel auth (route middleware) → ai-kit's
@@ -89,7 +91,67 @@ class AdminAssistantController extends Controller
         $prompt = $request->validated('message');
 
         return response()->stream(
-            fn () => $this->streamTurn($prompt, $owner, $conversationId, (string) $admin->getKey()),
+            fn () => $this->streamTurn($prompt, $owner, $conversationId),
+            200,
+            SseStream::headers(),
+        );
+    }
+
+    /**
+     * POST /manage/assistant/chat/{conversation}/decide
+     * (name: manage.assistant.decide) — resolve a paused turn's approval /
+     * question cards and stream the continuation. The payload maps each
+     * pending tool-call id to approve / reject / edit; every pending call
+     * must be decided in one batch, because the vendor loop rejects any it
+     * does not find a decision for.
+     */
+    public function decide(
+        AdminAssistantDecisionRequest $request,
+        AiSettings $settings,
+        TurnGuard $guard,
+        ConversationOwnership $ownership,
+        AssistantCards $cards,
+        string $conversation,
+    ): JsonResponse|StreamedResponse {
+        try {
+            $guard->check(self::FEATURE);
+        } catch (AiKilledException) {
+            return $this->disabledResponse($settings);
+        } catch (AiUnavailableException $exception) {
+            return response()->json(['message' => $exception->userFacingReason()], 503);
+        }
+
+        /** @var User $admin */
+        $admin = $request->user();
+        $owner = new AdminOwner($admin);
+
+        abort_unless($ownership->owns($conversation, $owner->id, AdminOwner::class), 404);
+
+        /** @var array<string, mixed> $input */
+        $input = $request->validated('decisions');
+
+        // The 409 whose body is the CURRENT pending set, so a stale client
+        // (double submit, another tab already decided) repaints instead of
+        // guessing.
+        $pendingIds = $cards->pendingFor($conversation)->pluck('id');
+
+        if ($pendingIds->isEmpty()
+            || $pendingIds->diff(array_keys($input))->isNotEmpty()
+            || collect(array_keys($input))->diff($pendingIds)->isNotEmpty()) {
+            return response()->json([
+                'message' => 'هذه البطاقات لم تعد بانتظار قرار.',
+                'pending_approvals' => $cards->pendingFor($conversation)->values(),
+            ], 409);
+        }
+
+        try {
+            $decisions = ResumeDecisions::fromClient($input);
+        } catch (InvalidArgumentException) {
+            return response()->json(['message' => 'صيغة القرارات غير صالحة.'], 422);
+        }
+
+        return response()->stream(
+            fn () => $this->streamTurn($decisions, $owner, $conversation),
             200,
             SseStream::headers(),
         );
@@ -97,14 +159,16 @@ class AdminAssistantController extends Controller
 
     /**
      * GET /manage/assistant/chat/{conversation} (name: manage.assistant.show)
-     * — the stored thread for rehydrating the panel, action cards included
-     * with their CURRENT status. 404 unless the admin owns the thread.
+     * — the stored thread for rehydrating the panel, plus the still-pending
+     * approval/question cards of a paused turn. 404 unless the admin owns
+     * the thread.
      */
     public function show(
         Request $request,
         AiSettings $settings,
         KillSwitch $killSwitch,
         ConversationOwnership $ownership,
+        AssistantCards $cards,
         string $conversation,
     ): JsonResponse {
         if ($killSwitch->engaged(self::FEATURE)) {
@@ -119,8 +183,6 @@ class AdminAssistantController extends Controller
             404,
         );
 
-        $proposedBy = (string) $admin->getKey();
-
         $messages = ConversationMessage::query()
             ->where('conversation_id', $conversation)
             ->orderBy('id')
@@ -128,93 +190,26 @@ class AdminAssistantController extends Controller
             ->map(fn (ConversationMessage $message): array => [
                 'role' => (string) $message->getAttribute('role'),
                 'content' => (string) ConversationContent::reveal($message->getAttribute('content')),
-                'proposals' => $message->getAttribute('role') === 'assistant'
-                    ? ProposalTrailer::cards(
-                        array_column((array) $message->getAttribute('tool_results'), 'result'),
-                        $proposedBy,
-                    )
-                    : [],
                 'created_at' => $message->getAttribute('created_at')?->toIso8601String(),
             ])
             ->values();
 
-        return response()->json(['messages' => $messages]);
-    }
-
-    /**
-     * POST /manage/assistant/proposals/{proposal}/confirm
-     * (name: manage.assistant.proposals.confirm) — apply a pending proposal.
-     */
-    public function confirm(
-        AiSettings $settings,
-        KillSwitch $killSwitch,
-        ProposalExecutor $executor,
-        Proposal $proposal,
-    ): JsonResponse {
-        if ($killSwitch->engaged(self::FEATURE)) {
-            return $this->disabledResponse($settings);
-        }
-
-        // The action executes as the admin who PROPOSED it (their abilities
-        // were checked at propose time); a deleted proposer fails the
-        // re-validation with the reason on the card.
-        $proposer = User::query()->find((int) $proposal->proposed_by);
-
-        try {
-            $confirmed = $executor->confirm($proposal, $proposer);
-        } catch (ProposalNotPendingException $exception) {
-            return $this->notPendingResponse($exception);
-        }
-
-        return response()->json(['proposal' => $confirmed->toClientPayload()]);
-    }
-
-    /**
-     * POST /manage/assistant/proposals/{proposal}/reject
-     * (name: manage.assistant.proposals.reject) — decline a pending proposal.
-     */
-    public function reject(
-        AiSettings $settings,
-        KillSwitch $killSwitch,
-        ProposalExecutor $executor,
-        Proposal $proposal,
-    ): JsonResponse {
-        if ($killSwitch->engaged(self::FEATURE)) {
-            return $this->disabledResponse($settings);
-        }
-
-        try {
-            $rejected = $executor->reject($proposal);
-        } catch (ProposalNotPendingException $exception) {
-            return $this->notPendingResponse($exception);
-        }
-
-        return response()->json(['proposal' => $rejected->toClientPayload()]);
-    }
-
-    /**
-     * The 409 whose body is the proposal's CURRENT card, so the client
-     * repaints instead of guessing.
-     */
-    private function notPendingResponse(ProposalNotPendingException $exception): JsonResponse
-    {
         return response()->json([
-            'message' => 'هذا الاقتراح لم يعد بانتظار التأكيد.',
-            'proposal' => $exception->proposal->toClientPayload(),
-        ], 409);
+            'messages' => $messages,
+            'pending_approvals' => $cards->pendingFor($conversation)->values(),
+        ]);
     }
 
     /**
      * Run the turn against the model and emit the SSE events, folded through
-     * ai-kit's StreamEventMapper (proposal cards ride a ToolResult hook).
-     * Every outcome — including a thrown provider error — must land as an
-     * event.
+     * ai-kit's StreamEventMapper; a pause emits its approval/question cards
+     * through {@see AssistantCards}. Every outcome — including a thrown
+     * provider error — must land as an event.
      */
     private function streamTurn(
-        string $prompt,
+        Decisions|string $prompt,
         AdminOwner $owner,
         ?string $conversationId,
-        string $proposedBy,
     ): void {
         $sse = new SseStream;
         $sse->extendTimeLimit((int) config('ai.chat.timeout', 60) + 30);
@@ -231,17 +226,13 @@ class AdminAssistantController extends Controller
         try {
             $response = $agent->stream($prompt);
 
-            (new StreamEventMapper)
-                ->onError(fn (): string => $this->genericErrorMessage())
-                ->on(ToolResultEvent::class, function (ToolResultEvent $event, callable $emit) use ($proposedBy): void {
-                    foreach (ProposalTrailer::cards([$event->toolResult->result], $proposedBy) as $card) {
-                        $emit('proposal', $card);
-                    }
-                })
-                ->doneUsing(fn (): array => [
-                    'conversation_id' => $response->conversationId ?? $conversationId,
-                ])
-                ->run($response, fn (string $event, array $data) => $sse->emit($event, $data));
+            app(AssistantCards::class)->attachTo(
+                (new StreamEventMapper)
+                    ->onError(fn (): string => $this->genericErrorMessage())
+                    ->doneUsing(fn (): array => [
+                        'conversation_id' => $response->conversationId ?? $conversationId,
+                    ])
+            )->run($response, fn (string $event, array $data) => $sse->emit($event, $data));
         } catch (Throwable $exception) {
             report($exception);
 

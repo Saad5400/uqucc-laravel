@@ -18,14 +18,16 @@ use Laravel\Ai\Contracts\HasTools;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Enums\Lab;
 use Laravel\Ai\Promptable;
+use Saad\AiKit\Approvals\Classified\AskUser;
 use Stringable;
 
 /**
  * The site operator's copilot inside /manage — the confirm-gated counterpart
  * of {@see \App\Ai\Agents\StudentAssistant}. It can INSPECT pages and
- * settings freely (read tools run immediately) but can only PROPOSE writes:
- * the propose_* tools persist a pending {@see \Saad\AiKit\Approvals\Proposal}
- * that a human must confirm in the UI before anything is applied.
+ * settings freely (read tools run immediately) but every WRITE pauses the
+ * turn on ai-kit's classified approval seam: the admin decides the card
+ * (approve / reject / edit) and the decision resumes the same turn, so the
+ * model reads the real execution result before finishing its reply.
  *
  * Invocation mirrors the public assistant, with the authenticated admin as
  * the conversation participant (via {@see AdminOwner}):
@@ -46,10 +48,11 @@ class AdminAssistant implements Agent, Conversational, HasProviderOptions, HasTo
     public function __construct(private readonly AiSettings $settings) {}
 
     /**
-     * The unified admin actions (read tools run immediately, writes become
-     * confirm-gated proposals) plus the public read-only content tools
-     * (search_content, get_page) for grounding. The admin actions are the
-     * SAME capabilities the MCP server exposes — built once from the
+     * The unified admin actions (read tools run immediately, writes pause
+     * for approval) plus the public read-only content tools (search_content,
+     * get_page) for grounding, plus ai-kit's AskUser for mid-turn questions
+     * on the same pause seam. The admin actions are the SAME capabilities
+     * the MCP server exposes — built once from the
      * {@see AdminActionRegistry} — and are NEVER added to the public Toolbox.
      *
      * @return array<int, Tool>
@@ -65,6 +68,7 @@ class AdminAssistant implements Agent, Conversational, HasProviderOptions, HasTo
             ...$actions,
             new NamedTool(app(SearchContentTool::class)),
             new NamedTool(app(GetPageTool::class)),
+            new AskUser,
         ];
     }
 
@@ -120,13 +124,14 @@ class AdminAssistant implements Agent, Conversational, HasProviderOptions, HasTo
         صلاحياتك:
         - الاطلاع الفوري (يُنفَّذ مباشرة): site_overview لنظرة عامة والتاريخ الحالي، list_pages لشجرة الصفحات كاملة (بما فيها المخفية والمحذوفة)، get_page_content لقراءة محتوى صفحة بصيغة ماركداون، list_pending_changes وshow_page_change لعرض التعديلات المعلّقة والفروقات، list_tutors للمدرّسين والمواد، list_users للمستخدمين، get_settings للإعدادات، list_routes لمسارات الموقع، search_content وget_page لمحتوى الصفحات المنشورة.
         - الاطلاع الفوري الإضافي: get_analytics وget_ai_usage للإحصاءات وتكلفة الذكاء الاصطناعي، list_activity_log لسجل النشاط، list_telegram_chats لمحادثات تيليجرام، list_corpus_documents وget_corpus_document لقاعدة المعرفة، list_quiz_topics ومواضيع سؤال اليوم، get_daily_quiz لسؤال يوم معيّن، get_quiz_leaderboard للمتصدرين.
-        - اقتراح التغييرات (بانتظار موافقة المشرف): الصفحات — manage_page_structure (إنشاء، تسمية، نقل، ترتيب، نشر، إخفاء، حذف)، update_page (العنوان/الرابط/الأيقونة/الإخفاء)، update_page_content (تحرير المحتوى)، restore_page. المراجعات — approve_page_change، reject_page_change. المدرّسون — create_tutor/update_tutor/delete_tutor/reorder_tutors والمواد create_course/update_course/delete_course/reorder_courses. المستخدمون — create_user/update_user/delete_user. الإعدادات — update_setting. تيليجرام — set_telegram_chat_ai/reset_telegram_chat/delete_telegram_chat. قاعدة المعرفة — reextract_corpus_document/reingest_corpus_document/author_page_from_document. سؤال اليوم — create_quiz_topic/update_quiz_topic/delete_quiz_topic للمواضيع، update_daily_quiz لتعديل سؤال قبل نشره، regenerate_daily_quiz لتوليد بديل («بدّل سؤال اليوم»). النظام — clear_cache.
+        - التغييرات (تتطلب موافقة المشرف قبل التنفيذ): الصفحات — manage_page_structure (إنشاء، تسمية، نقل، ترتيب، نشر، إخفاء، حذف)، update_page (العنوان/الرابط/الأيقونة/الإخفاء)، update_page_content (تحرير المحتوى)، restore_page. المراجعات — approve_page_change، reject_page_change. المدرّسون — create_tutor/update_tutor/delete_tutor/reorder_tutors والمواد create_course/update_course/delete_course/reorder_courses. المستخدمون — create_user/update_user/delete_user. الإعدادات — update_setting. تيليجرام — set_telegram_chat_ai/reset_telegram_chat/delete_telegram_chat. قاعدة المعرفة — reextract_corpus_document/reingest_corpus_document/author_page_from_document. سؤال اليوم — create_quiz_topic/update_quiz_topic/delete_quiz_topic للمواضيع، update_daily_quiz لتعديل سؤال قبل نشره، regenerate_daily_quiz لتوليد بديل («بدّل سؤال اليوم»). النظام — clear_cache.
 
         قاعدة التأكيد — الأهم على الإطلاق:
-        - أنت لا تملك تنفيذ أي تغيير. كل اقتراح يظهر للمشرف كبطاقة فيها زر «تأكيد» وزر «رفض»، ولا يُنفَّذ شيء إلا بعد ضغط «تأكيد».
-        - لا تدّعِ أبداً أن تغييراً قد تم تنفيذه. بعد إنشاء اقتراح قل بوضوح إنه بانتظار التأكيد، مثل: «أنشأت اقتراحاً بإخفاء الصفحة — اضغط تأكيد لتنفيذه».
-        - لخّص كل اقتراح بدقة قبل أو بعد إنشائه: ما الذي سيتغير بالضبط، وما القيمة القديمة والجديدة إن وجدت.
-        - عدّة تغييرات = عدّة اقتراحات منفصلة، ليتمكن المشرف من تأكيد بعضها ورفض بعضها.
+        - أنت لا تنفّذ أي تغيير مباشرة. عند استدعاء أداة كتابة يتوقف ردّك وتظهر للمشرف بطاقة فيها «تأكيد» و«رفض» (وقد يعدّل الحقول قبل التأكيد)، ولا يُنفَّذ شيء إلا بعد قراره — ثم يصلك ناتج التنفيذ لتكمل ردّك بناءً عليه.
+        - لا تدّعِ أبداً أن تغييراً قد تم قبل أن يصلك ناتج تنفيذه. إن رُفض الاستدعاء فتقبّل الرفض ولا تعِد المحاولة بنفس المعطيات.
+        - قبل استدعاء أداة كتابة لخّص للمشرف ما الذي سيتغير بالضبط، وما القيمة القديمة والجديدة إن وجدت.
+        - عدّة تغييرات = عدّة استدعاءات منفصلة، ليتمكن المشرف من تأكيد بعضها ورفض بعضها.
+        - إن احتجت معلومة لا يملكها غيرُ المشرف لإتمام الطلب فاستخدم أداة AskUser بسؤال واحد محدد وانتظر إجابته.
 
         القواعد:
         - اطّلع قبل أن تقترح: استخدم list_pages أو get_settings أولاً لتعتمد على المعرفات والقيم الحقيقية، ولا تخمّن معرفات الصفحات أو أسماء الإعدادات إطلاقاً.
