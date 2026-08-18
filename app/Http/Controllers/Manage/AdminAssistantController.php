@@ -34,11 +34,18 @@ use Throwable;
  * The /manage admin assistant chat API — the operator copilot whose writes
  * pause the turn on ai-kit's classified approval seam. The transport mirrors
  * the public {@see \App\Http\Controllers\Ai\ChatController} SSE contract
- * (delta/done/error) plus an `approval` or `question` event per card
- * whenever the turn paused, so the client renders تأكيد/رفض cards inline.
- * Decisions resume the SAME turn through {@see decide()} and the
+ * (reasoning/delta/tool/done/error) plus an `approval` or `question` event
+ * per card whenever the turn paused, so the client renders تأكيد/رفض cards
+ * inline. Decisions resume the SAME turn through {@see decide()} and the
  * continuation streams back over the identical SSE contract. Conversations
  * belong to the authenticated admin (AdminOwner, "admin:{id}").
+ *
+ * `reasoning` and `tool` are ai-kit v0.5.0 defaults and are deliberately
+ * left on: the panel shows thinking as a collapsible block and tool progress
+ * as chips. Neither carries arguments or results, and neither is persisted —
+ * a rehydrated thread shows the answer and its pending cards alone. A paused
+ * call emits `tool {status: running}` and no `done`; its `approval` card
+ * carries the SAME id, and the client folds the chip into the card.
  *
  * Layered gates on every endpoint: panel auth (route middleware) → ai-kit's
  * kill switch, which folds master ai_enabled AND admin_assistant_enabled
