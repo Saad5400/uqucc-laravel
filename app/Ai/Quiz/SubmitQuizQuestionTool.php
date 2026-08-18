@@ -42,8 +42,10 @@ class SubmitQuizQuestionTool implements Tool
 
     public function description(): Stringable|string
     {
-        return 'أرسل سؤال اليوم المقترح للتحقق منه واعتماده. استدعِ هذه الأداة بالحقول المطلوبة. '
-            .'إن أعادت قائمة مشاكل فصحّحها جميعاً واستدعِ الأداة مرة أخرى حتى تُقبل. لا تكتب السؤال في نص عادي.';
+        return 'Submit the proposed question of the day for validation and acceptance. '
+            .'Call this tool with every required field filled in. If it replies with a list of problems, '
+            .'fix all of them and call the tool again until the question is accepted. '
+            .'Never write the question out as plain text instead of calling this tool.';
     }
 
     /**
@@ -53,24 +55,24 @@ class SubmitQuizQuestionTool implements Tool
     {
         return [
             'question' => $schema->string()
-                ->description('نص السؤال القصير المستقل (حتى '.QuizAuthor::MAX_QUESTION_CHARS.' حرف).')
+                ->description('The question itself: one short, self-contained sentence in Arabic (up to '.QuizAuthor::MAX_QUESTION_CHARS.' characters).')
                 ->required(),
             'body' => $schema->string()
-                ->description('كود/سيناريو أو مقدمة تعليمية تُنشر فوق التصويت، أو "" عند عدم الحاجة (حتى '.QuizAuthor::MAX_BODY_CHARS.' حرف).'),
+                ->description('Code, a scenario, or a teaching preamble in Arabic, posted above the poll; send "" when none is needed (up to '.QuizAuthor::MAX_BODY_CHARS.' characters).'),
             'options' => $schema->array()->items($schema->string())->min(4)->max(4)
-                ->description('أربعة خيارات مختلفة متقاربة الطول (كل خيار حتى '.QuizAuthor::MAX_OPTION_CHARS.' حرف).')
+                ->description('Exactly four distinct answer options in Arabic, similar in length (each up to '.QuizAuthor::MAX_OPTION_CHARS.' characters).')
                 ->required(),
             'correct_option' => $schema->integer()
-                ->description('ترتيب الإجابة الصحيحة في المصفوفة من 0 إلى 3.')
+                ->description('Zero-based index of the correct answer within options, 0 to 3.')
                 ->required(),
             'explanation' => $schema->string()
-                ->description('جملة أو جملتان تشرحان سبب صحة الإجابة (حتى '.QuizAuthor::MAX_EXPLANATION_CHARS.' حرف).')
+                ->description('One or two sentences in Arabic explaining why that answer is correct (up to '.QuizAuthor::MAX_EXPLANATION_CHARS.' characters).')
                 ->required(),
             'hint' => $schema->string()
-                ->description('تلميح خفيف يوجّه دون كشف (حتى '.QuizAuthor::MAX_HINT_CHARS.' حرف).')
+                ->description('A light hint in Arabic that points the reader in the right direction without revealing the answer (up to '.QuizAuthor::MAX_HINT_CHARS.' characters).')
                 ->required(),
             'obvious_hint' => $schema->string()
-                ->description('تلميح أوضح يكاد يكشف الإجابة (حتى '.QuizAuthor::MAX_HINT_CHARS.' حرف).')
+                ->description('A more obvious hint in Arabic that almost gives the answer away (up to '.QuizAuthor::MAX_HINT_CHARS.' characters).')
                 ->required(),
         ];
     }

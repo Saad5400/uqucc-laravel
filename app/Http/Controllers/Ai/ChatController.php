@@ -42,6 +42,13 @@ use Throwable;
  * consulted), then `done`, or `error`. Pre-flight failures (feature toggle,
  * budget, daily quota) answer as plain JSON before any stream starts.
  *
+ * ai-kit v0.5.0's `reasoning` and `tool` events are on by default here too,
+ * deliberately: the page renders them as a collapsible thinking block and as
+ * "يبحث في صفحات الدليل" chips, which is the progress feedback students were
+ * missing. Both are safe for an anonymous surface — the kit keeps tool
+ * arguments and results off the wire, so a `tool` event names the call and
+ * nothing it retrieved. Neither event is persisted.
+ *
  * Layered gates, in order: ai-kit's TurnGuard (503) — the assistant toggle
  * via the operator's AiSettings, the kit's cache kill switch, and the daily
  * spend budget in one call — → the `ai-chat` burst limiter on the route

@@ -23,8 +23,7 @@ class GetPageTool implements Tool
 
     public function description(): Stringable|string
     {
-        return 'Fetch the full content of one page of the UQU College of Computing student guide as markdown, by its slug '
-            .'(جلب محتوى صفحة كاملة من دليل طلاب كلية الحاسبات بصيغة ماركداون). '
+        return 'Fetch the full content of one page of the UQU College of Computing student guide as markdown, by its slug. '
             .'Use the slug returned by search_content, e.g. "/adwat/hasbh-almadl". Only publicly visible pages are available. Read-only.';
     }
 

@@ -24,4 +24,13 @@ export default defineConfig({
             formVariants: true,
         }),
     ],
+    // @saad5400/ai-kit ships .ts/.vue sources, not a build. Excluding it from
+    // the dep pre-bundle lets plugin-vue compile its SFCs, and noExternal
+    // pulls it through the same pipeline in the SSR build.
+    optimizeDeps: {
+        exclude: ['@saad5400/ai-kit'],
+    },
+    ssr: {
+        noExternal: ['@saad5400/ai-kit'],
+    },
 });

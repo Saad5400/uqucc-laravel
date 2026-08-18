@@ -39,7 +39,7 @@ class DeleteUserAction extends AdminAction
 
     public function description(): string
     {
-        return 'Delete a panel user (حذف مستخدم من اللوحة). '
+        return 'Delete an admin-panel user. '
             .'Requires user_id (from list_users). You cannot delete your own account. Pages the user authored are kept. '
             .'This cannot be undone.';
     }

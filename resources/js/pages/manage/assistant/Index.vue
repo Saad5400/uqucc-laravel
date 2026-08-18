@@ -4,21 +4,28 @@ import PageHeader from '@/components/manage/PageHeader.vue';
 import ApprovalCard from '@/components/manage/assistant/ApprovalCard.vue';
 import type { AssistantCard, AssistantDecision, TrackedCard } from '@/components/manage/assistant/types';
 import { Button } from '@/components/ui/button';
-import { renderMarkdown } from '@/lib/markdown';
 import { decide as decideChat, send as sendChat, show as showConversation } from '@/routes/manage/assistant';
 import { Head, Link } from '@inertiajs/vue3';
+import { closesReasoning, type ToolPayload } from '@saad5400/ai-kit/events';
+import { readSseStream } from '@saad5400/ai-kit/sse';
+import Markdown from '@saad5400/ai-kit/vue/Markdown.vue';
+import ThinkingDisclosure from '@saad5400/ai-kit/vue/ThinkingDisclosure.vue';
+import ToolChip from '@saad5400/ai-kit/vue/ToolChip.vue';
 import { CircleStop, RotateCcw, SendHorizontal, Settings, ShieldCheck, Sparkles } from 'lucide-vue-next';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
 
 /**
  * The admin assistant chat: the operator copilot whose writes pause the turn
- * for approval. POST /manage/assistant/chat streams the reply as SSE frames
- * (delta/approval/question/done/error) parsed off a fetch ReadableStream —
- * the same transport as the public AssistantPage. A pause renders inline
- * cards with تأكيد/رفض (or an answer box); once every pending card is
- * decided, the batch resumes the SAME turn via
+ * for approval. POST /manage/assistant/chat streams the reply as ai-kit SSE
+ * frames — reasoning/delta/tool/approval/question/done/error, read with the
+ * kit's `readSseStream` — the same transport as the public AssistantPage. A
+ * pause renders inline cards with تأكيد/رفض (or an answer box); once every
+ * pending card is decided, the batch resumes the SAME turn via
  * POST /manage/assistant/chat/{conversation}/decide and the continuation
  * streams into the thread. Nothing is applied without a decision here.
+ *
+ * Thinking and tool progress are live-only: the server never persists them,
+ * so a rehydrated thread shows neither rather than inventing them.
  */
 
 defineOptions({ layout: ManageLayout });
@@ -30,10 +37,23 @@ const props = defineProps<{
     };
 }>();
 
+/** One `tool` chip, keyed by the wire event's tool-call id. */
+interface StreamedTool {
+    id: string;
+    name: string;
+    status: ToolPayload['status'];
+    successful?: boolean;
+}
+
 interface ChatMessage {
     id: number;
     role: 'user' | 'assistant';
     content: string;
+    /** Accumulated `reasoning` deltas — live-only, never rehydrated. */
+    reasoning: string;
+    /** Whether reasoning is still arriving; false collapses the block. */
+    reasoningLive: boolean;
+    tools: StreamedTool[];
     cards: TrackedCard[];
     streaming?: boolean;
     failed?: boolean;
@@ -57,6 +77,18 @@ const draftInput = useTemplateRef<HTMLTextAreaElement>('draftInput');
 
 let nextLocalId = 1;
 let abortController: AbortController | undefined;
+
+/** A fresh assistant bubble to stream a turn into. */
+const newReply = (): ChatMessage => ({
+    id: nextLocalId++,
+    role: 'assistant',
+    content: '',
+    reasoning: '',
+    reasoningLive: false,
+    tools: [],
+    cards: [],
+    streaming: true,
+});
 
 /** While a pause waits for decisions, the composer holds — a new prompt cannot pre-empt the paused turn. */
 const hasPendingCards = computed(() => messages.value.some((message) => message.cards.some((tracked) => tracked.status === 'pending')));
@@ -83,6 +115,10 @@ const readJsonMessage = async (response: Response): Promise<string | null> => {
 };
 
 const trackPending = (card: AssistantCard): TrackedCard => ({ card, status: 'pending', decision: null });
+
+/** A streaming bubble with nothing in it yet still shows the typing dots. */
+const isBubbleEmpty = (message: ChatMessage): boolean =>
+    message.streaming === true && message.content === '' && message.reasoning === '' && message.tools.length === 0 && message.cards.length === 0;
 
 /** Rehydrate a conversation persisted across reloads; 404 means a clean slate. */
 const rehydrateConversation = async (): Promise<void> => {
@@ -117,6 +153,9 @@ const rehydrateConversation = async (): Promise<void> => {
                 id: nextLocalId++,
                 role: message.role as 'user' | 'assistant',
                 content: message.content,
+                reasoning: '',
+                reasoningLive: false,
+                tools: [],
                 cards: [],
             }));
 
@@ -126,7 +165,7 @@ const rehydrateConversation = async (): Promise<void> => {
             let target = [...messages.value].reverse().find((message) => message.role === 'assistant');
 
             if (!target) {
-                target = { id: nextLocalId++, role: 'assistant', content: '', cards: [] };
+                target = { ...newReply(), streaming: false };
                 messages.value.push(target);
             }
 
@@ -141,35 +180,44 @@ const rehydrateConversation = async (): Promise<void> => {
     }
 };
 
-/** Parse one SSE frame ("event: name\ndata: {...}") into its name and payload. */
-const parseSseFrame = (frame: string): { event: string; data: Record<string, unknown> } | null => {
-    let event = 'message';
-    const dataLines: string[] = [];
+/**
+ * Upsert a tool chip by its call id: `running` creates it, the `done` for
+ * the same id settles it in place rather than appending a second chip.
+ */
+const upsertTool = (reply: ChatMessage, payload: ToolPayload): void => {
+    const chip = reply.tools.find((tool) => tool.id === payload.id);
 
-    for (const line of frame.split('\n')) {
-        if (line.startsWith('event:')) {
-            event = line.slice(6).trim();
-        } else if (line.startsWith('data:')) {
-            dataLines.push(line.slice(5).trim());
-        }
+    if (chip) {
+        chip.status = payload.status;
+        chip.successful = payload.successful;
+
+        return;
     }
 
-    if (dataLines.length === 0) {
-        return null;
-    }
-
-    try {
-        return { event, data: JSON.parse(dataLines.join('\n')) as Record<string, unknown> };
-    } catch {
-        return null;
-    }
+    reply.tools.push({ id: payload.id, name: payload.name, status: payload.status, successful: payload.successful });
 };
 
 const handleSseEvent = (event: string, data: Record<string, unknown>, reply: ChatMessage): void => {
-    if (event === 'delta' && typeof data.text === 'string') {
+    // The wire brackets nothing: any of delta/tool/done/error closes an open
+    // thinking block, and a later `reasoning` reopens it.
+    if (closesReasoning(event)) {
+        reply.reasoningLive = false;
+    }
+
+    if (event === 'reasoning' && typeof data.text === 'string') {
+        reply.reasoning += data.text;
+        reply.reasoningLive = true;
+        void scrollToBottom();
+    } else if (event === 'delta' && typeof data.text === 'string') {
         reply.content += data.text;
         void scrollToBottom();
+    } else if (event === 'tool' && typeof data.id === 'string' && typeof data.name === 'string') {
+        upsertTool(reply, data as unknown as ToolPayload);
+        void scrollToBottom();
     } else if ((event === 'approval' || event === 'question') && typeof data.id === 'string') {
+        // A paused call emitted `running` and will never emit `done` on this
+        // stream — its card IS the chip's outcome, so fold the spinner in.
+        reply.tools = reply.tools.filter((tool) => tool.id !== data.id);
         reply.cards.push(trackPending(data as unknown as AssistantCard));
         void scrollToBottom();
     } else if (event === 'done') {
@@ -222,38 +270,15 @@ const streamInto = async (url: string, body: Record<string, unknown>, liveReply:
             return;
         }
 
-        const reader = response.body?.getReader();
-
-        if (!reader) {
+        if (!response.body) {
             liveReply.failed = true;
             errorBanner.value = 'حدث خطأ أثناء قراءة الرد. حاول مرة أخرى.';
             return;
         }
 
-        const decoder = new TextDecoder();
-        let buffer = '';
-
-        for (;;) {
-            const { done, value } = await reader.read();
-
-            if (done) {
-                break;
-            }
-
-            buffer += decoder.decode(value, { stream: true });
-
-            let separatorIndex = buffer.indexOf('\n\n');
-            while (separatorIndex !== -1) {
-                const frame = parseSseFrame(buffer.slice(0, separatorIndex));
-                buffer = buffer.slice(separatorIndex + 2);
-
-                if (frame) {
-                    handleSseEvent(frame.event, frame.data, liveReply);
-                }
-
-                separatorIndex = buffer.indexOf('\n\n');
-            }
-        }
+        await readSseStream(response, (event, data) => handleSseEvent(event, (data ?? {}) as Record<string, unknown>, liveReply), {
+            signal: abortController.signal,
+        });
     } catch (error) {
         if ((error as Error).name !== 'AbortError') {
             liveReply.failed = liveReply.content === '';
@@ -261,6 +286,11 @@ const streamInto = async (url: string, body: Record<string, unknown>, liveReply:
         }
     } finally {
         liveReply.streaming = false;
+        liveReply.reasoningLive = false;
+
+        // Stopping the turn (or losing the connection) can leave a chip
+        // mid-flight; a spinner nothing will ever resolve is worse than no chip.
+        liveReply.tools = liveReply.tools.filter((tool) => tool.status === 'done');
 
         if (liveReply.failed && liveReply.content === '' && liveReply.cards.length === 0) {
             messages.value = messages.value.filter((item) => item.id !== liveReply.id);
@@ -281,9 +311,17 @@ const sendMessage = async (): Promise<void> => {
 
     errorBanner.value = null;
 
-    messages.value.push({ id: nextLocalId++, role: 'user', content: message, cards: [] });
+    messages.value.push({
+        id: nextLocalId++,
+        role: 'user',
+        content: message,
+        reasoning: '',
+        reasoningLive: false,
+        tools: [],
+        cards: [],
+    });
 
-    messages.value.push({ id: nextLocalId++, role: 'assistant', content: '', cards: [], streaming: true });
+    messages.value.push(newReply());
     const liveReply = messages.value[messages.value.length - 1];
 
     draft.value = '';
@@ -326,7 +364,7 @@ const onCardDecision = async (tracked: TrackedCard, decision: AssistantDecision)
 
     errorBanner.value = null;
 
-    messages.value.push({ id: nextLocalId++, role: 'assistant', content: '', cards: [], streaming: true });
+    messages.value.push(newReply());
     const liveReply = messages.value[messages.value.length - 1];
 
     await streamInto(decideChat.url(conversationId.value), { decisions }, liveReply);
@@ -439,22 +477,37 @@ onBeforeUnmount(() => abortController?.abort());
 
                 <!-- Assistant bubble -->
                 <div v-else class="flex justify-start">
-                    <div class="max-w-[85%] space-y-3 rounded-2xl rounded-ss-sm bg-muted px-4 py-2.5">
-                        <div
-                            v-if="message.streaming && message.content === '' && message.cards.length === 0"
-                            class="flex items-center gap-1 py-1"
-                            aria-label="المساعد يكتب الآن"
-                        >
+                    <div class="assistant-bubble max-w-[85%] space-y-3 rounded-2xl rounded-ss-sm bg-muted px-4 py-2.5">
+                        <div v-if="isBubbleEmpty(message)" class="flex items-center gap-1 py-1" aria-label="المساعد يكتب الآن">
                             <span class="size-1.5 animate-bounce rounded-full bg-muted-foreground/60" style="animation-delay: 0ms" />
                             <span class="size-1.5 animate-bounce rounded-full bg-muted-foreground/60" style="animation-delay: 150ms" />
                             <span class="size-1.5 animate-bounce rounded-full bg-muted-foreground/60" style="animation-delay: 300ms" />
                         </div>
 
-                        <!-- eslint-disable-next-line vue/no-v-html -- renderMarkdown escapes + DOMPurify-sanitizes model output -->
-                        <div
-                            v-else-if="message.content !== ''"
-                            class="assistant-markdown text-sm leading-relaxed"
-                            v-html="renderMarkdown(message.content)"
+                        <!-- Reasoning is live-only; remounting on `reasoningLive` is what collapses it once the turn moves on. -->
+                        <ThinkingDisclosure
+                            v-if="message.reasoning !== ''"
+                            :key="`thinking-${message.id}-${message.reasoningLive}`"
+                            :text="message.reasoning"
+                            :live="message.reasoningLive"
+                            :label="message.reasoningLive ? 'يفكّر' : 'خطوات التفكير'"
+                        />
+
+                        <div v-if="message.tools.length > 0" class="flex flex-wrap gap-1.5">
+                            <ToolChip
+                                v-for="tool in message.tools"
+                                :key="tool.id"
+                                :name="tool.name"
+                                :status="tool.status"
+                                :successful="tool.successful"
+                            />
+                        </div>
+
+                        <Markdown
+                            v-if="message.content !== ''"
+                            class="text-sm leading-relaxed"
+                            :source="message.content"
+                            :live="message.streaming === true"
                         />
 
                         <div v-if="message.cards.length > 0" class="space-y-2">
@@ -505,98 +558,17 @@ onBeforeUnmount(() => abortController?.abort());
 </template>
 
 <style scoped>
-.assistant-markdown :deep(p) {
-    margin-block: 0.375rem;
-}
-
-.assistant-markdown :deep(p:first-child) {
-    margin-top: 0;
-}
-
-.assistant-markdown :deep(p:last-child) {
-    margin-bottom: 0;
-}
-
-.assistant-markdown :deep(ul),
-.assistant-markdown :deep(ol) {
-    margin-block: 0.375rem;
-    padding-inline-start: 1.25rem;
-}
-
-.assistant-markdown :deep(ul) {
-    list-style: disc;
-}
-
-.assistant-markdown :deep(ol) {
-    list-style: decimal;
-}
-
-.assistant-markdown :deep(h2),
-.assistant-markdown :deep(h3),
-.assistant-markdown :deep(h4) {
-    margin-block: 0.625rem 0.25rem;
-    font-weight: 600;
-}
-
-.assistant-markdown :deep(code) {
-    border-radius: 0.25rem;
-    background: var(--background);
-    padding: 0.125rem 0.375rem;
-    font-size: 0.8125em;
-    direction: ltr;
-    unicode-bidi: embed;
-}
-
-.assistant-markdown :deep(pre) {
-    margin-block: 0.5rem;
-    overflow-x: auto;
-    border-radius: 0.5rem;
-    background: var(--background);
-    padding: 0.75rem;
-    direction: ltr;
-    text-align: left;
-}
-
-.assistant-markdown :deep(pre code) {
-    padding: 0;
-    background: transparent;
-}
-
-.assistant-markdown :deep(a) {
-    color: var(--primary);
-    text-decoration: underline;
-    text-underline-offset: 2px;
-}
-
-.assistant-markdown :deep(blockquote) {
-    margin-block: 0.5rem;
-    border-inline-start: 3px solid var(--border);
-    padding-inline-start: 0.75rem;
-    color: var(--muted-foreground);
-}
-
-/* Tables scroll inside the bubble on narrow screens instead of overflowing it. */
-.assistant-markdown :deep(table) {
-    display: block;
-    width: max-content;
-    max-width: 100%;
-    overflow-x: auto;
-    margin-block: 0.5rem;
-    border-collapse: collapse;
-    font-size: 0.8125rem;
-    font-variant-numeric: tabular-nums;
-}
-
-.assistant-markdown :deep(th),
-.assistant-markdown :deep(td) {
-    border: 1px solid var(--border);
-    padding: 0.375rem 0.625rem;
-    text-align: start;
-    vertical-align: top;
-}
-
-.assistant-markdown :deep(th) {
-    background: var(--background);
-    font-weight: 600;
+/*
+ * The assistant markdown itself comes from ai-kit's prose sheet (imported in
+ * app.css); only the bubble-local token overrides live here. The bubble is
+ * `bg-muted`, so inline code and fenced blocks need the page background to
+ * read as raised rather than vanishing into it.
+ */
+.assistant-bubble {
+    --ai-kit-muted-bg: var(--background);
+    --ai-kit-chip-bg: var(--background);
+    --ai-kit-chip-color: var(--muted-foreground);
+    --ai-kit-chip-failed-color: var(--destructive);
+    --ai-kit-thinking-border: var(--border);
 }
 </style>

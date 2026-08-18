@@ -34,8 +34,8 @@ class RestorePageAction extends AdminAction
 
     public function description(): string
     {
-        return 'Restore a trashed (soft-deleted) page (استعادة صفحة محذوفة). '
-            .'Provide page_id (from list_pages — trashed pages show as «محذوفة»). '
+        return 'Restore a trashed (soft-deleted) page. '
+            .'Provide page_id (from list_pages, where trashed pages are flagged as deleted). '
             .'A page whose parent is still trashed cannot be restored until the parent is restored first.';
     }
 

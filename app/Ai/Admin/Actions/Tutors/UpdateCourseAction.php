@@ -36,7 +36,7 @@ class UpdateCourseAction extends AdminAction
 
     public function description(): string
     {
-        return 'Rename a private-tutor course (تعديل اسم مقرر للمدرّسين الخصوصيين). '
+        return 'Rename a private-tutor course. '
             .'Requires course_id (from list_tutors) and the new name.';
     }
 

@@ -34,8 +34,7 @@ class GetSettingsAction extends AdminAction
 
     public function description(): string
     {
-        return 'Read the current values of every site settings group (AI settings, Telegram settings) with each key\'s type '
-            .'(قراءة القيم الحالية لجميع إعدادات الموقع مع نوع كل مفتاح). '
+        return 'Read the current values of every site settings group (AI settings, Telegram settings) with each key\'s type. '
             .'Secret values are masked. Use the group and key names exactly as returned when changing a setting. Read-only.';
     }
 

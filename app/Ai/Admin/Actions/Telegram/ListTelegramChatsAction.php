@@ -36,8 +36,7 @@ class ListTelegramChatsAction extends AdminAction
     public function description(): string
     {
         return 'List the Telegram bot\'s per-chat AI settings — each chat\'s chat_id, title, type, '
-            .'whether the assistant is enabled and whether it has an active conversation '
-            .'(عرض إعدادات الذكاء الاصطناعي لكل محادثة تيليجرام مع معرّف المحادثة وعنوانها ونوعها وحالة التفعيل ووجود محادثة نشطة). '
+            .'whether the assistant is enabled and whether it has an active conversation. '
             .'Use the returned chat_id values for the other telegram actions. Read-only.';
     }
 

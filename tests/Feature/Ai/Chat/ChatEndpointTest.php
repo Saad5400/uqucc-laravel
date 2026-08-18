@@ -195,6 +195,38 @@ it('emits citations for content the tools consulted', function () {
         ->and($citations['items'][0])->toHaveKeys(['title', 'slug', 'heading']);
 });
 
+/**
+ * The student stream carries ai-kit v0.5.0's default `tool` and `reasoning`
+ * events too — deliberately: the page turns them into "يبحث في صفحات
+ * الدليل" chips and a collapsible thinking block. Neither carries tool
+ * arguments or results, so nothing retrieved leaks to an anonymous visitor.
+ */
+it('brackets a tool call with running and done tool events, without arguments or results', function () {
+    seedAssistantPage('مكافأة التفوق', 'ينال الطالب المتفوق مكافأة فصلية من الكلية');
+
+    StudentAssistant::fake([
+        new ToolCall('tc_1', 'search_content', ['query' => 'مكافأة']),
+        'ينال المتفوق مكافأة فصلية.',
+    ]);
+
+    $content = withChatSession(chatSessionId())
+        ->post(route('ai.chat.send'), ['message' => 'كم المكافأة؟'])
+        ->assertOk()
+        ->streamedContent();
+
+    preg_match_all("/^event: tool\ndata: (.+)$/m", $content, $matches);
+
+    $events = array_map(fn (string $data): array => json_decode($data, true), $matches[1]);
+
+    expect($events)->toHaveCount(2)
+        ->and($events[0])->toBe(['id' => 'tc_1', 'name' => 'search_content', 'status' => 'running'])
+        ->and($events[1]['status'])->toBe('done')
+        ->and($events[1]['successful'])->toBeTrue()
+        ->and(array_keys($events[1]))->toBe(['id', 'name', 'status', 'successful'])
+        // The retrieved page body reached the model, never the wire.
+        ->and($content)->not->toContain('ينال الطالب المتفوق مكافأة فصلية من الكلية');
+});
+
 it('emits a citation for a page read in full via get_page despite the freshness-date footer line', function () {
     $page = seedAssistantPage('مكافأة التفوق', 'ينال الطالب المتفوق مكافأة فصلية من الكلية');
 

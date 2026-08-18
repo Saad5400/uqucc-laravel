@@ -19,7 +19,7 @@ describe('AiSettings defaults', function () {
     it('has the expected default models', function () {
         $settings = app(AiSettings::class);
 
-        expect($settings->chat_model)->toBe('deepseek/deepseek-v4-flash')
+        expect($settings->chat_model)->toBe('deepseek/deepseek-v4-flash-0731')
             ->and($settings->vision_model)->toBe('google/gemini-3.1-flash-lite')
             ->and($settings->embedding_model)->toBe('openai/text-embedding-3-small');
     });
@@ -110,7 +110,7 @@ describe('manage settings AI card', function () {
             ->assertInertia(fn (Assert $page) => $page
                 ->component('manage/settings/Index')
                 ->where('ai.ai_enabled', false)
-                ->where('ai.chat_model', 'deepseek/deepseek-v4-flash')
+                ->where('ai.chat_model', 'deepseek/deepseek-v4-flash-0731')
                 ->where('ai.vision_model', 'google/gemini-3.1-flash-lite')
                 ->where('ai.embedding_model', 'openai/text-embedding-3-small')
                 ->where('ai.daily_budget_usd', 5)

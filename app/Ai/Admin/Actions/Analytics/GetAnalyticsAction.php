@@ -49,8 +49,7 @@ class GetAnalyticsAction extends AdminAction
     {
         return 'Get the site analytics summary: total and unique page views, bot command uses and the busiest '
             .'command over the last N days (default 30), the contributor count, the most-viewed pages and the top '
-            .'bot commands (ملخّص إحصاءات الموقع: المشاهدات والزوّار الفريدون واستخدام البوت والصفحات الأكثر مشاهدة '
-            .'وأكثر أوامر البوت استخداماً). Optional days sets the window. Read-only.';
+            .'bot commands. Optional days sets the window. Read-only.';
     }
 
     /**

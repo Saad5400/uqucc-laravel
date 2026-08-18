@@ -24,7 +24,7 @@ class FindTutorsTool implements Tool
 
     public function description(): Stringable|string
     {
-        return 'Find private tutors (البحث عن المدرسين الخصوصيين لطلاب كلية الحاسبات) by course name or code, or by tutor name. '
+        return 'Find private tutors for UQU College of Computing students, by course name or code, or by tutor name. '
             .'Course and tutor names are stored in Arabic — prefer Arabic terms. '
             .'Returns each matching course with its tutors (and their contact links), and each matching tutor with the courses they teach. Read-only.';
     }
@@ -90,7 +90,7 @@ class FindTutorsTool implements Tool
     {
         return [
             'query' => $schema->string()
-                ->description('Course name/code or tutor name to search for (اسم المقرر أو رمزه أو اسم المدرس), at least 2 characters.')
+                ->description('Course name, course code, or tutor name to search for. At least 2 characters. Names are stored in Arabic.')
                 ->required(),
         ];
     }

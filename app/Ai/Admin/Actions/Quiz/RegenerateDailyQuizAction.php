@@ -35,7 +35,7 @@ class RegenerateDailyQuizAction extends AdminAction
 
     public function description(): string
     {
-        return 'Regenerate the daily quiz for a day (default today) — «بدّل سؤال اليوم». '
+        return 'Regenerate the daily quiz for a day (default today) — swap out the question. '
             .'Deletes the current not-yet-posted question and authors a new one from the topic rotation. '
             .'Optional date in YYYY-MM-DD. Only works for a day whose quiz has not been posted yet. '
             .'Runs the paid authoring model.';

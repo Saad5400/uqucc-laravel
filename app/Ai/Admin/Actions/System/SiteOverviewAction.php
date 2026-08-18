@@ -36,9 +36,8 @@ class SiteOverviewAction extends AdminAction
 
     public function description(): string
     {
-        return 'Get the current date and time and a headline inventory of the site '
-            .'(التاريخ والوقت الحالي ونظرة عامة على أعداد الصفحات والمدرّسين والمراجعات المعلّقة والمستخدمين). '
-            .'Read-only.';
+        return 'Get the current date and time and a headline inventory of the site: how many pages, '
+            .'tutors, pending reviews and users it has. Read-only.';
     }
 
     /**

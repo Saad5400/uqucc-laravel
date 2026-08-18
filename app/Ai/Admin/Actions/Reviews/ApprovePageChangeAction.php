@@ -38,7 +38,7 @@ class ApprovePageChangeAction extends AdminAction
 
     public function description(): string
     {
-        return 'Approve a pending page edit and publish it to the live page (اعتماد تعديل معلّق ونشره على الصفحة). '
+        return 'Approve a pending page edit and publish it to the live page. '
             .'Provide change_request_id from list_pending_changes — inspect it with show_page_change first. '
             .'Re-application can still fail if the page changed since submission (e.g. a slug was taken); '
             .'the request then stays pending.';

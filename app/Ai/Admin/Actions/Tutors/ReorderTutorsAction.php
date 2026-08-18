@@ -37,7 +37,7 @@ class ReorderTutorsAction extends AdminAction
 
     public function description(): string
     {
-        return 'Reorder the private tutors (إعادة ترتيب المدرّسين الخصوصيين). '
+        return 'Reorder the private tutors. '
             .'Provide ids: the full list of tutor ids (from list_tutors) in the desired display order. '
             .'Each tutor is assigned a sequential order starting at 1.';
     }

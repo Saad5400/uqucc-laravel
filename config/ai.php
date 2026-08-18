@@ -38,13 +38,18 @@ return [
     |--------------------------------------------------------------------------
     |
     | The model used for conversational and content-drafting tasks (page copy,
-    | announcements, summaries). Model ids are OpenRouter slugs.
+    | announcements, summaries). Model ids are OpenRouter slugs, pinned to a
+    | dated build so a silent upstream reroute cannot change chat behavior.
+    |
+    | `reasoning_effort` is 'low' because the assistant is an interactive
+    | surface and the -0731 build's server default is 'high' — every caller
+    | must therefore send the effort explicitly to get the faster path.
     |
     */
 
     'chat' => [
-        'model' => env('AI_CHAT_MODEL', 'deepseek/deepseek-v4-flash'),
-        'reasoning_effort' => env('AI_CHAT_REASONING_EFFORT', 'high'),
+        'model' => env('AI_CHAT_MODEL', 'deepseek/deepseek-v4-flash-0731'),
+        'reasoning_effort' => env('AI_CHAT_REASONING_EFFORT', 'low'),
         'timeout' => (int) env('AI_CHAT_TIMEOUT', 60),
     ],
 
@@ -77,7 +82,7 @@ return [
     */
 
     'authoring' => [
-        'model' => env('AI_AUTHORING_MODEL', 'deepseek/deepseek-v4-pro'),
+        'model' => env('AI_AUTHORING_MODEL', 'deepseek/deepseek-v4-pro-0813'),
         'reasoning_effort' => env('AI_AUTHORING_REASONING_EFFORT', 'high'),
         'timeout' => (int) env('AI_AUTHORING_TIMEOUT', 180),
     ],

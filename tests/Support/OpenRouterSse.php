@@ -50,6 +50,31 @@ class OpenRouterSse
     }
 
     /**
+     * A streamed body that thinks aloud before answering — the shape the
+     * kit's ReasoningOpenRouterGateway turns into `reasoning` wire events.
+     */
+    public static function reasoningTextBody(string $reasoning, string $text): string
+    {
+        return static::body([
+            static::reasoningFrame($reasoning),
+            static::chunk(['content' => $text], finishReason: 'stop'),
+            static::usageFrame(['prompt_tokens' => 10, 'completion_tokens' => 5, 'cost' => 0.001]),
+        ]);
+    }
+
+    /**
+     * One thinking delta. OpenRouter puts it on `delta.reasoning`; the
+     * DeepSeek-native spelling `delta.reasoning_content` is parsed too, so
+     * pass `field:` to exercise that side.
+     *
+     * @return array<string, mixed>
+     */
+    public static function reasoningFrame(string $text, string $field = 'reasoning', string $id = 'gen-test-1'): array
+    {
+        return static::chunk([$field => $text], id: $id);
+    }
+
+    /**
      * @param  array<string, mixed>  $delta
      * @return array<string, mixed>
      */

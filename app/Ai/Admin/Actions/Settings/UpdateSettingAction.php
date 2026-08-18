@@ -31,7 +31,7 @@ class UpdateSettingAction extends AdminAction
 
     public function description(): string
     {
-        return 'Change one site setting value (تغيير قيمة إعداد واحد في الموقع). '
+        return 'Change one site setting value. '
             .'Provide the group and key exactly as returned by get_settings, and the new value as a string '
             .'(booleans as "true"/"false", numbers as digits, arrays as JSON). Read get_settings first.';
     }

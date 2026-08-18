@@ -21,7 +21,7 @@ class CalculateGpaTool implements Tool
 
     public function description(): Stringable|string
     {
-        return 'Calculate a semester or cumulative GPA on the UQU 4.0 scale (حساب المعدل الفصلي أو التراكمي لجامعة أم القرى). '
+        return 'Calculate a semester or cumulative GPA on the UQU 4.0 scale. '
             .'Pass each course\'s credit hours and letter grade. Grade points: A+ = 4, A = 3.75, B+ = 3.5, B = 3, C+ = 2.5, C = 2, D+ = 1.5, D = 1, F = 0. '
             .'Rows with zero credits or an unknown grade are ignored, exactly like the site\'s GPA calculator.';
     }

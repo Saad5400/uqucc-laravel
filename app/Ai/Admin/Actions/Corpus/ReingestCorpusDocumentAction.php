@@ -37,8 +37,7 @@ class ReingestCorpusDocumentAction extends AdminAction
     public function description(): string
     {
         return 'Queue a re-chunk and re-embed of a corpus document\'s current extracted markdown, without re-running '
-            .'extraction (جدولة إعادة فهرسة النص المستخرج الحالي للمستند دون إعادة استخراجه). '
-            .'Only allowed once extraction is complete (status «ready»). '
+            .'extraction. Only allowed once extraction is complete (status "ready"). '
             .'Provide document_id from list_corpus_documents.';
     }
 

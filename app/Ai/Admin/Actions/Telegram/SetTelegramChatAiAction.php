@@ -28,8 +28,7 @@ class SetTelegramChatAiAction extends AdminAction
 
     public function description(): string
     {
-        return 'Enable or disable the AI assistant for a Telegram chat '
-            .'(تفعيل أو تعطيل مساعد الذكاء الاصطناعي لمحادثة تيليجرام). '
+        return 'Enable or disable the AI assistant for a Telegram chat. '
             .'Provide chat_id (from list_telegram_chats) and enabled (true to turn the assistant on, false to turn it off).';
     }
 

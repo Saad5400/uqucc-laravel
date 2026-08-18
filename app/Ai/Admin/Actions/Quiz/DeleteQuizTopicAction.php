@@ -35,7 +35,7 @@ class DeleteQuizTopicAction extends AdminAction
 
     public function description(): string
     {
-        return 'Delete a daily-quiz topic (حذف موضوع سؤال اليوم). '
+        return 'Delete a daily-quiz topic. '
             .'Provide topic_id (from list_quiz_topics). This is permanent — to only stop it being picked, '
             .'use update_quiz_topic with is_active=false instead.';
     }

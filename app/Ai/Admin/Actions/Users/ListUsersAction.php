@@ -37,8 +37,8 @@ class ListUsersAction extends AdminAction
 
     public function description(): string
     {
-        return 'List the panel users with their roles, review flag and ids, plus the assignable role names '
-            .'(قائمة مستخدمي اللوحة وأدوارهم وحالة إلزام المراجعة والتوثيق ومعرفاتهم). '
+        return 'List the admin-panel users with their ids, roles, review flag and email-verification state, '
+            .'plus the assignable role names. '
             .'Use the returned ids with update_user / delete_user and the role names with create_user / update_user. Read-only.';
     }
 

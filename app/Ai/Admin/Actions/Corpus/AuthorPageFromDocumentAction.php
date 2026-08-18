@@ -50,8 +50,7 @@ class AuthorPageFromDocumentAction extends AdminAction
     {
         return 'Queue an AI authoring run that turns an extracted corpus document into a draft page for review — '
             .'either a new unpublished draft page or a pending update proposal for an existing page, never a live change '
-            .'(جدولة توليد صفحة من مستند: يُنشئ مسودة صفحة جديدة أو اقتراح تحديث لصفحة قائمة للمراجعة). '
-            .'Requires the document to be fully extracted (status «ready»). '
+            .'Requires the document to be fully extracted (status "ready"). '
             .'Provide document_id from list_corpus_documents.';
     }
 

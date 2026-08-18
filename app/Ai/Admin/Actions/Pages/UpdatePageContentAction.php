@@ -41,8 +41,7 @@ class UpdatePageContentAction extends AdminAction
 
     public function description(): string
     {
-        return 'Replace a page\'s text content, given as markdown '
-            .'(تحديث نص محتوى صفحة، يُرسَل بصيغة ماركداون). '
+        return 'Replace a page\'s text content, given as markdown. '
             .'Provide page_id (from list_pages) and the full new content as markdown — it replaces the current body. '
             .'Read the current content first with get_page_content. Custom alert/block components on the page are kept automatically. '
             .'Do not include a top-level H1 title; use ## and below.';

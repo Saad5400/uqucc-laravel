@@ -27,8 +27,7 @@ class ClearCacheAction extends AdminAction
 
     public function description(): string
     {
-        return 'Flush the application cache; it rebuilds lazily on upcoming visits '
-            .'(مسح ذاكرة التخزين المؤقت للتطبيق؛ يُعاد بناؤها تلقائيًا مع الزيارات القادمة). '
+        return 'Flush the application cache; it rebuilds lazily on upcoming visits. '
             .'Takes no parameters.';
     }
 

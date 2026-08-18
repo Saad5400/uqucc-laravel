@@ -35,8 +35,7 @@ class ListQuizTopicsAction extends AdminAction
     public function description(): string
     {
         return 'List the daily-quiz topics the questions are generated from — id, name, prompt hint, '
-            .'whether it is a weekly spotlight topic, whether it is active, and when it was last used '
-            .'(عرض مواضيع سؤال اليوم التي تُولّد منها الأسئلة). '
+            .'whether it is a weekly spotlight topic, whether it is active, and when it was last used. '
             .'Use the returned ids for update_quiz_topic and delete_quiz_topic. Read-only.';
     }
 

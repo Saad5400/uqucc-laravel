@@ -36,7 +36,7 @@ class UpdateTutorAction extends AdminAction
 
     public function description(): string
     {
-        return 'Update an existing private tutor (تعديل بيانات مدرّس خصوصي). '
+        return 'Update an existing private tutor. '
             .'Requires tutor_id (from list_tutors); name is replaced, url — when provided — is replaced '
             .'(send empty to clear), and course_ids — when provided — replace the tutor\'s attached courses.';
     }

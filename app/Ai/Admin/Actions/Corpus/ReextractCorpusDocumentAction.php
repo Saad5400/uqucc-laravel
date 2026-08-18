@@ -36,8 +36,7 @@ class ReextractCorpusDocumentAction extends AdminAction
 
     public function description(): string
     {
-        return 'Queue a re-extraction of a corpus document\'s text (PDF text layer or vision model) then re-indexing '
-            .'(جدولة إعادة استخراج نص المستند ثم إعادة فهرسته). '
+        return 'Queue a re-extraction of a corpus document\'s text (PDF text layer or vision model), then re-indexing. '
             .'Warning: this replaces any manual edits to the extracted markdown. '
             .'Provide document_id from list_corpus_documents.';
     }

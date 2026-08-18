@@ -35,8 +35,7 @@ class DeleteTelegramChatAction extends AdminAction
 
     public function description(): string
     {
-        return 'Delete a Telegram chat\'s AI settings row '
-            .'(حذف إعدادات الذكاء الاصطناعي لمحادثة تيليجرام). '
+        return 'Delete a Telegram chat\'s AI settings row. '
             .'Provide chat_id (from list_telegram_chats). The assistant becomes inactive for that chat until it is re-enabled from within the chat.';
     }
 

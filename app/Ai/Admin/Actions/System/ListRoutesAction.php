@@ -40,8 +40,7 @@ class ListRoutesAction extends AdminAction
 
     public function description(): string
     {
-        return 'List the application\'s named routes (name, HTTP methods, URL) '
-            .'(عرض مسارات الموقع المُسمّاة مع طرق الطلب والرابط). '
+        return 'List the application\'s named routes (name, HTTP methods, URL). '
             .'Use it to reference the correct panel or public-site URLs. Optional filter matches the route name or URI. Read-only.';
     }
 

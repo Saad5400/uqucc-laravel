@@ -170,7 +170,7 @@ describe('authoring job — new content', function () {
             ->and($document->authored_page_id)->toBe($page->id);
 
         PageAuthoringAgent::assertPrompted(
-            fn (AgentPrompt $prompt): bool => $prompt->model === 'deepseek/deepseek-v4-pro'
+            fn (AgentPrompt $prompt): bool => $prompt->model === 'deepseek/deepseek-v4-pro-0813'
                 && $prompt->contains('تعميم المكافآت')
         );
     });

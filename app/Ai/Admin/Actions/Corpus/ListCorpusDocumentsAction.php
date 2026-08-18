@@ -40,8 +40,7 @@ class ListCorpusDocumentsAction extends AdminAction
     public function description(): string
     {
         return 'List the AI knowledge-base (corpus) documents with each document\'s id, title, extraction status, '
-            .'authoring status, file kind/size, reference url and the id of any page authored from it '
-            .'(عرض مستندات قاعدة المعرفة للذكاء الاصطناعي بمعرفاتها وحالة استخراجها وتوليد الصفحات منها وروابطها). '
+            .'authoring status, file kind/size, reference url and the id of any page authored from it. '
             .'Use the returned ids for get_corpus_document, reextract_corpus_document, reingest_corpus_document '
             .'and author_page_from_document. Read-only.';
     }

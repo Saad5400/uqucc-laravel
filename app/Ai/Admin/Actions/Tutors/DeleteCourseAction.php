@@ -40,7 +40,7 @@ class DeleteCourseAction extends AdminAction
 
     public function description(): string
     {
-        return 'Delete a private-tutor course (حذف مقرر من مقررات المدرّسين الخصوصيين). '
+        return 'Delete a private-tutor course. '
             .'Requires course_id (from list_tutors). The course is detached from any tutors — the tutors are kept. This cannot be undone.';
     }
 
