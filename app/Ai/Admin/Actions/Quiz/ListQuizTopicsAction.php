@@ -11,7 +11,9 @@ use Illuminate\Contracts\JsonSchema\JsonSchema;
 /**
  * The admin-curated themes the daily quiz generates from, each with its id,
  * name, optional prompt hint, whether it is a weekly major-spotlight topic,
- * whether it is active, and when it was last used. Mirrors the topic list on
+ * whether it is active, when it was last used, and whether the running
+ * rotation cycle still owes it a turn — which is also what decides whether it
+ * can appear on the group's topic ballot. Mirrors the topic list on
  * {@see \App\Http\Controllers\Manage\QuizController::index()}. Use the returned
  * ids for update_quiz_topic and delete_quiz_topic. Read-only.
  */
@@ -35,7 +37,8 @@ class ListQuizTopicsAction extends AdminAction
     public function description(): string
     {
         return 'List the daily-quiz topics the questions are generated from — id, name, prompt hint, '
-            .'whether it is a weekly spotlight topic, whether it is active, and when it was last used. '
+            .'whether it is a weekly spotlight topic, whether it is active, when it was last used, and '
+            .'whether the running rotation cycle still owes it a turn. '
             .'Use the returned ids for update_quiz_topic and delete_quiz_topic. Read-only.';
     }
 
@@ -63,17 +66,18 @@ class ListQuizTopicsAction extends AdminAction
         }
 
         $lines = $topics->map(fn (QuizTopic $topic): string => sprintf(
-            '- id=%d | %s | %s | %s | آخر استخدام: %s%s',
+            '- id=%d | %s | %s | %s | آخر استخدام: %s | الدورة: %s%s',
             $topic->id,
             $topic->name,
             $topic->is_active ? 'مفعّل' : 'معطّل',
             $topic->is_spotlight ? 'يوم تخصص' : 'عام',
             $topic->last_used_at?->toDateString() ?? 'لم يُستخدم',
+            $topic->cycle_used_at === null ? 'بانتظار دوره' : 'أخذ دوره',
             filled($topic->prompt_hint) ? ' | توجيه: '.$topic->prompt_hint : '',
         ));
 
         return ActionResult::text(
-            "مواضيع سؤال اليوم (id | الاسم | الحالة | النوع | آخر استخدام):\n".$lines->implode("\n"),
+            "مواضيع سؤال اليوم (id | الاسم | الحالة | النوع | آخر استخدام | الدورة):\n".$lines->implode("\n"),
         );
     }
 }

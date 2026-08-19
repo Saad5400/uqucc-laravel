@@ -56,6 +56,15 @@ class FakeTelegramApi extends Api
     /** Error setMessageReaction should always fail with, when set. */
     public ?string $reactionError = null;
 
+    /**
+     * Final per-option voter counts stopPoll() should report, keyed by the
+     * poll message id. A message id not listed here stops with no options at
+     * all, the way a poll nobody could vote in would.
+     *
+     * @var array<int, array<int, int>>
+     */
+    public array $pollResults = [];
+
     /** Chat-member status per telegram user id (default 'member'). */
     /** @var array<int|string, string> */
     public array $chatMemberStatuses = [];
@@ -103,7 +112,17 @@ class FakeTelegramApi extends Api
     {
         $this->stoppedPolls[] = $params;
 
-        return new \Telegram\Bot\Objects\Poll(['id' => (string) ($params['message_id'] ?? 0), 'is_closed' => true]);
+        $counts = $this->pollResults[(int) ($params['message_id'] ?? 0)] ?? [];
+
+        return new \Telegram\Bot\Objects\Poll([
+            'id' => (string) ($params['message_id'] ?? 0),
+            'is_closed' => true,
+            'options' => array_map(
+                static fn (int $index, int $votes): array => ['text' => (string) ($index + 1), 'voter_count' => $votes],
+                array_keys($counts),
+                array_values($counts),
+            ),
+        ]);
     }
 
     public function pinChatMessage(array $params): bool

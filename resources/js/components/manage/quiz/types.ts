@@ -47,6 +47,8 @@ export interface Topic {
     is_spotlight: boolean;
     is_active: boolean;
     last_used_at: string | null;
+    /** True while the running rotation cycle still owes this topic a turn — the pool the group's topic vote draws its ballot from. */
+    awaiting_turn: boolean;
 }
 
 /** Length caps, mirrored from the authoring constants server-side. */

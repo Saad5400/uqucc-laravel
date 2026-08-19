@@ -508,6 +508,13 @@ const chatIdsError = computed(() => {
                             <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
                                 <span class="font-medium" :class="topic.is_active ? '' : 'text-muted-foreground line-through'">{{ topic.name }}</span>
                                 <Badge v-if="topic.is_spotlight" variant="secondary">يوم التخصص</Badge>
+                                <Badge
+                                    v-if="topic.is_active && topic.awaiting_turn"
+                                    variant="outline"
+                                    title="لم يأخذ دوره في الدورة الحالية — وحده هذا النوع يظهر في تصويت المجموعة على موضوع الغد"
+                                >
+                                    بانتظار دوره
+                                </Badge>
                             </div>
                             <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                                 <span v-if="topic.prompt_hint" class="max-w-md truncate">{{ topic.prompt_hint }}</span>
