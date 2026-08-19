@@ -51,6 +51,23 @@ cmds = [
 cmd = "/assets/start.sh"
 
 [staticAssets]
+# Fontconfig has no config of its own in this image: the Nix `fontconfig` package
+# ships the library, not /etc/fonts/fonts.conf. Without a config Chromium cannot
+# initialise its text stack at all — it shapes every run to zero glyphs and every
+# screenshot comes out with the layout drawn and no text in it, webfonts included
+# (`TextRunHarfBuzz error … font: '', glyph_count: 0`). FONTCONFIG_FILE below
+# points at this file.
+"fonts.conf" = '''
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <dir>/root/.nix-profile/share/fonts</dir>
+  <dir>/nix/var/nix/profiles/default/share/fonts</dir>
+  <dir>/app/resources/fonts</dir>
+  <cachedir>/tmp/.cache/fontconfig</cachedir>
+</fontconfig>
+'''
+
 "start.sh" = '''
 #!/bin/bash
 set -e
@@ -63,6 +80,12 @@ export PUPPETEER_EXECUTABLE_PATH=$(readlink -f "$(which chromium)")
 export CHROME_PATH=$(readlink -f "$(which chromium)")
 export NODE_BINARY=$(readlink -f "$(which node)")
 export NODE_PATH=$(npm root -g)
+
+# --- Fontconfig: without this Chromium renders every screenshot text-less
+export FONTCONFIG_FILE=/assets/fonts.conf
+mkdir -p /tmp/.cache/fontconfig
+chmod -R 777 /tmp/.cache/fontconfig
+fc-cache -f || true
 
 # --- ensure Laravel writable paths (volume may be empty on first boot)
 mkdir -p /app/storage/framework/{cache,sessions,views} \
@@ -226,7 +249,7 @@ stderr_logfile=/var/log/worker-telegram-bot.log
 stdout_logfile_maxbytes=10MB
 stderr_logfile_maxbytes=10MB
 stopwaitsecs=3600
-environment=PUPPETEER_SKIP_DOWNLOAD="true",NODE_PATH="%(ENV_NODE_PATH)s",CHROME_PATH="%(ENV_CHROME_PATH)s"
+environment=PUPPETEER_SKIP_DOWNLOAD="true",NODE_PATH="%(ENV_NODE_PATH)s",CHROME_PATH="%(ENV_CHROME_PATH)s",FONTCONFIG_FILE="%(ENV_FONTCONFIG_FILE)s"
 '''
 
 "php-fpm.conf" = '''
@@ -264,6 +287,8 @@ env[PUPPETEER_SKIP_DOWNLOAD] = true
 env[NODE_PATH] = $NODE_PATH
 env[CHROME_PATH] = $CHROME_PATH
 env[NODE_BINARY] = $NODE_BINARY
+; Chromium renders text-less screenshots without a fontconfig config
+env[FONTCONFIG_FILE] = $FONTCONFIG_FILE
 ; Chromium needs these directories to be writable
 env[HOME] = /tmp
 env[XDG_CONFIG_HOME] = /tmp/.config
