@@ -57,8 +57,8 @@ it('generates a ready quiz from the least-recently-used active topic', function 
         ->and($quiz->status)->toBe(DailyQuiz::STATUS_READY)
         ->and($quiz->quiz_topic_id)->toBe($neverUsed->id)
         ->and($quiz->question)->toBe('ما البوابة المنطقية التي تعكس قيمة المدخل؟')
-        ->and($quiz->options)->toBe(['AND', 'OR', 'NOT', 'XOR'])
-        ->and($quiz->correct_option)->toBe(2)
+        ->and($quiz->options)->toEqualCanonicalizing(['AND', 'OR', 'NOT', 'XOR'])
+        ->and($quiz->options[$quiz->correct_option])->toBe('NOT')
         ->and($quiz->explanation)->not->toBeNull()
         ->and($quiz->hint)->toBe('فكّر في العملية التي تقلب القيمة.')
         ->and($quiz->obvious_hint)->toBe('البوابة التي تحوّل 1 إلى 0.')
@@ -354,7 +354,7 @@ it('corrects duplicated options within the same run', function () {
     $this->artisan('quiz:generate')->assertExitCode(0);
 
     expect(DailyQuiz::query()->count())->toBe(1)
-        ->and(DailyQuiz::forDate(today())->options)->toBe(['AND', 'OR', 'NOT', 'XOR']);
+        ->and(DailyQuiz::forDate(today())->options)->toEqualCanonicalizing(['AND', 'OR', 'NOT', 'XOR']);
 });
 
 it('gives up when the correct option stays much longer than the distractors', function () {
@@ -380,7 +380,7 @@ it('corrects a lopsided correct option within the same run', function () {
     $this->artisan('quiz:generate')->assertExitCode(0);
 
     expect(DailyQuiz::query()->count())->toBe(1)
-        ->and(DailyQuiz::forDate(today())->options)->toBe(['AND', 'OR', 'NOT', 'XOR']);
+        ->and(DailyQuiz::forDate(today())->options)->toEqualCanonicalizing(['AND', 'OR', 'NOT', 'XOR']);
 });
 
 it('ignores a trailing assistant message after the question is accepted', function () {
@@ -416,6 +416,23 @@ it('avoids spotlight topics on regular days while regular topics exist', functio
     $this->artisan('quiz:generate', ['--date' => $sunday->toDateString()])->assertExitCode(0);
 
     expect(DailyQuiz::forDate($sunday)->quiz_topic_id)->toBe($regular->id);
+});
+
+it('shuffles the option order independently of the model', function () {
+    $topic = QuizTopic::factory()->create();
+
+    $positions = collect(range(1, 40))->map(function (int $offset) use ($topic): int {
+        QuizAuthoringAgent::fake([quizToolCall()]);
+
+        $quiz = app(QuizAuthor::class)->generateForDate(today()->addDays($offset), $topic);
+
+        expect($quiz->options)->toEqualCanonicalizing(['AND', 'OR', 'NOT', 'XOR'])
+            ->and($quiz->options[$quiz->correct_option])->toBe('NOT');
+
+        return $quiz->correct_option;
+    });
+
+    expect($positions->unique()->count())->toBeGreaterThan(1);
 });
 
 it('lists recent questions in the prompt so the model avoids repeats', function () {

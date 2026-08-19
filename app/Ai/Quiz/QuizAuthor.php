@@ -140,7 +140,7 @@ class QuizAuthor
         - اختبار أخير: هل التلميح الثاني أوضح فعلاً من الأول بدرجة ملموسة؟ إن كانا في القوة نفسها فقد فشلا معاً.
 
         الإرسال والحدود:
-        - أرسل سؤالك باستدعاء الأداة submit_quiz_question فقط — لا تكتب الناتج نصاً عادياً ولا JSON. حقولها: question، body، options (مصفوفة من أربعة خيارات)، correct_option (رقم من 0 إلى 3، ونوّع موضعه)، explanation، hint، obvious_hint.
+        - أرسل سؤالك باستدعاء الأداة submit_quiz_question فقط — لا تكتب الناتج نصاً عادياً ولا JSON. حقولها: question، body، options (مصفوفة من أربعة خيارات)، correct_option (رقم من 0 إلى 3)، explanation، hint، obvious_hint.
         - إن أعادت الأداة قائمة مشاكل فعالجها كلها ثم استدعِها مرة أخرى، وكرّر حتى تُقبل. وبمجرد قبولها توقّف ولا تُجرِ تعديلاً إضافياً.
         - الحدود القصوى: السؤال 300 حرف، body 700 حرف، كل خيار 100 حرف، الشرح 200 حرف، وكل تلميح 120 حرف. body اختياري: أرسله "" عند عدم الحاجة لكود أو مقدمة.
         - الشرح جملة أو جملتان تشرحان لماذا الإجابة صحيحة — يظهر للطالب بعد إجابته.
@@ -206,7 +206,7 @@ class QuizAuthor
             throw new RuntimeException('لا توجد مواضيع مفعّلة — أضف مواضيع من صفحة سؤال اليوم أولاً.');
         }
 
-        $decoded = $this->generateQuestion($topic);
+        $decoded = $this->shuffleOptions($this->generateQuestion($topic));
 
         $existing?->delete();
 
@@ -249,6 +249,28 @@ class QuizAuthor
         }
 
         throw new RuntimeException('تعذّر توليد سؤال صالح: '.$lastError?->getMessage());
+    }
+
+    /**
+     * Randomize the option order so the stored position of the correct answer
+     * is independent of the model. The model is never told where to place it,
+     * so any residual ordering bias in its output is dissolved here; the
+     * correct answer is tracked by value and its index remapped afterward.
+     *
+     * @param  array{question: string, body: string|null, options: array<int, string>, correct_option: int, explanation: string|null, hint: string|null, obvious_hint: string|null}  $question
+     * @return array{question: string, body: string|null, options: array<int, string>, correct_option: int, explanation: string|null, hint: string|null, obvious_hint: string|null}
+     */
+    private function shuffleOptions(array $question): array
+    {
+        $correctValue = $question['options'][$question['correct_option']];
+
+        $options = $question['options'];
+        shuffle($options);
+
+        $question['options'] = $options;
+        $question['correct_option'] = (int) array_search($correctValue, $options, true);
+
+        return $question;
     }
 
     private function buildPrompt(QuizTopic $topic): string
