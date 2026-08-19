@@ -17,7 +17,17 @@ class QuizTopicFactory extends Factory
             'is_spotlight' => false,
             'is_active' => true,
             'last_used_at' => null,
+            'cycle_used_at' => null,
         ];
+    }
+
+    /** A topic the running rotation cycle has already covered. */
+    public function usedThisCycle(): static
+    {
+        return $this->state(fn (): array => [
+            'last_used_at' => now(),
+            'cycle_used_at' => now(),
+        ]);
     }
 
     public function spotlight(): static

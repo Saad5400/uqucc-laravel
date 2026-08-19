@@ -16,8 +16,9 @@ use Telegram\Bot\FileUpload\InputFile;
 /**
  * Everything the bot sends to the groups for the daily quiz: one quiz poll
  * per configured group (non-anonymous quiz polls, so votes arrive as
- * attributable `poll_answer` updates that map back to one shared quiz) and
- * the weekly winners announcement.
+ * attributable `poll_answer` updates that map back to one shared quiz), the
+ * ballot for tomorrow's topic that follows it ({@see QuizTopicVote}) and the
+ * weekly winners announcement.
  *
  * The Api client is built lazily so the service can be container-resolved in
  * environments without a bot token; tests pass a FakeTelegramApi instead.
@@ -40,6 +41,8 @@ class QuizPoster
     private ?Api $telegram;
 
     private ?QuizImageRenderer $imageRenderer;
+
+    private ?QuizTopicVote $topicVote = null;
 
     public function __construct(
         private readonly QuizSettings $settings,
@@ -133,7 +136,33 @@ class QuizPoster
             'posted_at' => now(),
         ]);
 
+        $this->rollTopicVote($quiz);
+
         return $quiz->refresh();
+    }
+
+    /**
+     * Retire the ballot this day was decided by and hand the group the next
+     * one, while today's question is fresh in front of them.
+     *
+     * Settling the outgoing ballot here matters even though generation
+     * normally does it: a question written by hand in the panel never asks the
+     * vote anything, and its ballot would otherwise stay open in the group
+     * forever. Best-effort on purpose — the vote is a flourish, and a question
+     * that reached the group has already succeeded. See {@see QuizTopicVote}
+     * for the ordinary reasons a new ballot is declined.
+     */
+    private function rollTopicVote(DailyQuiz $quiz): void
+    {
+        try {
+            $this->topicVote()->resolve($quiz->quiz_date);
+            $this->topicVote()->open($quiz->quiz_date->copy()->addDay());
+        } catch (\Throwable $exception) {
+            Log::warning('Failed to roll the topic vote forward', [
+                'quiz_id' => $quiz->id,
+                'message' => $exception->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -160,6 +189,12 @@ class QuizPoster
     private function imageRenderer(): QuizImageRenderer
     {
         return $this->imageRenderer ??= app(QuizImageRenderer::class);
+    }
+
+    /** Built on our own Api client, so the vote reaches the same groups. */
+    private function topicVote(): QuizTopicVote
+    {
+        return $this->topicVote ??= new QuizTopicVote($this->settings, $this->telegram());
     }
 
     /**

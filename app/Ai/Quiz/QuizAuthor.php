@@ -4,6 +4,7 @@ namespace App\Ai\Quiz;
 
 use App\Models\DailyQuiz;
 use App\Models\QuizTopic;
+use App\Services\Quiz\QuizTopicVote;
 use App\Settings\AiSettings;
 use App\Support\QuizContentHtml;
 use Carbon\CarbonInterface;
@@ -165,6 +166,7 @@ class QuizAuthor
     public function __construct(
         private readonly AiSettings $settings,
         private readonly BudgetGuard $budget,
+        private readonly QuizTopicVote $topicVote,
     ) {}
 
     /**
@@ -188,8 +190,9 @@ class QuizAuthor
      * Generate the quiz for the given day and store it as `ready`. Throws
      * with an operator-facing Arabic message on any refusal.
      *
-     * Pass an explicit `$topic` to force that theme; otherwise the topic is
-     * picked automatically (least-recently-used, spotlight-aware). When a
+     * Pass an explicit `$topic` to force that theme; otherwise the day's topic
+     * vote decides it ({@see QuizTopicVote}), and failing that the automatic
+     * pick does (least-recently-used within the cycle, spotlight-aware). When a
      * `ready` question already exists for the day, `$replace` regenerates it —
      * the old one is dropped only after the new question is authored, so a
      * generation failure leaves the existing question untouched.
@@ -216,7 +219,12 @@ class QuizAuthor
             }
         }
 
-        $topic ??= QuizTopic::pickForDate($date);
+        // Always settle the day's ballot, even when an admin has already named
+        // the topic: leaving a vote open past the question it was about is
+        // worse than a vote that turned out not to decide anything.
+        $voted = $this->topicVote->resolve($date);
+
+        $topic ??= $voted ?? QuizTopic::pickForDate($date);
 
         if ($topic === null) {
             throw new RuntimeException('لا توجد مواضيع مفعّلة — أضف مواضيع من صفحة سؤال اليوم أولاً.');
@@ -238,7 +246,7 @@ class QuizAuthor
             'status' => DailyQuiz::STATUS_READY,
         ]);
 
-        $topic->update(['last_used_at' => now()]);
+        $topic->markUsed();
 
         return $quiz;
     }

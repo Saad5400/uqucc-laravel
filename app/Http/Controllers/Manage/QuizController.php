@@ -329,6 +329,7 @@ class QuizController extends Controller
                 'is_spotlight' => $topic->is_spotlight,
                 'is_active' => $topic->is_active,
                 'last_used_at' => $topic->last_used_at?->toISOString(),
+                'awaiting_turn' => $topic->cycle_used_at === null,
             ])
             ->toBase();
     }
