@@ -8,6 +8,7 @@ use App\Ai\Admin\Actions\AdminActionException;
 use App\Models\PageChangeRequest;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Saad\AiKit\Approvals\Classified\FieldWidget;
 
 /**
  * Reject a pending page change: discard it without touching the live page, and
@@ -110,5 +111,16 @@ class RejectPageChangeAction extends AdminAction
             'note' => $schema->string()
                 ->description('Optional note explaining the rejection, recorded on the request.'),
         ];
+    }
+
+    /**
+     * The rejection note is prose the reviewer usually rewrites, so it gets
+     * an editor rather than a single line.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return ['note' => FieldWidget::Textarea];
     }
 }

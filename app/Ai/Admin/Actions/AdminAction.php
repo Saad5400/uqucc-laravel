@@ -89,6 +89,28 @@ abstract class AdminAction
     }
 
     /**
+     * How the assistant's approval card should render this action's
+     * arguments, keyed by argument name — a kit `Field`, a bare
+     * `FieldWidget`, or a partial spec array, forwarded by
+     * {@see AssistantActionTool::fields()}.
+     *
+     * Declare only what the kit gets wrong. It already infers booleans,
+     * numbers, arrays and long text from the pending value, and makes any
+     * `id` / `*_id` argument readonly because it addresses the record the
+     * write lands on. What still needs declaring is a long body the model
+     * happened to send short (a markdown editor is not a text box once it
+     * grows) and an argument that identifies the operation rather than its
+     * payload — those go readonly, and the kit restores the original value
+     * server-side if a client sends one back edited.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return [];
+    }
+
+    /**
      * Validate and normalize raw model arguments against the live state.
      * Returns the normalized payload (ids resolved, values cast, display
      * names attached) or throws {@see AdminActionException} with an Arabic

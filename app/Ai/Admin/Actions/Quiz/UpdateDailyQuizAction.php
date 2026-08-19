@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Support\QuizContentHtml;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Str;
+use Saad\AiKit\Approvals\Classified\FieldWidget;
 
 /**
  * Edit a not-yet-posted daily quiz, mirroring
@@ -197,5 +198,20 @@ class UpdateDailyQuizAction extends AdminAction
         ]);
 
         return ActionResult::text('تم حفظ تعديلات سؤال يوم '.$normalized['quiz_date'].'.');
+    }
+
+    /**
+     * The question is an HTML fragment and the explanation runs to a
+     * paragraph — both need an editor with room, whatever length the model
+     * happened to send.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return [
+            'question' => FieldWidget::Code,
+            'explanation' => FieldWidget::Textarea,
+        ];
     }
 }

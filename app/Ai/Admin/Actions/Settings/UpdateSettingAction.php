@@ -8,6 +8,7 @@ use App\Ai\Admin\Actions\AdminActionException;
 use App\Ai\Admin\SettingsRegistry;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Saad\AiKit\Approvals\Classified\FieldWidget;
 
 /**
  * Change ONE settings value (e.g. a feature toggle or model id), validated and
@@ -120,6 +121,20 @@ class UpdateSettingAction extends AdminAction
             'value' => $schema->string()
                 ->description('The new value as a string: booleans as "true"/"false", numbers as digits, arrays as JSON.')
                 ->required(),
+        ];
+    }
+
+    /**
+     * `group` and `key` address WHICH setting the write lands on, exactly as
+     * an id does, so only `value` is the admin's to change here.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return [
+            'group' => FieldWidget::Readonly,
+            'key' => FieldWidget::Readonly,
         ];
     }
 }

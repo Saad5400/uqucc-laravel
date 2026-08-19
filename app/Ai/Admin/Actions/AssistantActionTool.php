@@ -49,6 +49,18 @@ class AssistantActionTool extends ClassifiedTool
         return $this->action->schema($schema);
     }
 
+    /**
+     * The card's form schema, from the action's own
+     * {@see AdminAction::fieldWidgets()}. Everything an action leaves out is
+     * inferred by the kit from the pending value.
+     *
+     * @return array<string, mixed>
+     */
+    public function fields(): array
+    {
+        return $this->action->fieldWidgets();
+    }
+
     public function capability(): Capability
     {
         return match (true) {
