@@ -10,13 +10,12 @@ import { send as sendChat, show as showConversation } from '@/routes/ai/chat';
 import { store as storeAttachment } from '@/routes/ai/chat/attachments';
 import { show as showPage } from '@/routes/pages';
 import { Link } from '@inertiajs/vue3';
-import { closesReasoning, type ToolPayload } from '@saad5400/ai-kit/events';
 import { readSseStream } from '@saad5400/ai-kit/sse';
+import { createTimeline, groupSegments, type Segment, type SegmentGroup, type Timeline } from '@saad5400/ai-kit/timeline';
 import Markdown from '@saad5400/ai-kit/vue/Markdown.vue';
-import ThinkingDisclosure from '@saad5400/ai-kit/vue/ThinkingDisclosure.vue';
-import ToolChip from '@saad5400/ai-kit/vue/ToolChip.vue';
+import ProcessGroup from '@saad5400/ai-kit/vue/ProcessGroup.vue';
 import { BookOpenText, CircleStop, Info, LoaderCircle, Paperclip, RotateCcw, SendHorizontal, Sparkles, X } from 'lucide-vue-next';
-import { nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
+import { markRaw, nextTick, onBeforeUnmount, onMounted, reactive, ref, useTemplateRef } from 'vue';
 
 /**
  * The student assistant chat. Anonymous, session-owned conversations:
@@ -26,6 +25,15 @@ import { nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
  * rate limits 429, validation 422) arrive as plain JSON. Like
  * AiSearchPalette, the disabled state is discovered lazily from the
  * endpoints so the cached page never bakes in a stale feature flag.
+ *
+ * Each turn is modelled as an ORDERED segment list (ai-kit's `createTimeline`)
+ * rather than one accumulated text string beside one accumulated reasoning
+ * string: the events already arrive chronologically, and only a list can
+ * render "thought, searched, answered, thought again" in the order it
+ * happened. Every SSE event is pushed through the timeline — it ignores the
+ * ones it does not own — while `citations`, `done` and `error` are handled
+ * beside it. `groupSegments` then collapses thinking and tool runs into one
+ * disclosure, leaving the answer text top-level.
  *
  * Thinking and tool progress are live-only — the server persists neither, so
  * a rehydrated thread shows the answer alone instead of inventing them.
@@ -48,24 +56,15 @@ interface Citation {
     heading: string | null;
 }
 
-/** One `tool` chip, keyed by the wire event's tool-call id. */
-interface StreamedTool {
-    id: string;
-    name: string;
-    status: ToolPayload['status'];
-    successful?: boolean;
-}
-
 interface ChatMessage {
     id: number;
     role: 'user' | 'assistant';
+    /** The student's own text; an assistant turn renders from `segments` instead. */
     content: string;
     citations: Citation[];
-    /** Accumulated `reasoning` deltas — live-only, never rehydrated. */
-    reasoning: string;
-    /** Whether reasoning is still arriving; false collapses the block. */
-    reasoningLive: boolean;
-    tools: StreamedTool[];
+    /** The turn in arrival order — mutated in place by `timeline`. */
+    segments: Segment[];
+    timeline: Timeline;
     streaming?: boolean;
     failed?: boolean;
 }
@@ -91,8 +90,14 @@ const TOOL_LABELS: Record<string, string> = {
 const toolLabel = (name: string): string => TOOL_LABELS[name] ?? name;
 
 /** A streaming bubble with nothing in it yet still shows the typing dots. */
-const isBubbleEmpty = (message: ChatMessage): boolean =>
-    message.streaming === true && message.content === '' && message.reasoning === '' && message.tools.length === 0;
+const isBubbleEmpty = (message: ChatMessage): boolean => message.streaming === true && message.segments.length === 0;
+
+const groupsOf = (message: ChatMessage): SegmentGroup[] => groupSegments(message.segments);
+
+/** The group the model is still writing into: the last one, while it streams. */
+const isLiveGroup = (message: ChatMessage, index: number): boolean => message.streaming === true && index === groupsOf(message).length - 1;
+
+const hasText = (message: ChatMessage): boolean => message.segments.some((segment) => segment.type === 'text' && segment.text !== '');
 
 type AttachmentStatus = 'uploading' | 'ready' | 'failed';
 
@@ -139,6 +144,16 @@ const examplePrompts = [
 let nextLocalId = 1;
 let nextClientId = 1;
 let abortController: AbortController | undefined;
+
+/**
+ * A message whose segment list is reactive and handed to the timeline, so the
+ * reducer's in-place mutations re-render the bubble.
+ */
+const newMessage = (role: 'user' | 'assistant', content = ''): ChatMessage => {
+    const segments = reactive<Segment[]>([]);
+
+    return { id: nextLocalId++, role, content, citations: [], segments, timeline: markRaw(createTimeline(segments)) };
+};
 
 const xsrfToken = (): string => {
     const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
@@ -199,17 +214,21 @@ const rehydrateConversation = async (): Promise<void> => {
         };
 
         conversationId.value = storedId;
+
+        // Persisted text replays through the timeline as one `delta`, so a
+        // restored turn is the same segment model as a live one.
         messages.value = payload.messages
             .filter((message) => message.role === 'user' || message.role === 'assistant')
-            .map((message) => ({
-                id: nextLocalId++,
-                role: message.role as 'user' | 'assistant',
-                content: message.content,
-                citations: message.citations ?? [],
-                reasoning: '',
-                reasoningLive: false,
-                tools: [],
-            }));
+            .map((message) => {
+                const restored = newMessage(message.role as 'user' | 'assistant', message.content);
+                restored.citations = message.citations ?? [];
+
+                if (restored.role === 'assistant') {
+                    restored.timeline.push('delta', { text: message.content });
+                }
+
+                return restored;
+            });
 
         await scrollToBottom();
     } catch {
@@ -219,41 +238,15 @@ const rehydrateConversation = async (): Promise<void> => {
     }
 };
 
-/**
- * Upsert a tool chip by its call id: `running` creates it, the `done` for
- * the same id settles it in place rather than appending a second chip.
- */
-const upsertTool = (reply: ChatMessage, payload: ToolPayload): void => {
-    const chip = reply.tools.find((tool) => tool.id === payload.id);
-
-    if (chip) {
-        chip.status = payload.status;
-        chip.successful = payload.successful;
-
-        return;
-    }
-
-    reply.tools.push({ id: payload.id, name: payload.name, status: payload.status, successful: payload.successful });
-};
-
 const handleSseEvent = (event: string, data: Record<string, unknown>, reply: ChatMessage): void => {
-    // The wire brackets nothing: any of delta/tool/done/error closes an open
-    // thinking block, and a later `reasoning` reopens it.
-    if (closesReasoning(event)) {
-        reply.reasoningLive = false;
-    }
+    // Everything goes through the timeline, which ignores what it does not
+    // own — the app's own events below are handled beside it, not instead.
+    // A tool's name is swapped for its Arabic label on the way in: the chip
+    // renders whatever the segment carries, and a student reads none of the
+    // identifiers the model and the logs speak.
+    reply.timeline.push(event, event === 'tool' && typeof data.name === 'string' ? { ...data, name: toolLabel(data.name) } : data);
 
-    if (event === 'reasoning' && typeof data.text === 'string') {
-        reply.reasoning += data.text;
-        reply.reasoningLive = true;
-        void scrollToBottom();
-    } else if (event === 'delta' && typeof data.text === 'string') {
-        reply.content += data.text;
-        void scrollToBottom();
-    } else if (event === 'tool' && typeof data.id === 'string' && typeof data.name === 'string') {
-        upsertTool(reply, data as unknown as ToolPayload);
-        void scrollToBottom();
-    } else if (event === 'citations' && Array.isArray(data.items)) {
+    if (event === 'citations' && Array.isArray(data.items)) {
         reply.citations = data.items as Citation[];
     } else if (event === 'done') {
         if (typeof data.conversation_id === 'string' && data.conversation_id !== '') {
@@ -264,6 +257,8 @@ const handleSseEvent = (event: string, data: Record<string, unknown>, reply: Cha
         reply.failed = true;
         errorBanner.value = typeof data.message === 'string' ? data.message : 'حدث خطأ أثناء توليد الرد. حاول مرة أخرى.';
     }
+
+    void scrollToBottom();
 };
 
 const sendMessage = async (): Promise<void> => {
@@ -284,26 +279,10 @@ const sendMessage = async (): Promise<void> => {
         .filter((attachment) => attachment.status === 'ready' && attachment.attachmentId)
         .map((attachment) => attachment.attachmentId as string);
 
-    messages.value.push({
-        id: nextLocalId++,
-        role: 'user',
-        content: message,
-        citations: [],
-        reasoning: '',
-        reasoningLive: false,
-        tools: [],
-    });
+    messages.value.push(newMessage('user', message));
 
-    const reply: ChatMessage = {
-        id: nextLocalId++,
-        role: 'assistant',
-        content: '',
-        citations: [],
-        reasoning: '',
-        reasoningLive: false,
-        tools: [],
-        streaming: true,
-    };
+    const reply = newMessage('assistant');
+    reply.streaming = true;
     messages.value.push(reply);
     const liveReply = messages.value[messages.value.length - 1];
 
@@ -362,18 +341,24 @@ const sendMessage = async (): Promise<void> => {
         });
     } catch (error) {
         if ((error as Error).name !== 'AbortError') {
-            liveReply.failed = liveReply.content === '';
+            liveReply.failed = !hasText(liveReply);
             errorBanner.value = 'تعذر الاتصال بالخادم. تأكد من اتصالك ثم أعد المحاولة.';
         }
     } finally {
         liveReply.streaming = false;
-        liveReply.reasoningLive = false;
 
         // Stopping the turn (or losing the connection) can leave a chip
-        // mid-flight; a spinner nothing will ever resolve is worse than no chip.
-        liveReply.tools = liveReply.tools.filter((tool) => tool.status === 'done');
+        // mid-flight; a spinner nothing will ever resolve is worse than no
+        // chip. Spliced in place: the timeline owns this array.
+        for (let index = liveReply.segments.length - 1; index >= 0; index--) {
+            const segment = liveReply.segments[index];
 
-        if (liveReply.failed && liveReply.content === '') {
+            if (segment.type === 'tool' && segment.status === 'running') {
+                liveReply.segments.splice(index, 1);
+            }
+        }
+
+        if (liveReply.failed && !hasText(liveReply)) {
             messages.value = messages.value.filter((item) => item.id !== liveReply.id);
         }
 
@@ -595,32 +580,24 @@ onBeforeUnmount(() => abortController?.abort());
                                 <span class="size-1.5 animate-bounce rounded-full bg-muted-foreground/60" style="animation-delay: 300ms" />
                             </div>
 
-                            <!-- Reasoning is live-only; remounting on `reasoningLive` is what collapses it once the turn moves on. -->
-                            <ThinkingDisclosure
-                                v-if="message.reasoning !== ''"
-                                :key="`thinking-${message.id}-${message.reasoningLive}`"
-                                class="mb-2"
-                                :text="message.reasoning"
-                                :live="message.reasoningLive"
-                                :label="message.reasoningLive ? 'يفكّر' : 'خطوات التفكير'"
-                            />
-
-                            <div v-if="message.tools.length > 0" class="mb-2 flex flex-wrap gap-1.5">
-                                <ToolChip
-                                    v-for="tool in message.tools"
-                                    :key="tool.id"
-                                    :name="toolLabel(tool.name)"
-                                    :status="tool.status"
-                                    :successful="tool.successful"
+                            <!-- The turn in the order it happened: thinking and searches
+                                 behind one disclosure, the answer top-level. -->
+                            <template v-for="(group, index) in groupsOf(message)" :key="index">
+                                <Markdown
+                                    v-if="group.type === 'text'"
+                                    class="text-sm leading-relaxed"
+                                    :source="group.text"
+                                    :live="isLiveGroup(message, index)"
                                 />
-                            </div>
 
-                            <Markdown
-                                v-if="message.content !== ''"
-                                class="text-sm leading-relaxed"
-                                :source="message.content"
-                                :live="message.streaming === true"
-                            />
+                                <ProcessGroup
+                                    v-else-if="group.type === 'process'"
+                                    class="my-2"
+                                    :items="group.items"
+                                    :live="isLiveGroup(message, index)"
+                                    :label="isLiveGroup(message, index) ? 'يفكّر' : 'خطوات التفكير'"
+                                />
+                            </template>
 
                             <div v-if="message.citations.length > 0" class="mt-3 flex flex-wrap gap-1.5 border-t border-border/60 pt-2">
                                 <Link
@@ -634,7 +611,7 @@ onBeforeUnmount(() => abortController?.abort());
                                 </Link>
                             </div>
 
-                            <div v-if="message.content !== ''" class="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground/70">
+                            <div v-if="hasText(message)" class="mt-2 flex items-center gap-1 text-[11px] text-muted-foreground/70">
                                 <Info class="size-3 shrink-0" />
                                 <span>{{ disclaimer }}</span>
                             </div>
@@ -764,18 +741,25 @@ onBeforeUnmount(() => abortController?.abort());
 
 <style scoped>
 /*
- * The assistant markdown itself comes from ai-kit's prose sheet (imported in
- * app.css); only the bubble-local token overrides live here. The bubble is
- * `bg-muted`, so inline code and fenced blocks need the page background to
- * read as raised rather than vanishing into it, and the tool chips carry
- * Arabic labels rather than identifiers — so they drop the monospace face.
+ * The kit components are themed through `--ai-kit-*` variables only, so the
+ * site's own tokens are mapped once here and the markdown, the disclosure and
+ * its chips all follow. The bubble is `bg-muted`, so surfaces inside it take
+ * the page background to read as raised rather than vanishing into it, and
+ * the tool chips carry Arabic labels rather than identifiers — so they drop
+ * the monospace face.
  */
 .assistant-bubble {
+    --ai-kit-accent: var(--primary);
+    --ai-kit-accent-fg: var(--primary-foreground);
+    --ai-kit-destructive: var(--destructive);
+    --ai-kit-border: var(--border);
+    --ai-kit-surface: var(--background);
+    --ai-kit-muted: var(--muted-foreground);
     --ai-kit-muted-bg: var(--background);
+    --ai-kit-radius: var(--radius-md);
     --ai-kit-chip-bg: var(--background);
     --ai-kit-chip-color: var(--muted-foreground);
     --ai-kit-chip-failed-color: var(--destructive);
     --ai-kit-chip-font: inherit;
-    --ai-kit-thinking-border: var(--border);
 }
 </style>
