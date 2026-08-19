@@ -10,6 +10,7 @@ use App\Ai\Copilot\TipTapContent;
 use App\Models\Page;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Saad\AiKit\Approvals\Classified\FieldWidget;
 
 /**
  * Replace a page's TEXT content from markdown — the capability that was
@@ -120,6 +121,18 @@ class UpdatePageContentAction extends AdminAction
                 ->description('The full new page content as markdown. Replaces the current body. Use ## headings and below, no top-level H1.')
                 ->required(),
         ];
+    }
+
+    /**
+     * A whole page body is the one argument on this card worth reading
+     * before confirming, so it gets the markdown editor rather than the
+     * single-line input a short first draft would otherwise infer.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return ['content' => FieldWidget::Markdown];
     }
 
     /**

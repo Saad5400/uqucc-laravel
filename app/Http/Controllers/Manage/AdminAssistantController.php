@@ -110,7 +110,8 @@ class AdminAssistantController extends Controller
      * question cards and stream the continuation. The payload maps each
      * pending tool-call id to approve / reject / edit; every pending call
      * must be decided in one batch, because the vendor loop rejects any it
-     * does not find a decision for.
+     * does not find a decision for. An edit's arguments are reconciled
+     * against the server's own pending call before anything executes.
      */
     public function decide(
         AdminAssistantDecisionRequest $request,
@@ -137,24 +138,36 @@ class AdminAssistantController extends Controller
         /** @var array<string, mixed> $input */
         $input = $request->validated('decisions');
 
+        // Read the server's pause markers ONCE: the same set answers the 409
+        // check below and backs the edit guard, so a card cannot be checked
+        // against one snapshot and guarded against another.
+        $pending = $cards->pending($conversation);
+        $pendingCards = $cards->cardsFor($pending);
+        $pendingIds = $pendingCards->pluck('id');
+
         // The 409 whose body is the CURRENT pending set, so a stale client
         // (double submit, another tab already decided) repaints instead of
         // guessing.
-        $pendingIds = $cards->pendingFor($conversation)->pluck('id');
-
         if ($pendingIds->isEmpty()
             || $pendingIds->diff(array_keys($input))->isNotEmpty()
             || collect(array_keys($input))->diff($pendingIds)->isNotEmpty()) {
             return response()->json([
                 'message' => 'هذه البطاقات لم تعد بانتظار قرار.',
-                'pending_approvals' => $cards->pendingFor($conversation)->values(),
+                'pending_approvals' => $pendingCards->values(),
             ], 409);
         }
 
         try {
-            $decisions = ResumeDecisions::fromClient($input);
+            // The guard is passed here rather than applied afterwards because
+            // this is the only path from client input to Decisions: an edit's
+            // readonly fields are restored from the pause before a
+            // Decision::edit exists at all.
+            $decisions = ResumeDecisions::fromClient($input, $cards->editGuard($pending));
         } catch (InvalidArgumentException) {
-            return response()->json(['message' => 'صيغة القرارات غير صالحة.'], 422);
+            // Covers both a malformed decision shape and an edit that invents
+            // an argument the card never carried; a tampered readonly field
+            // needs no error, because the guard silently restores it.
+            return response()->json(['message' => 'صيغة القرارات غير صالحة أو لا تطابق حقول البطاقة.'], 422);
         }
 
         return response()->stream(

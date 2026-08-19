@@ -1,44 +1,33 @@
+import type { AiKitCard, ApprovalPayload, ClientDecision, QuestionPayload } from '@saad5400/ai-kit/events';
+
 /**
- * The classified-approval wire cards (ai-kit `ApprovalCards` + uqucc's
- * `category`). Every trust-bearing field is server-derived; the model only
- * contributes `arguments` — which are exactly what a confirmed resume
- * executes.
+ * The classified-approval wire cards. Every trust-bearing field — including
+ * the `fields` form schema each argument renders from — is server-derived by
+ * ai-kit's `ApprovalCards`; uqucc adds only `category`, the grouping key its
+ * per-category icons read.
  */
-export interface AssistantApprovalCard {
-    kind: 'approval';
-    id: string;
-    /** The unified action name, e.g. "update_page" or "update_setting". */
-    tool: string;
-    title: string;
-    /** Visual grouping: pages | settings | tutors | users | reviews | … */
-    category: string;
-    /** Server-derived — a destructive card is one-click, never editable. */
-    destructive: boolean;
-    undoable: boolean;
-    /** Whether the admin may edit the arguments before confirming. */
-    editable: boolean;
-    arguments: Record<string, unknown>;
-    preview: string[];
-    /** The Arabic summary of what will execute. */
-    reason: string | null;
-}
+export type AssistantApprovalCard = ApprovalPayload & { category: string };
 
-/** An AskUser pause: answered (or dismissed), never "confirmed". */
-export interface AssistantQuestionCard {
-    kind: 'question';
-    id: string;
-    question: string;
-}
+export type AssistantCard = AssistantApprovalCard | QuestionPayload;
 
-export type AssistantCard = AssistantApprovalCard | AssistantQuestionCard;
+/**
+ * The card as it arrives inside a timeline segment, where the kit's own
+ * union is what the reducer stores. Narrow it with the helpers below rather
+ * than re-declaring the shapes.
+ */
+export const isQuestionCard = (card: AiKitCard): card is QuestionPayload => card.kind === 'question';
 
-/** One per-card decision, keyed by tool-call id in the resume payload. */
-export type AssistantDecision = 'approve' | { action: 'reject' } | { action: 'edit'; arguments: Record<string, unknown> };
+export const asApprovalCard = (card: AiKitCard): AssistantApprovalCard => card as AssistantApprovalCard;
 
-/** A card plus its client-side lifecycle around the batched resume. */
-export interface TrackedCard {
-    card: AssistantCard;
+/**
+ * One card's place in the batched resume. Cards stay visible after a
+ * decision — the admin should be able to read what they confirmed — so the
+ * decision and the answer text outlive the pending state.
+ */
+export interface CardDecision {
     /** Undecided cards are 'pending'; a local decision holds until the batch submits. */
     status: 'pending' | 'decided' | 'submitted';
-    decision: AssistantDecision | null;
+    decision: ClientDecision | null;
+    /** What a question card was answered with, for its settled rendering. */
+    answer: string | null;
 }

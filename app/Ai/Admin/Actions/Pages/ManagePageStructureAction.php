@@ -11,6 +11,7 @@ use App\Ai\Admin\PageChangeRules;
 use App\Models\Page;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Saad\AiKit\Approvals\Classified\FieldWidget;
 
 /**
  * Structural change to the page tree: create, rename, move (to a new parent),
@@ -196,5 +197,18 @@ class ManagePageStructureAction extends AdminAction
         }
 
         return $page;
+    }
+
+    /**
+     * `action` names the structural operation, not its payload: switching a
+     * confirmed `rename` to `delete` would make the card a preview of a
+     * different write entirely, and the Arabic summary the admin read would
+     * describe neither. It is the operation's identity, so it is readonly.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return ['action' => FieldWidget::Readonly];
     }
 }

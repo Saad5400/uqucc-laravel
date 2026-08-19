@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "4fc2dec3f133b5cf1c7798293df959da",
+    "content-hash": "cc734bba8e5de243ae80f01150a97288",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -62,16 +62,16 @@
         },
         {
             "name": "aws/aws-sdk-php",
-            "version": "3.393.0",
+            "version": "3.393.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/aws/aws-sdk-php.git",
-                "reference": "acabde13e4eed20b948cae517c24d772a7beaa27"
+                "reference": "1401412d30a7542b9b7a2e97ddd73c82723bc624"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/aws/aws-sdk-php/zipball/acabde13e4eed20b948cae517c24d772a7beaa27",
-                "reference": "acabde13e4eed20b948cae517c24d772a7beaa27",
+                "url": "https://api.github.com/repos/aws/aws-sdk-php/zipball/1401412d30a7542b9b7a2e97ddd73c82723bc624",
+                "reference": "1401412d30a7542b9b7a2e97ddd73c82723bc624",
                 "shasum": ""
             },
             "require": {
@@ -153,9 +153,9 @@
             "support": {
                 "forum": "https://github.com/aws/aws-sdk-php/discussions",
                 "issues": "https://github.com/aws/aws-sdk-php/issues",
-                "source": "https://github.com/aws/aws-sdk-php/tree/3.393.0"
+                "source": "https://github.com/aws/aws-sdk-php/tree/3.393.1"
             },
-            "time": "2026-08-17T19:27:01+00:00"
+            "time": "2026-08-18T18:16:28+00:00"
         },
         {
             "name": "brick/math",
@@ -1727,16 +1727,16 @@
         },
         {
             "name": "laravel/framework",
-            "version": "v12.66.0",
+            "version": "v12.67.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/framework.git",
-                "reference": "82a53323c701a668f9054cbeb1d6b6cdbb6a5e10"
+                "reference": "fe2cdaba052cbb9f350761ccefc7ac221cbdf0b5"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/framework/zipball/82a53323c701a668f9054cbeb1d6b6cdbb6a5e10",
-                "reference": "82a53323c701a668f9054cbeb1d6b6cdbb6a5e10",
+                "url": "https://api.github.com/repos/laravel/framework/zipball/fe2cdaba052cbb9f350761ccefc7ac221cbdf0b5",
+                "reference": "fe2cdaba052cbb9f350761ccefc7ac221cbdf0b5",
                 "shasum": ""
             },
             "require": {
@@ -1945,7 +1945,7 @@
                 "issues": "https://github.com/laravel/framework/issues",
                 "source": "https://github.com/laravel/framework"
             },
-            "time": "2026-08-11T13:59:27+00:00"
+            "time": "2026-08-18T13:37:47+00:00"
         },
         {
             "name": "laravel/mcp",
@@ -2098,16 +2098,16 @@
         },
         {
             "name": "laravel/prompts",
-            "version": "v0.3.22",
+            "version": "v0.3.23",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/prompts.git",
-                "reference": "02b89b39e8972a998db4d5d4ad4719239dd4aee4"
+                "reference": "b7b4c35e5bc47450f6b6238c6cc9c47ba19b2221"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/prompts/zipball/02b89b39e8972a998db4d5d4ad4719239dd4aee4",
-                "reference": "02b89b39e8972a998db4d5d4ad4719239dd4aee4",
+                "url": "https://api.github.com/repos/laravel/prompts/zipball/b7b4c35e5bc47450f6b6238c6cc9c47ba19b2221",
+                "reference": "b7b4c35e5bc47450f6b6238c6cc9c47ba19b2221",
                 "shasum": ""
             },
             "require": {
@@ -2151,9 +2151,9 @@
             "description": "Add beautiful and user-friendly forms to your command-line applications.",
             "support": {
                 "issues": "https://github.com/laravel/prompts/issues",
-                "source": "https://github.com/laravel/prompts/tree/v0.3.22"
+                "source": "https://github.com/laravel/prompts/tree/v0.3.23"
             },
-            "time": "2026-08-04T14:50:50+00:00"
+            "time": "2026-08-11T18:58:24+00:00"
         },
         {
             "name": "laravel/serializable-closure",
@@ -5283,16 +5283,16 @@
         },
         {
             "name": "saad/ai-kit",
-            "version": "v0.5.0",
+            "version": "v0.6.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/Saad5400/ai-kit.git",
-                "reference": "f73de935c77f813f99a42b91bc80f6bb6dba98f4"
+                "reference": "851081c2f9fd00a7ea6c244b5afb2b5f2a6cbd61"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Saad5400/ai-kit/zipball/f73de935c77f813f99a42b91bc80f6bb6dba98f4",
-                "reference": "f73de935c77f813f99a42b91bc80f6bb6dba98f4",
+                "url": "https://api.github.com/repos/Saad5400/ai-kit/zipball/851081c2f9fd00a7ea6c244b5afb2b5f2a6cbd61",
+                "reference": "851081c2f9fd00a7ea6c244b5afb2b5f2a6cbd61",
                 "shasum": ""
             },
             "require": {
@@ -5349,10 +5349,10 @@
                 "openrouter"
             ],
             "support": {
-                "source": "https://github.com/Saad5400/ai-kit/tree/v0.5.0",
+                "source": "https://github.com/Saad5400/ai-kit/tree/v0.6.0",
                 "issues": "https://github.com/Saad5400/ai-kit/issues"
             },
-            "time": "2026-08-18T07:58:13+00:00"
+            "time": "2026-08-19T10:10:04+00:00"
         },
         {
             "name": "scrivo/highlight.php",

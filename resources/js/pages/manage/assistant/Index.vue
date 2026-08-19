@@ -1,18 +1,35 @@
 <script setup lang="ts">
 import ManageLayout from '@/components/manage/ManageLayout.vue';
 import PageHeader from '@/components/manage/PageHeader.vue';
-import ApprovalCard from '@/components/manage/assistant/ApprovalCard.vue';
-import type { AssistantCard, AssistantDecision, TrackedCard } from '@/components/manage/assistant/types';
+import { asApprovalCard, isQuestionCard, type AssistantApprovalCard, type CardDecision } from '@/components/manage/assistant/types';
 import { Button } from '@/components/ui/button';
 import { decide as decideChat, send as sendChat, show as showConversation } from '@/routes/manage/assistant';
 import { Head, Link } from '@inertiajs/vue3';
-import { closesReasoning, type ToolPayload } from '@saad5400/ai-kit/events';
+import type { AiKitCard, ClientDecision, QuestionPayload } from '@saad5400/ai-kit/events';
 import { readSseStream } from '@saad5400/ai-kit/sse';
+import { createTimeline, groupSegments, type Segment, type SegmentGroup, type Timeline } from '@saad5400/ai-kit/timeline';
+import ApprovalCard from '@saad5400/ai-kit/vue/ApprovalCard.vue';
 import Markdown from '@saad5400/ai-kit/vue/Markdown.vue';
-import ThinkingDisclosure from '@saad5400/ai-kit/vue/ThinkingDisclosure.vue';
-import ToolChip from '@saad5400/ai-kit/vue/ToolChip.vue';
-import { CircleStop, RotateCcw, SendHorizontal, Settings, ShieldCheck, Sparkles } from 'lucide-vue-next';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
+import ProcessGroup from '@saad5400/ai-kit/vue/ProcessGroup.vue';
+import QuestionCard from '@saad5400/ai-kit/vue/QuestionCard.vue';
+import {
+    BookOpen,
+    CircleCheck,
+    CircleStop,
+    CircleX,
+    FileText,
+    HelpCircle,
+    RotateCcw,
+    Send,
+    SendHorizontal,
+    Settings,
+    Settings2,
+    ShieldCheck,
+    Sparkles,
+    TriangleAlert,
+    Users,
+} from 'lucide-vue-next';
+import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, reactive, ref, useTemplateRef, type Component } from 'vue';
 
 /**
  * The admin assistant chat: the operator copilot whose writes pause the turn
@@ -24,8 +41,17 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, useTemplateRef } f
  * POST /manage/assistant/chat/{conversation}/decide and the continuation
  * streams into the thread. Nothing is applied without a decision here.
  *
+ * Each turn is modelled as an ORDERED segment list (ai-kit's `createTimeline`),
+ * not an accumulated text string beside an accumulated reasoning string: the
+ * events already arrive chronologically, and only a list can render "thought,
+ * called a tool, answered, thought again" in the order it happened. Every SSE
+ * event is pushed through the timeline — it ignores the ones it does not own —
+ * and `groupSegments` collapses thinking and tool runs into one disclosure
+ * while text and decision cards stay top-level where they occurred.
+ *
  * Thinking and tool progress are live-only: the server never persists them,
- * so a rehydrated thread shows neither rather than inventing them.
+ * so a rehydrated thread replays its stored text and repaints its pending
+ * cards, and shows no process steps rather than inventing them.
  */
 
 defineOptions({ layout: ManageLayout });
@@ -37,24 +63,14 @@ const props = defineProps<{
     };
 }>();
 
-/** One `tool` chip, keyed by the wire event's tool-call id. */
-interface StreamedTool {
-    id: string;
-    name: string;
-    status: ToolPayload['status'];
-    successful?: boolean;
-}
-
 interface ChatMessage {
     id: number;
     role: 'user' | 'assistant';
+    /** The user's own text; an assistant turn renders from `segments` instead. */
     content: string;
-    /** Accumulated `reasoning` deltas — live-only, never rehydrated. */
-    reasoning: string;
-    /** Whether reasoning is still arriving; false collapses the block. */
-    reasoningLive: boolean;
-    tools: StreamedTool[];
-    cards: TrackedCard[];
+    /** The turn in arrival order — mutated in place by `timeline`. */
+    segments: Segment[];
+    timeline: Timeline;
     streaming?: boolean;
     failed?: boolean;
 }
@@ -65,7 +81,28 @@ const MAX_MESSAGE_LENGTH = 2000;
 /** First-open teaching prompts: what the assistant is actually for. */
 const examplePrompts = ['رتب صفحات قسم اللوائح حسب الأحدث', 'فعّل بحث الذكاء الاصطناعي', 'ما الصفحات التي لم تُحدَّث منذ سنة؟'];
 
+/** Icon + heading per action category. */
+const categoryMeta: Record<string, { icon: Component; label: string }> = {
+    pages: { icon: FileText, label: 'تغيير على الصفحات' },
+    settings: { icon: Settings2, label: 'تغيير على الإعدادات' },
+    tutors: { icon: Users, label: 'تغيير على المدرّسين' },
+    users: { icon: Users, label: 'تغيير على المستخدمين' },
+    reviews: { icon: FileText, label: 'إجراء على المراجعات' },
+    telegram: { icon: Send, label: 'تغيير على إعدادات تيليجرام' },
+    corpus: { icon: BookOpen, label: 'إجراء على قاعدة المعرفة' },
+    quiz: { icon: HelpCircle, label: 'إجراء على سؤال اليوم' },
+    system: { icon: Settings2, label: 'إجراء على النظام' },
+};
+
 const messages = ref<ChatMessage[]>([]);
+
+/**
+ * Every card the thread has shown, by tool-call id. Decisions are batched
+ * across cards (and across bubbles, when a resumed turn pauses again), so
+ * this lives beside the messages rather than inside one of them.
+ */
+const cardDecisions = reactive<Record<string, CardDecision>>({});
+
 const draft = ref('');
 const isStreaming = ref(false);
 const isRehydrating = ref(false);
@@ -78,20 +115,63 @@ const draftInput = useTemplateRef<HTMLTextAreaElement>('draftInput');
 let nextLocalId = 1;
 let abortController: AbortController | undefined;
 
+/**
+ * A message whose segment list is reactive and handed to the timeline, so
+ * the reducer's in-place mutations re-render the bubble.
+ */
+const newMessage = (role: 'user' | 'assistant', content = ''): ChatMessage => {
+    const segments = reactive<Segment[]>([]);
+
+    return { id: nextLocalId++, role, content, segments, timeline: markRaw(createTimeline(segments)) };
+};
+
 /** A fresh assistant bubble to stream a turn into. */
-const newReply = (): ChatMessage => ({
-    id: nextLocalId++,
-    role: 'assistant',
-    content: '',
-    reasoning: '',
-    reasoningLive: false,
-    tools: [],
-    cards: [],
-    streaming: true,
-});
+const newReply = (): ChatMessage => {
+    const reply = newMessage('assistant');
+    reply.streaming = true;
+
+    return reply;
+};
 
 /** While a pause waits for decisions, the composer holds — a new prompt cannot pre-empt the paused turn. */
-const hasPendingCards = computed(() => messages.value.some((message) => message.cards.some((tracked) => tracked.status === 'pending')));
+const hasPendingCards = computed(() => Object.values(cardDecisions).some((tracked) => tracked.status === 'pending'));
+
+const groupsOf = (message: ChatMessage): SegmentGroup[] => groupSegments(message.segments);
+
+/** The group the model is still writing into: the last one, while it streams. */
+const isLiveGroup = (message: ChatMessage, index: number): boolean => message.streaming === true && index === groupsOf(message).length - 1;
+
+const hasText = (message: ChatMessage): boolean => message.segments.some((segment) => segment.type === 'text' && segment.text !== '');
+
+const hasCard = (message: ChatMessage): boolean => message.segments.some((segment) => segment.type === 'card');
+
+/** A streaming bubble with nothing in it yet still shows the typing dots. */
+const isBubbleEmpty = (message: ChatMessage): boolean => message.streaming === true && message.segments.length === 0;
+
+const trackCard = (card: AiKitCard): void => {
+    cardDecisions[card.id] ??= { status: 'pending', decision: null, answer: null };
+};
+
+const trackedFor = (card: AiKitCard): CardDecision => cardDecisions[card.id] ?? { status: 'pending', decision: null, answer: null };
+
+const isPending = (card: AiKitCard): boolean => trackedFor(card).status === 'pending';
+
+const categoryOf = (card: AssistantApprovalCard): { icon: Component; label: string } => {
+    const base = categoryMeta[card.category] ?? { icon: FileText, label: 'تغيير مقترح' };
+
+    return card.destructive ? { icon: TriangleAlert, label: base.label } : base;
+};
+
+/** What an already-decided approval card settled into, for the record. */
+const decisionChip = (card: AiKitCard): { icon: Component; label: string; ok: boolean } | null => {
+    const decision = trackedFor(card).decision;
+
+    if (decision === null) {
+        return null;
+    }
+
+    return decision.action === 'reject' ? { icon: CircleX, label: 'مرفوض', ok: false } : { icon: CircleCheck, label: 'تم التأكيد', ok: true };
+};
 
 const xsrfToken = (): string => {
     const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
@@ -113,12 +193,6 @@ const readJsonMessage = async (response: Response): Promise<string | null> => {
         return null;
     }
 };
-
-const trackPending = (card: AssistantCard): TrackedCard => ({ card, status: 'pending', decision: null });
-
-/** A streaming bubble with nothing in it yet still shows the typing dots. */
-const isBubbleEmpty = (message: ChatMessage): boolean =>
-    message.streaming === true && message.content === '' && message.reasoning === '' && message.tools.length === 0 && message.cards.length === 0;
 
 /** Rehydrate a conversation persisted across reloads; 404 means a clean slate. */
 const rehydrateConversation = async (): Promise<void> => {
@@ -143,21 +217,24 @@ const rehydrateConversation = async (): Promise<void> => {
 
         const payload = (await response.json()) as {
             messages: { role: string; content: string }[];
-            pending_approvals: AssistantCard[];
+            pending_approvals: AiKitCard[];
         };
 
         conversationId.value = storedId;
+
+        // Persisted text replays through the timeline as one `delta`, so a
+        // restored turn is the same segment model as a live one.
         messages.value = payload.messages
             .filter((message) => message.role === 'user' || message.role === 'assistant')
-            .map((message) => ({
-                id: nextLocalId++,
-                role: message.role as 'user' | 'assistant',
-                content: message.content,
-                reasoning: '',
-                reasoningLive: false,
-                tools: [],
-                cards: [],
-            }));
+            .map((message) => {
+                const restored = newMessage(message.role as 'user' | 'assistant', message.content);
+
+                if (restored.role === 'assistant') {
+                    restored.timeline.push('delta', { text: message.content });
+                }
+
+                return restored;
+            });
 
         // A paused turn's undecided cards repaint on the last assistant
         // bubble (a pause always ends the stored thread on one).
@@ -165,11 +242,14 @@ const rehydrateConversation = async (): Promise<void> => {
             let target = [...messages.value].reverse().find((message) => message.role === 'assistant');
 
             if (!target) {
-                target = { ...newReply(), streaming: false };
+                target = newMessage('assistant');
                 messages.value.push(target);
             }
 
-            target.cards = payload.pending_approvals.map(trackPending);
+            for (const card of payload.pending_approvals) {
+                target.timeline.push(card.kind === 'question' ? 'question' : 'approval', card);
+                trackCard(card);
+            }
         }
 
         await scrollToBottom();
@@ -180,46 +260,15 @@ const rehydrateConversation = async (): Promise<void> => {
     }
 };
 
-/**
- * Upsert a tool chip by its call id: `running` creates it, the `done` for
- * the same id settles it in place rather than appending a second chip.
- */
-const upsertTool = (reply: ChatMessage, payload: ToolPayload): void => {
-    const chip = reply.tools.find((tool) => tool.id === payload.id);
-
-    if (chip) {
-        chip.status = payload.status;
-        chip.successful = payload.successful;
-
-        return;
-    }
-
-    reply.tools.push({ id: payload.id, name: payload.name, status: payload.status, successful: payload.successful });
-};
-
 const handleSseEvent = (event: string, data: Record<string, unknown>, reply: ChatMessage): void => {
-    // The wire brackets nothing: any of delta/tool/done/error closes an open
-    // thinking block, and a later `reasoning` reopens it.
-    if (closesReasoning(event)) {
-        reply.reasoningLive = false;
-    }
+    // Everything goes through the timeline, which ignores what it does not
+    // own — the app-specific events below are handled beside it, not instead.
+    reply.timeline.push(event, data);
 
-    if (event === 'reasoning' && typeof data.text === 'string') {
-        reply.reasoning += data.text;
-        reply.reasoningLive = true;
-        void scrollToBottom();
-    } else if (event === 'delta' && typeof data.text === 'string') {
-        reply.content += data.text;
-        void scrollToBottom();
-    } else if (event === 'tool' && typeof data.id === 'string' && typeof data.name === 'string') {
-        upsertTool(reply, data as unknown as ToolPayload);
-        void scrollToBottom();
-    } else if ((event === 'approval' || event === 'question') && typeof data.id === 'string') {
-        // A paused call emitted `running` and will never emit `done` on this
-        // stream — its card IS the chip's outcome, so fold the spinner in.
-        reply.tools = reply.tools.filter((tool) => tool.id !== data.id);
-        reply.cards.push(trackPending(data as unknown as AssistantCard));
-        void scrollToBottom();
+    if (event === 'approval' || event === 'question') {
+        if (typeof data.id === 'string') {
+            trackCard(data as unknown as AiKitCard);
+        }
     } else if (event === 'done') {
         if (typeof data.conversation_id === 'string' && data.conversation_id !== '') {
             conversationId.value = data.conversation_id;
@@ -229,6 +278,8 @@ const handleSseEvent = (event: string, data: Record<string, unknown>, reply: Cha
         reply.failed = true;
         errorBanner.value = typeof data.message === 'string' ? data.message : 'حدث خطأ أثناء توليد الرد. حاول مرة أخرى.';
     }
+
+    void scrollToBottom();
 };
 
 /**
@@ -281,18 +332,24 @@ const streamInto = async (url: string, body: Record<string, unknown>, liveReply:
         });
     } catch (error) {
         if ((error as Error).name !== 'AbortError') {
-            liveReply.failed = liveReply.content === '';
+            liveReply.failed = !hasText(liveReply);
             errorBanner.value = 'تعذر الاتصال بالخادم. تأكد من اتصالك ثم أعد المحاولة.';
         }
     } finally {
         liveReply.streaming = false;
-        liveReply.reasoningLive = false;
 
         // Stopping the turn (or losing the connection) can leave a chip
-        // mid-flight; a spinner nothing will ever resolve is worse than no chip.
-        liveReply.tools = liveReply.tools.filter((tool) => tool.status === 'done');
+        // mid-flight; a spinner nothing will ever resolve is worse than no
+        // chip. Spliced in place: the timeline owns this array.
+        for (let index = liveReply.segments.length - 1; index >= 0; index--) {
+            const segment = liveReply.segments[index];
 
-        if (liveReply.failed && liveReply.content === '' && liveReply.cards.length === 0) {
+            if (segment.type === 'tool' && segment.status === 'running') {
+                liveReply.segments.splice(index, 1);
+            }
+        }
+
+        if (liveReply.failed && !hasText(liveReply) && !hasCard(liveReply)) {
             messages.value = messages.value.filter((item) => item.id !== liveReply.id);
         }
 
@@ -311,16 +368,7 @@ const sendMessage = async (): Promise<void> => {
 
     errorBanner.value = null;
 
-    messages.value.push({
-        id: nextLocalId++,
-        role: 'user',
-        content: message,
-        reasoning: '',
-        reasoningLive: false,
-        tools: [],
-        cards: [],
-    });
-
+    messages.value.push(newMessage('user', message));
     messages.value.push(newReply());
     const liveReply = messages.value[messages.value.length - 1];
 
@@ -341,24 +389,25 @@ const sendMessage = async (): Promise<void> => {
  * decided, resume the paused turn with the whole batch (the server rejects
  * partial batches, because an undecided call would be silently rejected).
  */
-const onCardDecision = async (tracked: TrackedCard, decision: AssistantDecision): Promise<void> => {
-    if (tracked.status !== 'pending' || isStreaming.value || !conversationId.value) {
+const onCardDecision = async (card: AiKitCard, decision: ClientDecision, answer: string | null = null): Promise<void> => {
+    const tracked = cardDecisions[card.id];
+
+    if (!tracked || tracked.status !== 'pending' || isStreaming.value || !conversationId.value) {
         return;
     }
 
     tracked.decision = decision;
+    tracked.answer = answer;
     tracked.status = 'decided';
 
-    const undecided = messages.value.flatMap((message) => message.cards).filter((item) => item.status === 'pending');
-
-    if (undecided.length > 0) {
+    if (Object.values(cardDecisions).some((item) => item.status === 'pending')) {
         return;
     }
 
-    const batch = messages.value.flatMap((message) => message.cards).filter((item) => item.status === 'decided');
-    const decisions = Object.fromEntries(batch.map((item) => [item.card.id, item.decision]));
+    const decided = Object.entries(cardDecisions).filter(([, item]) => item.status === 'decided');
+    const decisions = Object.fromEntries(decided.map(([id, item]) => [id, item.decision]));
 
-    batch.forEach((item) => {
+    decided.forEach(([, item]) => {
         item.status = 'submitted';
     });
 
@@ -368,6 +417,11 @@ const onCardDecision = async (tracked: TrackedCard, decision: AssistantDecision)
     const liveReply = messages.value[messages.value.length - 1];
 
     await streamInto(decideChat.url(conversationId.value), { decisions }, liveReply);
+};
+
+/** A question's answer resumes the turn as an edit; the server restores the model's own question. */
+const onQuestionAnswer = (card: QuestionPayload, answer: string): void => {
+    void onCardDecision(card, { action: 'edit', arguments: { answer } }, answer);
 };
 
 const stopStreaming = (): void => {
@@ -382,6 +436,7 @@ const startNewConversation = (): void => {
     sessionStorage.removeItem(CONVERSATION_STORAGE_KEY);
     conversationId.value = null;
     messages.value = [];
+    Object.keys(cardDecisions).forEach((id) => delete cardDecisions[id]);
     errorBanner.value = null;
 };
 
@@ -475,7 +530,7 @@ onBeforeUnmount(() => abortController?.abort());
                     </div>
                 </div>
 
-                <!-- Assistant bubble -->
+                <!-- Assistant bubble: the turn in the order it happened. -->
                 <div v-else class="flex justify-start">
                     <div class="assistant-bubble max-w-[85%] space-y-3 rounded-2xl rounded-ss-sm bg-muted px-4 py-2.5">
                         <div v-if="isBubbleEmpty(message)" class="flex items-center gap-1 py-1" aria-label="المساعد يكتب الآن">
@@ -484,40 +539,72 @@ onBeforeUnmount(() => abortController?.abort());
                             <span class="size-1.5 animate-bounce rounded-full bg-muted-foreground/60" style="animation-delay: 300ms" />
                         </div>
 
-                        <!-- Reasoning is live-only; remounting on `reasoningLive` is what collapses it once the turn moves on. -->
-                        <ThinkingDisclosure
-                            v-if="message.reasoning !== ''"
-                            :key="`thinking-${message.id}-${message.reasoningLive}`"
-                            :text="message.reasoning"
-                            :live="message.reasoningLive"
-                            :label="message.reasoningLive ? 'يفكّر' : 'خطوات التفكير'"
-                        />
-
-                        <div v-if="message.tools.length > 0" class="flex flex-wrap gap-1.5">
-                            <ToolChip
-                                v-for="tool in message.tools"
-                                :key="tool.id"
-                                :name="tool.name"
-                                :status="tool.status"
-                                :successful="tool.successful"
+                        <template v-for="(group, index) in groupsOf(message)" :key="index">
+                            <Markdown
+                                v-if="group.type === 'text'"
+                                class="text-sm leading-relaxed"
+                                :source="group.text"
+                                :live="isLiveGroup(message, index)"
                             />
-                        </div>
 
-                        <Markdown
-                            v-if="message.content !== ''"
-                            class="text-sm leading-relaxed"
-                            :source="message.content"
-                            :live="message.streaming === true"
-                        />
+                            <div v-else-if="group.type === 'card'">
+                                <QuestionCard
+                                    v-if="isQuestionCard(group.card)"
+                                    :key="group.card.id"
+                                    :card="group.card"
+                                    :disabled="!isPending(group.card) || isStreaming"
+                                    :answer="trackedFor(group.card).answer"
+                                    :skipped="trackedFor(group.card).decision?.action === 'reject'"
+                                    placeholder="اكتب إجابتك…"
+                                    @answer="(answer: string) => onQuestionAnswer(group.card as QuestionPayload, answer)"
+                                    @skip="onCardDecision(group.card, { action: 'reject' })"
+                                />
 
-                        <div v-if="message.cards.length > 0" class="space-y-2">
-                            <ApprovalCard
-                                v-for="tracked in message.cards"
-                                :key="tracked.card.id"
-                                :tracked="tracked"
-                                @decide="(decision) => onCardDecision(tracked, decision)"
+                                <template v-else>
+                                    <!-- Keyed by call id: a repainted card is a NEW card, and the
+                                         kit's form seeds its values once per mount. -->
+                                    <ApprovalCard
+                                        :key="group.card.id"
+                                        :card="asApprovalCard(group.card)"
+                                        :disabled="!isPending(group.card) || isStreaming"
+                                        @decide="(decision: ClientDecision) => onCardDecision(group.card, decision)"
+                                    >
+                                        <template #icon>
+                                            <span
+                                                class="flex size-6 items-center justify-center rounded-full"
+                                                :class="
+                                                    asApprovalCard(group.card).destructive
+                                                        ? 'bg-destructive/10 text-destructive'
+                                                        : 'bg-background text-muted-foreground'
+                                                "
+                                            >
+                                                <component :is="categoryOf(asApprovalCard(group.card)).icon" class="size-3.5" />
+                                            </span>
+                                        </template>
+                                    </ApprovalCard>
+
+                                    <p
+                                        v-if="decisionChip(group.card)"
+                                        class="mt-1.5 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium"
+                                        :class="
+                                            decisionChip(group.card)?.ok
+                                                ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                                                : 'bg-muted text-muted-foreground'
+                                        "
+                                    >
+                                        <component :is="decisionChip(group.card)?.icon" class="size-3" />
+                                        {{ decisionChip(group.card)?.label }}
+                                    </p>
+                                </template>
+                            </div>
+
+                            <ProcessGroup
+                                v-else
+                                :items="group.items"
+                                :live="isLiveGroup(message, index)"
+                                :label="isLiveGroup(message, index) ? 'يفكّر' : 'خطوات التفكير'"
                             />
-                        </div>
+                        </template>
                     </div>
                 </div>
             </template>
@@ -559,16 +646,27 @@ onBeforeUnmount(() => abortController?.abort());
 
 <style scoped>
 /*
- * The assistant markdown itself comes from ai-kit's prose sheet (imported in
- * app.css); only the bubble-local token overrides live here. The bubble is
- * `bg-muted`, so inline code and fenced blocks need the page background to
- * read as raised rather than vanishing into it.
+ * The kit components are themed through `--ai-kit-*` variables only, so the
+ * panel's own tokens are mapped once here and every card, chip and disclosure
+ * follows. The bubble is `bg-muted`, so surfaces inside it take the page
+ * background to read as raised rather than vanishing into it, and the
+ * destructive foreground is the primary one (near-white) because this design
+ * system's `--destructive-foreground` is the color destructive TEXT takes,
+ * not the text on a destructive fill.
  */
 .assistant-bubble {
+    --ai-kit-accent: var(--primary);
+    --ai-kit-accent-fg: var(--primary-foreground);
+    --ai-kit-destructive: var(--destructive);
+    --ai-kit-destructive-fg: var(--primary-foreground);
+    --ai-kit-border: var(--border);
+    --ai-kit-surface: var(--background);
+    --ai-kit-input-bg: var(--background);
+    --ai-kit-muted: var(--muted-foreground);
     --ai-kit-muted-bg: var(--background);
+    --ai-kit-radius: var(--radius-md);
     --ai-kit-chip-bg: var(--background);
     --ai-kit-chip-color: var(--muted-foreground);
     --ai-kit-chip-failed-color: var(--destructive);
-    --ai-kit-thinking-border: var(--border);
 }
 </style>

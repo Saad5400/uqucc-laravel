@@ -69,6 +69,17 @@ function adminSseEvents(string $content, string $event): array
     );
 }
 
+/**
+ * One argument's entry in a card's server-built form schema.
+ *
+ * @param  array<string, mixed>  $card
+ * @return array<string, mixed>|null
+ */
+function adminCardField(array $card, string $name): ?array
+{
+    return collect($card['fields'] ?? [])->firstWhere('name', $name);
+}
+
 function disableAdminAssistant(bool $masterToo = false): void
 {
     $settings = app(AiSettings::class);
@@ -428,6 +439,72 @@ describe('approval pause via tools', function () {
             ->and((new StoredApprovals)->pending($conversationId)->pluck('id')->all())->toBe(['tc_1']);
     });
 
+    it('describes each argument in the card form schema instead of leaving the client to guess', function () {
+        $page = Page::factory()->create(['title' => 'اللوائح']);
+        $body = str_repeat('محتوى الصفحة الجديد. ', 60);
+
+        AdminAssistant::fake([
+            new ToolCall('tc_1', 'update_page_content', ['page_id' => $page->id, 'content' => $body]),
+        ]);
+
+        [, $content] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'update_page_content', []));
+
+        $card = adminSseEventData($content, 'approval');
+
+        // A page body is a markdown editor, not a text box; the id it lands
+        // on is a definition row the admin cannot retype.
+        expect(adminCardField($card, 'content'))->toMatchArray([
+            'widget' => 'markdown',
+            'editable' => true,
+            'value' => $body,
+        ])
+            ->and(adminCardField($card, 'page_id'))->toMatchArray([
+                'widget' => 'readonly',
+                'editable' => false,
+                'value' => $page->id,
+            ]);
+    });
+
+    it('locks the structural action itself, which names the operation rather than its payload', function () {
+        $page = Page::factory()->create(['title' => 'اللوائح']);
+
+        AdminAssistant::fake([
+            new ToolCall('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'اللوائح الدراسية']),
+        ]);
+
+        [, $content] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'manage_page_structure', []));
+
+        $card = adminSseEventData($content, 'approval');
+
+        expect(adminCardField($card, 'action'))->toMatchArray(['widget' => 'readonly', 'editable' => false, 'value' => 'rename'])
+            ->and(adminCardField($card, 'title'))->toMatchArray(['widget' => 'text', 'editable' => true]);
+    });
+
+    it('carries the model\'s suggested answers on a question card', function () {
+        AdminAssistant::fake([
+            new ToolCall('tc_1', 'AskUser', [
+                'question' => 'أي قسم تقصد؟',
+                'options' => ['اللوائح', 'التخصصات', 'الخطط الدراسية'],
+            ]),
+        ]);
+
+        [, $content] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'AskUser', []));
+
+        $card = adminSseEventData($content, 'question');
+
+        expect($card['options'])->toBe(['اللوائح', 'التخصصات', 'الخطط الدراسية']);
+    });
+
+    it('omits options entirely from an open question', function () {
+        AdminAssistant::fake([
+            new ToolCall('tc_1', 'AskUser', ['question' => 'ما العنوان الذي تريده؟']),
+        ]);
+
+        [, $content] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'AskUser', []));
+
+        expect(adminSseEventData($content, 'question'))->not->toHaveKey('options');
+    });
+
     it('pauses a destructive delete as a one-click card', function () {
         $tutor = PrivateTutorFactory::new()->create();
 
@@ -555,6 +632,54 @@ describe('deciding paused turns', function () {
 
         expect($page->refresh()->title)->toBe('تعديل المشرف')
             ->and(json_decode(DB::table('ai_write_executions')->sole()->result, true)['edited_by_user'])->toBeTrue();
+    });
+
+    it('restores a tampered readonly id from the pause and writes where the card said it would', function () {
+        $previewed = Page::factory()->create(['title' => 'المعروضة']);
+        $other = Page::factory()->create(['title' => 'الأخرى']);
+
+        fakeOpenRouter([
+            OpenRouterSse::toolCallBody('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => $previewed->id, 'title' => 'اسم مقترح']),
+            OpenRouterSse::textBody('نفّذت.'),
+        ]);
+
+        [$conversationId] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'manage_page_structure', []));
+
+        // The card's readonly flags live in the browser; this is the payload
+        // a tampered form sends — a different page, and a delete instead of
+        // a rename. Both are restored server-side before anything executes.
+        $this->actingAs($this->admin)
+            ->post(route('manage.assistant.decide', $conversationId), ['decisions' => ['tc_1' => [
+                'action' => 'edit',
+                'arguments' => ['action' => 'delete', 'page_id' => $other->id, 'title' => 'تعديل المشرف'],
+            ]]])
+            ->assertOk()
+            ->streamedContent();
+
+        expect($previewed->refresh()->title)->toBe('تعديل المشرف')
+            ->and($other->refresh()->title)->toBe('الأخرى')
+            ->and($other->trashed())->toBeFalse()
+            ->and(DB::table('ai_write_executions')->sole()->turn_id)->toBe('tool:tc_1');
+    });
+
+    it('answers 422 when an edit invents an argument the card never carried', function () {
+        $page = Page::factory()->create(['title' => 'قديم']);
+
+        fakeOpenRouter([
+            OpenRouterSse::toolCallBody('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد']),
+        ]);
+
+        [$conversationId] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'manage_page_structure', []));
+
+        $this->actingAs($this->admin)
+            ->postJson(route('manage.assistant.decide', $conversationId), ['decisions' => ['tc_1' => [
+                'action' => 'edit',
+                'arguments' => ['title' => 'جديد', 'published_at' => '2026-01-01'],
+            ]]])
+            ->assertUnprocessable();
+
+        expect($page->refresh()->title)->toBe('قديم')
+            ->and(DB::table('ai_write_executions')->count())->toBe(0);
     });
 
     it('applies nothing on reject and the model reads the denial', function () {
