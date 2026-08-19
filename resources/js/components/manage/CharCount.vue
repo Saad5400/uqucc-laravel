@@ -6,11 +6,13 @@ import { computed } from 'vue';
  * visible while typing instead of arriving as a validation error on save.
  */
 const props = defineProps<{
-    value: string | null | undefined;
+    value?: string | null | undefined;
     max: number;
+    /** An explicit length, when the counted value is not the raw string (e.g. HTML text length). */
+    count?: number;
 }>();
 
-const length = computed(() => (props.value ?? '').length);
+const length = computed(() => props.count ?? (props.value ?? '').length);
 </script>
 
 <template>

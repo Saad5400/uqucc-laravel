@@ -5,6 +5,7 @@ use App\Models\DailyQuiz;
 use App\Models\QuizAnswer;
 use App\Models\QuizTopic;
 use App\Models\User;
+use App\Services\Quiz\QuizImageRenderer;
 use App\Services\Quiz\QuizPoster;
 use App\Services\Quiz\QuizSchedule;
 use App\Settings\QuizSettings;
@@ -19,6 +20,16 @@ beforeEach(function () {
 
     $this->admin = User::factory()->create();
     $this->admin->assignRole('admin');
+
+    // Posting renders the question to an image via a headless browser, which
+    // the tests do not have; stub the renderer so the posting paths run.
+    $this->app->instance(QuizImageRenderer::class, new class extends QuizImageRenderer
+    {
+        public function render(DailyQuiz $quiz): string
+        {
+            return 'fake-png-bytes';
+        }
+    });
 });
 
 /**
@@ -33,7 +44,6 @@ function quizPayload(array $overrides = []): array
         'quiz_topic_id' => null,
         'quiz_date' => today()->toDateString(),
         'question' => 'سؤال؟',
-        'body' => null,
         'options' => ['أ', 'ب', 'ج', 'د'],
         'correct_option' => 0,
         'explanation' => null,
@@ -61,7 +71,7 @@ it('renders the quiz page with settings, topics, the current question and leader
             ->where('currentQuiz.quiz_date', today()->toDateString())
             ->has('upcoming', 1)
             ->where('pastCount', 0)
-            ->where('limits.question', 300)
+            ->where('limits.question', 1200)
             ->where('limits.hint', 120)
             ->where('today', today()->toDateString())
             ->where('todayQuizStatus', 'ready')
@@ -245,8 +255,7 @@ it('edits every field of a ready quiz', function () {
         ->put("/manage/quiz/quizzes/{$quiz->id}", quizPayload([
             'quiz_topic_id' => $topic->id,
             'quiz_date' => today()->addDay()->toDateString(),
-            'question' => 'سؤال معدّل؟',
-            'body' => "في الكود:\n```py\nx = 1\n```",
+            'question' => '<p dir="rtl">سؤال معدّل؟</p><pre dir="ltr"><code>x = 1</code></pre>',
             'options' => ['أ', 'ب', 'ج', 'د'],
             'correct_option' => 3,
             'explanation' => 'لأن كذا.',
@@ -260,8 +269,7 @@ it('edits every field of a ready quiz', function () {
 
     expect($quiz->quiz_topic_id)->toBe($topic->id)
         ->and($quiz->quiz_date->toDateString())->toBe(today()->addDay()->toDateString())
-        ->and($quiz->question)->toBe('سؤال معدّل؟')
-        ->and($quiz->body)->toBe("في الكود:\n```py\nx = 1\n```")
+        ->and($quiz->question)->toBe('<p dir="rtl">سؤال معدّل؟</p><pre dir="ltr"><code>x = 1</code></pre>')
         ->and($quiz->options)->toBe(['أ', 'ب', 'ج', 'د'])
         ->and($quiz->correct_option)->toBe(3)
         ->and($quiz->explanation)->toBe('لأن كذا.')
@@ -373,14 +381,13 @@ it('enforces Telegram length limits when editing a quiz', function (array $paylo
         ->put("/manage/quiz/quizzes/{$quiz->id}", quizPayload($payload))
         ->assertSessionHasErrors($errorKey);
 })->with([
-    'long question' => [['question' => str_repeat('س', 301)], 'question'],
+    'long question' => [['question' => str_repeat('س', 1201)], 'question'],
     'empty question' => [['question' => ''], 'question'],
     'long option' => [['options' => [str_repeat('س', 101), 'ب', 'ج', 'د']], 'options.0'],
     'three options' => [['options' => ['أ', 'ب', 'ج']], 'options'],
     'duplicate options' => [['options' => ['أ', 'أ', 'ج', 'د']], 'options.0'],
     'blank option' => [['options' => ['أ', '   ', 'ج', 'د']], 'options.1'],
     'long explanation' => [['explanation' => str_repeat('س', 201)], 'explanation'],
-    'long body' => [['body' => str_repeat('س', 701)], 'body'],
     'long hint' => [['hint' => str_repeat('س', 121)], 'hint'],
     'long obvious hint' => [['obvious_hint' => str_repeat('س', 121)], 'obvious_hint'],
     'correct out of range' => [['correct_option' => 4], 'correct_option'],

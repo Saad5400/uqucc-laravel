@@ -8,7 +8,9 @@ use App\Ai\Admin\Actions\AdminActionException;
 use App\Ai\Quiz\QuizAuthor;
 use App\Models\DailyQuiz;
 use App\Models\User;
+use App\Support\QuizContentHtml;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\Support\Str;
 
 /**
  * Edit a not-yet-posted daily quiz, mirroring
@@ -35,8 +37,9 @@ class UpdateDailyQuizAction extends AdminAction
         return 'Edit a not-yet-posted daily quiz. '
             .'Provide quiz_id (from get_daily_quiz), question, exactly four distinct options, '
             .'correct_option (0-3 index into options) and an optional explanation. '
-            .'Put any code or scenario in the optional body field (markdown; fence code with ``` ) — '
-            .'it is posted as a formatted message above the poll, so keep the question a short standalone sentence. '
+            .'The question is a small HTML fragment (preamble + code + the question) rendered to an image; '
+            .'write Arabic paragraphs in <p dir="rtl"> and any code in <pre dir="ltr"><code>, each on its own line. '
+            .'The four options are plain text drawn in the image; the Telegram poll shows only generic 1–4 choices. '
             .'The optional hint / obvious_hint are the two teasers the reminder bot sends mid-window and just '
             .'before the question closes. '
             .'Only a ready (unposted) quiz can be edited.';
@@ -52,11 +55,9 @@ class UpdateDailyQuizAction extends AdminAction
                 ->description('The id of the quiz to edit, from get_daily_quiz.')
                 ->required(),
             'question' => $schema->string()
-                ->description('The question text (max '.QuizAuthor::MAX_QUESTION_CHARS.' chars).')
+                ->description('The question as a small HTML fragment (preamble + code + question) rendered to an image; '
+                    .'<p dir="rtl"> for Arabic, <pre dir="ltr"><code> for code. Max '.QuizAuthor::MAX_QUESTION_CHARS.' chars of text.')
                 ->required(),
-            'body' => $schema->string()
-                ->description('Optional code/scenario shown as a formatted message above the poll (markdown, fence '
-                    .'code with ``` ; max '.QuizAuthor::MAX_BODY_CHARS.' chars). Empty string to clear it.'),
             'options' => $schema->array()
                 ->items($schema->string())
                 ->description('Exactly four distinct answer options (each max '.QuizAuthor::MAX_OPTION_CHARS.' chars).')
@@ -91,10 +92,10 @@ class UpdateDailyQuizAction extends AdminAction
             throw new AdminActionException('لا يمكن تعديل سؤال بعد نشره.');
         }
 
-        $question = trim((string) ($input['question'] ?? ''));
+        $question = QuizContentHtml::sanitize((string) ($input['question'] ?? ''));
 
-        if ($question === '' || mb_strlen($question) > QuizAuthor::MAX_QUESTION_CHARS) {
-            throw new AdminActionException('السؤال فارغ أو أطول من حد تيليجرام ('.QuizAuthor::MAX_QUESTION_CHARS.' حرف).');
+        if (QuizContentHtml::textLength($question) === 0 || QuizContentHtml::textLength($question) > QuizAuthor::MAX_QUESTION_CHARS) {
+            throw new AdminActionException('السؤال فارغ أو أطول من الحد ('.QuizAuthor::MAX_QUESTION_CHARS.' حرف).');
         }
 
         $options = $input['options'] ?? null;
@@ -129,19 +130,10 @@ class UpdateDailyQuizAction extends AdminAction
             throw new AdminActionException('الشرح أطول من حد تيليجرام ('.QuizAuthor::MAX_EXPLANATION_CHARS.' حرف).');
         }
 
-        $body = array_key_exists('body', $input) && $input['body'] !== null
-            ? trim((string) $input['body'])
-            : null;
-
-        if ($body !== null && mb_strlen($body) > QuizAuthor::MAX_BODY_CHARS) {
-            throw new AdminActionException('محتوى السؤال (body) أطول من الحد ('.QuizAuthor::MAX_BODY_CHARS.' حرف).');
-        }
-
         return [
             'quiz_id' => $quiz->id,
             'quiz_date' => $quiz->quiz_date->toDateString(),
             'question' => $question,
-            'body' => $body === '' ? null : $body,
             'options' => $options,
             'correct_option' => (int) $correct,
             'explanation' => $explanation === '' ? null : $explanation,
@@ -176,7 +168,8 @@ class UpdateDailyQuizAction extends AdminAction
      */
     public function summarize(array $normalized, User $user): string
     {
-        return 'تعديل سؤال يوم '.$normalized['quiz_date'].' ليصبح: «'.$normalized['question'].'».';
+        return 'تعديل سؤال يوم '.$normalized['quiz_date'].' ليصبح: «'
+            .Str::limit(QuizContentHtml::toPlainText($normalized['question']), 120).'».';
     }
 
     /**
@@ -196,7 +189,6 @@ class UpdateDailyQuizAction extends AdminAction
 
         $quiz->update([
             'question' => $normalized['question'],
-            'body' => $normalized['body'],
             'options' => $normalized['options'],
             'correct_option' => $normalized['correct_option'],
             'explanation' => $normalized['explanation'],

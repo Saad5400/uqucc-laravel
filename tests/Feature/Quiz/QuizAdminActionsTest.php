@@ -101,8 +101,7 @@ it('edits a ready quiz and refuses a posted one', function () {
 
     $payload = [
         'quiz_id' => $ready->id,
-        'question' => 'سؤال معدّل؟',
-        'body' => "في الكود:\n```py\nx = 1\n```",
+        'question' => '<p dir="rtl">سؤال معدّل؟</p><pre dir="ltr"><code>x = 1</code></pre>',
         'options' => ['أ', 'ب', 'ج', 'د'],
         'correct_option' => 2,
         'explanation' => null,
@@ -110,8 +109,7 @@ it('edits a ready quiz and refuses a posted one', function () {
 
     app(UpdateDailyQuizAction::class)->handle($payload, $this->user);
 
-    expect($ready->refresh()->question)->toBe('سؤال معدّل؟')
-        ->and($ready->body)->toBe("في الكود:\n```py\nx = 1\n```")
+    expect($ready->refresh()->question)->toBe('<p dir="rtl">سؤال معدّل؟</p><pre dir="ltr"><code>x = 1</code></pre>')
         ->and($ready->correct_option)->toBe(2);
 
     $posted = DailyQuiz::factory()->posted()->create(['quiz_date' => today()->subDay()]);
