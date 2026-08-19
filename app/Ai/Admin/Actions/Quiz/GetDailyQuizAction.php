@@ -7,6 +7,7 @@ use App\Ai\Admin\Actions\AdminAction;
 use App\Ai\Admin\Actions\AdminActionException;
 use App\Models\DailyQuiz;
 use App\Models\User;
+use App\Support\QuizContentHtml;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Carbon;
 
@@ -114,13 +115,7 @@ class GetDailyQuizAction extends AdminAction
             '',
         ];
 
-        if (filled($quiz->body)) {
-            $lines[] = 'المحتوى (body — يُنشر فوق التصويت):';
-            $lines[] = $quiz->body;
-            $lines[] = '';
-        }
-
-        $lines[] = $quiz->question;
+        $lines[] = QuizContentHtml::toPlainText($quiz->question);
         $lines[] = $options;
 
         if (filled($quiz->explanation)) {

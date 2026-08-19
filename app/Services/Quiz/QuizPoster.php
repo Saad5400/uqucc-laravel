@@ -6,12 +6,12 @@ use App\Helpers\ArabicPlural;
 use App\Models\DailyQuiz;
 use App\Models\QuizPlayer;
 use App\Models\QuizPost;
-use App\Services\TelegramMarkdownService;
 use App\Settings\QuizSettings;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Telegram\Bot\Api;
+use Telegram\Bot\FileUpload\InputFile;
 
 /**
  * Everything the bot sends to the groups for the daily quiz: one quiz poll
@@ -27,13 +27,27 @@ class QuizPoster
     /** How many players the weekly winners announcement names. */
     public const WEEKLY_WINNERS = 20;
 
+    /**
+     * The generic prompt on the poll itself — the question and its options live
+     * in the image above it, so the poll only needs to send the reader there
+     * and collect a numbered vote.
+     */
+    public const POLL_QUESTION = 'اختر رقم الإجابة الصحيحة من الصورة بالأعلى ⬆️';
+
+    /** The poll's four choices: bare numbers matching the image's labels. */
+    private const POLL_OPTIONS = ['1', '2', '3', '4'];
+
     private ?Api $telegram;
+
+    private ?QuizImageRenderer $imageRenderer;
 
     public function __construct(
         private readonly QuizSettings $settings,
         ?Api $telegram = null,
+        ?QuizImageRenderer $imageRenderer = null,
     ) {
         $this->telegram = $telegram;
+        $this->imageRenderer = $imageRenderer;
     }
 
     /**
@@ -62,11 +76,11 @@ class QuizPoster
         $this->closeOpenQuizzes($quiz);
         $this->retireOwnPosts($quiz);
 
-        $content = $this->contentHtml($quiz);
+        $image = $this->renderImage($quiz);
 
         $params = [
-            'question' => $quiz->question,
-            'options' => array_values($quiz->options),
+            'question' => self::POLL_QUESTION,
+            'options' => self::POLL_OPTIONS,
             'type' => 'quiz',
             'is_anonymous' => false,
             'correct_option_id' => $quiz->correct_option,
@@ -80,13 +94,9 @@ class QuizPoster
 
         foreach ($this->settings->targets() as $target) {
             try {
-                if ($content !== null) {
-                    $this->telegram()->sendMessage($target->apply([
-                        'text' => $content,
-                        'parse_mode' => 'HTML',
-                        'disable_web_page_preview' => true,
-                    ]));
-                }
+                $this->telegram()->sendPhoto($target->apply([
+                    'photo' => InputFile::createFromContents($image, 'quiz.png'),
+                ]));
 
                 $message = $this->telegram()->sendPoll($target->apply($params));
 
@@ -127,21 +137,29 @@ class QuizPoster
     }
 
     /**
-     * The formatted scenario/code message shown just above the poll, or null
-     * when the quiz needs none. The body's markdown (fenced code included) is
-     * rendered through the same converter the «سيك» assistant uses — so code
-     * becomes a real monospace <pre> block, sidestepping the bidi mangling a
-     * plain-text poll question suffers — but deliberately without the
-     * expandable-blockquote wrapper, so it reads openly. The question itself
-     * stays on the poll, so it is visible in notifications and previews.
+     * The question card as PNG bytes — the whole question, its scenario/code
+     * and its four numbered options, drawn with correct direction so the poll
+     * below can stay a generic "choose 1–4". Rendered once and reused across
+     * every group. A rendering failure aborts the whole post rather than
+     * sending a poll with no question to read.
      */
-    private function contentHtml(DailyQuiz $quiz): ?string
+    private function renderImage(DailyQuiz $quiz): string
     {
-        if (! filled($quiz->body)) {
-            return null;
-        }
+        try {
+            return $this->imageRenderer()->render($quiz);
+        } catch (\Throwable $exception) {
+            Log::error('Failed to render quiz image', [
+                'quiz_id' => $quiz->id,
+                'message' => $exception->getMessage(),
+            ]);
 
-        return (new TelegramMarkdownService)->toTelegramHtml(trim((string) $quiz->body));
+            throw new RuntimeException('تعذّر توليد صورة السؤال.');
+        }
+    }
+
+    private function imageRenderer(): QuizImageRenderer
+    {
+        return $this->imageRenderer ??= app(QuizImageRenderer::class);
     }
 
     /**

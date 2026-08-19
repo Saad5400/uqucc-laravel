@@ -5,6 +5,8 @@ namespace App\Http\Requests\Manage;
 use App\Ai\Quiz\QuizAuthor;
 use App\Models\DailyQuiz;
 use App\Models\QuizTopic;
+use App\Support\QuizContentHtml;
+use Closure;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -23,13 +25,19 @@ class StoreDailyQuizRequest extends FormRequest
      * Blank optional text arrives from the form as an empty string; the
      * columns are nullable and the bot treats "" and null differently
      * (an empty hint would send an empty reminder line), so normalize once
-     * here instead of in every caller.
+     * here instead of in every caller. The question is HTML rendered to an
+     * image, so it is sanitized to the safe tag vocabulary before it is stored
+     * or measured.
      */
     protected function prepareForValidation(): void
     {
         $normalized = [];
 
-        foreach (['body', 'explanation', 'hint', 'obvious_hint'] as $field) {
+        if ($this->has('question') && is_string($this->input('question'))) {
+            $normalized['question'] = QuizContentHtml::sanitize($this->input('question'));
+        }
+
+        foreach (['explanation', 'hint', 'obvious_hint'] as $field) {
             if ($this->has($field)) {
                 $value = $this->input($field);
                 $value = is_string($value) ? trim($value) : $value;
@@ -50,9 +58,9 @@ class StoreDailyQuizRequest extends FormRequest
     }
 
     /**
-     * Length limits mirror Telegram's quiz-poll hard limits — the content is
-     * sent verbatim via sendPoll — and reuse the authoring constants so the
-     * hand-written and generated questions obey one set of caps.
+     * The option and text caps reuse the authoring constants so hand-written
+     * and generated questions obey one set of limits. The question is HTML, so
+     * its cap is measured on the readable text rather than the markup.
      *
      * @return array<string, array<int, mixed>>
      */
@@ -61,8 +69,7 @@ class StoreDailyQuizRequest extends FormRequest
         return [
             'quiz_topic_id' => ['nullable', 'integer', Rule::exists(QuizTopic::class, 'id')],
             'quiz_date' => ['required', 'date'],
-            'question' => ['required', 'string', 'max:'.QuizAuthor::MAX_QUESTION_CHARS],
-            'body' => ['nullable', 'string', 'max:'.QuizAuthor::MAX_BODY_CHARS],
+            'question' => ['required', 'string', $this->questionTextLimit()],
             'options' => ['required', 'array', 'size:4'],
             'options.*' => ['required', 'string', 'max:'.QuizAuthor::MAX_OPTION_CHARS, 'distinct'],
             'correct_option' => ['required', 'integer', 'between:0,3'],
@@ -70,6 +77,19 @@ class StoreDailyQuizRequest extends FormRequest
             'hint' => ['nullable', 'string', 'max:'.QuizAuthor::MAX_HINT_CHARS],
             'obvious_hint' => ['nullable', 'string', 'max:'.QuizAuthor::MAX_HINT_CHARS],
         ];
+    }
+
+    /**
+     * Cap the question on its readable text, ignoring the HTML tags an author
+     * is never charged for.
+     */
+    private function questionTextLimit(): Closure
+    {
+        return function (string $attribute, mixed $value, Closure $fail): void {
+            if (is_string($value) && QuizContentHtml::textLength($value) > QuizAuthor::MAX_QUESTION_CHARS) {
+                $fail('نص السؤال أطول من الحد ('.QuizAuthor::MAX_QUESTION_CHARS.' حرف).');
+            }
+        };
     }
 
     /**
@@ -120,8 +140,6 @@ class StoreDailyQuizRequest extends FormRequest
             'quiz_date.required' => 'تاريخ السؤال مطلوب.',
             'quiz_date.date' => 'تاريخ السؤال غير صالح.',
             'question.required' => 'نص السؤال مطلوب.',
-            'question.max' => 'السؤال أطول من حد تيليجرام ('.QuizAuthor::MAX_QUESTION_CHARS.' حرف).',
-            'body.max' => 'محتوى السؤال (الكود/المقدمة) أطول من الحد ('.QuizAuthor::MAX_BODY_CHARS.' حرف).',
             'options.required' => 'الخيارات مطلوبة.',
             'options.size' => 'يجب أن تكون الخيارات أربعة بالضبط.',
             'options.*.required' => 'لا يمكن ترك خيار فارغاً.',
@@ -146,7 +164,6 @@ class StoreDailyQuizRequest extends FormRequest
             'quiz_topic_id' => $this->validated('quiz_topic_id'),
             'quiz_date' => $this->validated('quiz_date'),
             'question' => $this->validated('question'),
-            'body' => $this->validated('body'),
             'options' => array_values($this->validated('options')),
             'correct_option' => (int) $this->validated('correct_option'),
             'explanation' => $this->validated('explanation'),

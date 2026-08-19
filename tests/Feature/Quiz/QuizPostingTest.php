@@ -6,6 +6,7 @@ use App\Models\QuizAnswer;
 use App\Models\QuizPlayer;
 use App\Models\QuizPost;
 use App\Models\QuizTopic;
+use App\Services\Quiz\QuizImageRenderer;
 use App\Services\Quiz\QuizPoster;
 use App\Services\Quiz\QuizSchedule;
 use App\Settings\AiSettings;
@@ -33,6 +34,16 @@ beforeEach(function () {
     $settings->chat_ids = ['-100200300'];
     $settings->save();
 
+    // The image renderer drives a headless browser, which the tests neither
+    // have nor need — every posting path only cares that some bytes came back.
+    $this->app->instance(QuizImageRenderer::class, new class extends QuizImageRenderer
+    {
+        public function render(DailyQuiz $quiz): string
+        {
+            return 'fake-png-bytes';
+        }
+    });
+
     $this->fake = new FakeTelegramApi;
     $this->app->bind(QuizPoster::class, fn (): QuizPoster => new QuizPoster(app(QuizSettings::class), $this->fake));
 });
@@ -54,23 +65,25 @@ function livePostedQuiz(array $quizAttributes = [], array $postAttributes = []):
     return $quiz;
 }
 
-it('posts today\'s ready quiz as a non-anonymous quiz poll and records the post', function () {
+it('posts the question image and a generic numbered poll, and records the post', function () {
     $quiz = DailyQuiz::factory()->create([
         'quiz_date' => today(),
-        'question' => 'ما ناتج 1 + 1؟',
-        'options' => ['1', '2', '3', '4'],
+        'question' => '<p dir="rtl">ما ناتج 1 + 1؟</p>',
+        'options' => ['واحد', 'اثنان', 'ثلاثة', 'أربعة'],
         'correct_option' => 1,
         'explanation' => 'جمع بسيط.',
     ]);
 
     $this->artisan('quiz:post')->assertExitCode(0);
 
-    expect($this->fake->sentPolls)->toHaveCount(1);
+    expect($this->fake->sentPhotos)->toHaveCount(1)
+        ->and($this->fake->sentPhotos[0]['chat_id'])->toBe(-100200300)
+        ->and($this->fake->sentPolls)->toHaveCount(1);
 
     $params = $this->fake->sentPolls[0];
 
     expect($params['chat_id'])->toBe(-100200300)
-        ->and($params['question'])->toBe('ما ناتج 1 + 1؟')
+        ->and($params['question'])->toBe(QuizPoster::POLL_QUESTION)
         ->and($params['options'])->toBe(['1', '2', '3', '4'])
         ->and($params['type'])->toBe('quiz')
         ->and($params['is_anonymous'])->toBeFalse()
@@ -88,54 +101,49 @@ it('posts today\'s ready quiz as a non-anonymous quiz poll and records the post'
         ->and($post->closed_at)->toBeNull();
 });
 
-it('posts a quiz without a body as a poll only, with the question as the poll question', function () {
-    DailyQuiz::factory()->create([
-        'quiz_date' => today(),
-        'question' => 'ما ناتج 1 + 1؟',
-        'body' => null,
-    ]);
-
-    $this->artisan('quiz:post')->assertExitCode(0);
-
-    expect($this->fake->sentPolls)->toHaveCount(1)
-        ->and($this->fake->sentPolls[0]['question'])->toBe('ما ناتج 1 + 1؟')
-        ->and($this->fake->sentMessages)->toBeEmpty();
-});
-
-it('sends the body as a formatted HTML message above the poll and keeps the question on the poll', function () {
+it('sends the image above the poll for a question that carries code too', function () {
     DailyQuiz::factory()->withCode()->create(['quiz_date' => today()]);
 
     $this->artisan('quiz:post')->assertExitCode(0);
 
-    expect($this->fake->sentMessages)->toHaveCount(1);
-
-    $content = $this->fake->sentMessages[0];
-
-    expect($content['chat_id'])->toBe(-100200300)
-        ->and($content['parse_mode'])->toBe('HTML')
-        ->and($content['text'])->toContain('<pre>print(2 ** 3)</pre>')
-        ->and($content['text'])->not->toContain('ماذا يُطبع؟')
-        ->and($content['text'])->not->toContain('```');
-
-    expect($this->fake->sentPolls)->toHaveCount(1)
-        ->and($this->fake->sentPolls[0]['question'])->toBe('ماذا يُطبع؟');
+    expect($this->fake->sentPhotos)->toHaveCount(1)
+        ->and($this->fake->sentPolls)->toHaveCount(1)
+        ->and($this->fake->sentPolls[0]['question'])->toBe(QuizPoster::POLL_QUESTION)
+        ->and($this->fake->sentPolls[0]['options'])->toBe(['1', '2', '3', '4']);
 });
 
-it('does not post a contextless poll when the body message fails to send', function () {
+it('does not post a contextless poll when the image fails to send', function () {
     $this->fake = new class extends FakeTelegramApi
     {
-        public function sendMessage(array $params): \Telegram\Bot\Objects\Message
+        public function sendPhoto(array $params): \Telegram\Bot\Objects\Message
         {
-            throw new \RuntimeException('body send failed');
+            throw new \RuntimeException('photo send failed');
         }
     };
     $this->app->bind(QuizPoster::class, fn (): QuizPoster => new QuizPoster(app(QuizSettings::class), $this->fake));
 
-    DailyQuiz::factory()->withCode()->create(['quiz_date' => today()]);
+    DailyQuiz::factory()->create(['quiz_date' => today()]);
 
     $this->artisan('quiz:post')->assertExitCode(1);
 
     expect($this->fake->sentPolls)->toBeEmpty();
+});
+
+it('aborts the whole post when the image cannot be rendered', function () {
+    $this->app->instance(QuizImageRenderer::class, new class extends QuizImageRenderer
+    {
+        public function render(DailyQuiz $quiz): string
+        {
+            throw new \RuntimeException('render failed');
+        }
+    });
+
+    DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    $this->artisan('quiz:post')->assertExitCode(1);
+
+    expect($this->fake->sentPhotos)->toBeEmpty()
+        ->and($this->fake->sentPolls)->toBeEmpty();
 });
 
 it('posts to every configured group', function () {
@@ -318,7 +326,8 @@ it('generates a quiz inline when the nightly generation left none', function () 
     $this->artisan('quiz:post')->assertExitCode(0);
 
     expect($this->fake->sentPolls)->toHaveCount(1)
-        ->and($this->fake->sentPolls[0]['question'])->toBe('سؤال مولّد عند النشر؟')
+        ->and($this->fake->sentPolls[0]['question'])->toBe(QuizPoster::POLL_QUESTION)
+        ->and(DailyQuiz::forDate(today())->question)->toContain('سؤال مولّد عند النشر؟')
         ->and(DailyQuiz::forDate(today())->status)->toBe(DailyQuiz::STATUS_POSTED);
 });
 

@@ -2,6 +2,7 @@
 
 namespace App\Ai\Quiz;
 
+use App\Support\QuizContentHtml;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Str;
 use Laravel\Ai\Contracts\Tool;
@@ -10,28 +11,25 @@ use Stringable;
 
 /**
  * The single tool behind daily-question generation. The model calls it with a
- * candidate question; it validates against Telegram's poll limits and the
- * quality rules (four unique options, a valid answer index, balanced option
- * lengths). On any problem it returns the full list so the model — still in the
- * same agentic conversation, with its own previous attempt in context —
- * corrects everything and calls again, instead of a blind stateless retry. On
- * success it captures the normalized payload, which {@see QuizAuthor} reads
- * after the run via {@see accepted()}.
+ * candidate question; it sanitizes the authored HTML and validates the quality
+ * rules (four unique options, a valid answer index, balanced option lengths,
+ * the length caps). On any problem it returns the full list so the model —
+ * still in the same agentic conversation, with its own previous attempt in
+ * context — corrects everything and calls again, instead of a blind stateless
+ * retry. On success it captures the normalized payload, which {@see QuizAuthor}
+ * reads after the run via {@see accepted()}.
+ *
+ * The whole question — preamble, code and the four options — is rendered to an
+ * image, and the Telegram poll shows only generic 1–4 choices, so there is no
+ * bidi mangling to guard against here: the authored HTML carries its own
+ * direction and the options are plain text drawn in the picture.
  */
 class SubmitQuizQuestionTool implements Tool
 {
     /**
-     * Punctuation that the bidi algorithm reorders when it sits at the edge of
-     * a Latin token inside an Arabic sentence. Brackets, parentheses and quotes
-     * are deliberately absent — they mirror correctly around an LTR run, which
-     * is what makes the house style «المكدس (Stack)» safe.
-     */
-    private const BIDI_RISKY_EDGE = '-_.+*/\\=<>|:;#$%&~^@';
-
-    /**
      * The last accepted question, or null until one passes validation.
      *
-     * @var array{question: string, body: string|null, options: array<int, string>, correct_option: int, explanation: string|null, hint: string|null, obvious_hint: string|null}|null
+     * @var array{question: string, options: array<int, string>, correct_option: int, explanation: string|null, hint: string|null, obvious_hint: string|null}|null
      */
     private ?array $accepted = null;
 
@@ -43,6 +41,7 @@ class SubmitQuizQuestionTool implements Tool
     public function description(): Stringable|string
     {
         return 'Submit the proposed question of the day for validation and acceptance. '
+            .'The question field is a small HTML fragment (rendered to an image); the options are plain text. '
             .'Call this tool with every required field filled in. If it replies with a list of problems, '
             .'fix all of them and call the tool again until the question is accepted. '
             .'Never write the question out as plain text instead of calling this tool.';
@@ -55,32 +54,36 @@ class SubmitQuizQuestionTool implements Tool
     {
         return [
             'question' => $schema->string()
-                ->description('The question itself: one short, self-contained sentence in Arabic (up to '.QuizAuthor::MAX_QUESTION_CHARS.' characters).')
+                ->description('The question as a small HTML fragment in Arabic: <p dir="rtl"> paragraphs for the teaching '
+                    .'preamble and the question itself, and <pre dir="ltr"><code> for any code, each on its own line — never '
+                    .'mixing Arabic and Latin in one line. Allowed tags: p, br, pre, code, strong, b, em, i, span, ul, ol, li, '
+                    .'h3, h4; the only kept attribute is dir. Up to '.QuizAuthor::MAX_QUESTION_CHARS.' characters of text.')
                 ->required(),
-            'body' => $schema->string()
-                ->description('Code, a scenario, or a teaching preamble in Arabic, posted above the poll; send "" when none is needed (up to '.QuizAuthor::MAX_BODY_CHARS.' characters).'),
             'options' => $schema->array()->items($schema->string())->min(4)->max(4)
-                ->description('Exactly four distinct answer options in Arabic, similar in length (each up to '.QuizAuthor::MAX_OPTION_CHARS.' characters).')
+                ->description('Exactly four distinct plain-text answer options in Arabic, similar in length (each up to '
+                    .QuizAuthor::MAX_OPTION_CHARS.' characters). They are drawn in the image labelled 1–4.')
                 ->required(),
             'correct_option' => $schema->integer()
                 ->description('Zero-based index of the correct answer within options, 0 to 3.')
                 ->required(),
             'explanation' => $schema->string()
-                ->description('One or two sentences in Arabic explaining why that answer is correct (up to '.QuizAuthor::MAX_EXPLANATION_CHARS.' characters).')
+                ->description('One or two sentences in Arabic explaining why that answer is correct, shown after answering '
+                    .'(up to '.QuizAuthor::MAX_EXPLANATION_CHARS.' characters).')
                 ->required(),
             'hint' => $schema->string()
-                ->description('A light hint in Arabic that points the reader in the right direction without revealing the answer (up to '.QuizAuthor::MAX_HINT_CHARS.' characters).')
+                ->description('A light hint in Arabic (plain text) that points the reader in the right direction without '
+                    .'revealing the answer (up to '.QuizAuthor::MAX_HINT_CHARS.' characters).')
                 ->required(),
             'obvious_hint' => $schema->string()
-                ->description('A more obvious hint in Arabic that almost gives the answer away (up to '.QuizAuthor::MAX_HINT_CHARS.' characters).')
+                ->description('A more obvious hint in Arabic (plain text) that almost gives the answer away (up to '
+                    .QuizAuthor::MAX_HINT_CHARS.' characters).')
                 ->required(),
         ];
     }
 
     public function handle(Request $request): Stringable|string
     {
-        $question = trim($request->string('question')->toString());
-        $body = trim($request->string('body')->toString());
+        $question = QuizContentHtml::sanitize($request->string('question')->toString());
         $options = array_values(array_map(
             fn (mixed $option): string => trim((string) $option),
             $request->array('options'),
@@ -90,7 +93,7 @@ class SubmitQuizQuestionTool implements Tool
         $hint = trim($request->string('hint')->toString());
         $obviousHint = trim($request->string('obvious_hint')->toString());
 
-        $problems = $this->validate($question, $body, $options, $correct, $explanation, $hint, $obviousHint);
+        $problems = $this->validate($question, $options, $correct, $explanation, $hint, $obviousHint);
 
         if ($problems !== []) {
             return "رُفض السؤال للمشاكل التالية:\n- ".implode("\n- ", $problems)
@@ -99,7 +102,6 @@ class SubmitQuizQuestionTool implements Tool
 
         $this->accepted = [
             'question' => $question,
-            'body' => $body === '' ? null : $body,
             'options' => $options,
             'correct_option' => $correct,
             'explanation' => $explanation === '' ? null : Str::limit($explanation, QuizAuthor::MAX_EXPLANATION_CHARS, ''),
@@ -114,7 +116,7 @@ class SubmitQuizQuestionTool implements Tool
      * The accepted question payload, or null if the model never submitted a
      * valid one.
      *
-     * @return array{question: string, body: string|null, options: array<int, string>, correct_option: int, explanation: string|null, hint: string|null, obvious_hint: string|null}|null
+     * @return array{question: string, options: array<int, string>, correct_option: int, explanation: string|null, hint: string|null, obvious_hint: string|null}|null
      */
     public function accepted(): ?array
     {
@@ -130,7 +132,6 @@ class SubmitQuizQuestionTool implements Tool
      */
     private function validate(
         string $question,
-        string $body,
         array $options,
         int $correct,
         string $explanation,
@@ -139,27 +140,22 @@ class SubmitQuizQuestionTool implements Tool
     ): array {
         $problems = [];
 
-        if ($question === '') {
+        $questionLength = QuizContentHtml::textLength($question);
+
+        if ($questionLength === 0) {
             $problems[] = 'نص السؤال فارغ.';
-        } elseif (mb_strlen($question) > QuizAuthor::MAX_QUESTION_CHARS) {
-            $problems[] = 'السؤال أطول من '.QuizAuthor::MAX_QUESTION_CHARS.' حرف.';
+        } elseif ($questionLength > QuizAuthor::MAX_QUESTION_CHARS) {
+            $problems[] = 'نص السؤال أطول من '.QuizAuthor::MAX_QUESTION_CHARS.' حرف.';
         }
 
-        $unformatted = [
-            'السؤال' => $question,
-            'الشرح' => $explanation,
-            'التلميح الأول' => $hint,
-            'التلميح الثاني' => $obviousHint,
-        ];
-
-        foreach ($options as $index => $option) {
-            $unformatted['الخيار '.($index + 1)] = $option;
+        if (mb_strlen($explanation) > QuizAuthor::MAX_EXPLANATION_CHARS) {
+            $problems[] = 'الشرح أطول من '.QuizAuthor::MAX_EXPLANATION_CHARS.' حرف.';
         }
 
-        $problems = array_merge($problems, $this->unformattedTextProblems($unformatted));
-
-        if (mb_strlen($body) > QuizAuthor::MAX_BODY_CHARS) {
-            $problems[] = 'المقدمة (body) أطول من '.QuizAuthor::MAX_BODY_CHARS.' حرف.';
+        foreach (['التلميح الأول' => $hint, 'التلميح الثاني' => $obviousHint] as $label => $text) {
+            if (mb_strlen($text) > QuizAuthor::MAX_HINT_CHARS) {
+                $problems[] = $label.' أطول من '.QuizAuthor::MAX_HINT_CHARS.' حرف.';
+            }
         }
 
         if (count($options) !== 4) {
@@ -194,67 +190,6 @@ class SubmitQuizQuestionTool implements Tool
         }
 
         return $problems;
-    }
-
-    /**
-     * Everything except `body` reaches Telegram as unformatted text — the poll
-     * carries the question, options and explanation with no parse_mode, and the
-     * reminders send the hints escaped rather than rendered. So markdown there
-     * shows its own markers, and a Latin code token there cannot be wrapped in
-     * a directional isolate the way {@see \App\Services\TelegramMarkdownService}
-     * wraps `body`. Both belong in `body` instead, which is a real formatted
-     * message.
-     *
-     * @param  array<string, string>  $fields  label => text
-     * @return array<int, string>
-     */
-    private function unformattedTextProblems(array $fields): array
-    {
-        $problems = [];
-
-        foreach ($fields as $label => $text) {
-            if (str_contains($text, '`')) {
-                $problems[] = $label.' يحتوي علامات ماركداون (`) — وهو يُرسل نصاً عادياً فتظهر العلامات نفسها للقارئ. انقل الكود إلى body داخل سياج ``` ولا تكتب علامات تنسيق هنا.';
-            }
-
-            $risky = $this->bidiRiskyTokens($text);
-
-            if ($risky !== []) {
-                $problems[] = $label.' يحتوي رموزاً يفسد ترتيبها داخل النص العربي ('.implode('، ', $risky).') — الشرطات والنقاط على أطراف الرمز تنتقل إلى الجهة الخطأ فيقرأها الطالب مقلوبة. انقل هذه الرموز إلى body داخل سياج ``` واكتب هنا إشارةً إليها بالكلام.';
-            }
-        }
-
-        return $problems;
-    }
-
-    /**
-     * Tokens whose rendering the bidi algorithm breaks: a Latin/digit token
-     * carrying edge punctuation, such as `-rwxr-xr--` or `--global`. Interior
-     * punctuation is safe (`Big-O`, `node.js` sit between two strong Latin
-     * characters), and trailing Arabic sentence punctuation is stripped before
-     * the check so an ordinary full stop is never mistaken for part of a token.
-     *
-     * @return array<int, string>
-     */
-    private function bidiRiskyTokens(string $text): array
-    {
-        $risky = [];
-        $edges = preg_quote(self::BIDI_RISKY_EDGE, '/');
-
-        foreach (preg_split('/\s+/u', $text) ?: [] as $token) {
-            $core = ltrim($token, '([{«"\'');
-            $core = rtrim($core, '،؛؟!.,)]}»"\'');
-
-            if ($core === '' || preg_match('/[a-zA-Z0-9]/', $core) !== 1) {
-                continue;
-            }
-
-            if (preg_match('/^['.$edges.']|['.$edges.']$/u', $core) === 1) {
-                $risky[] = $core;
-            }
-        }
-
-        return array_values(array_unique($risky));
     }
 
     /**

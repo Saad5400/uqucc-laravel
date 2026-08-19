@@ -48,7 +48,11 @@ const locked = computed(() => lockReason(props.quiz));
                         <span class="tabular-nums">{{ quiz.correct_answers_count }}</span> صحيحة
                     </span>
                 </div>
-                <p :class="prominent ? 'text-lg font-medium text-balance' : 'font-medium'">{{ quiz.question }}</p>
+                <div
+                    class="quiz-question"
+                    :class="prominent ? 'text-base font-medium' : 'text-sm font-medium'"
+                    v-html="quiz.question"
+                ></div>
             </div>
 
             <DropdownMenu>
@@ -72,13 +76,6 @@ const locked = computed(() => lockReason(props.quiz));
             </DropdownMenu>
         </div>
 
-        <pre
-            v-if="quiz.body"
-            dir="ltr"
-            class="overflow-x-auto rounded-md border border-border bg-muted/40 p-2 text-start font-mono text-xs whitespace-pre-wrap"
-            >{{ quiz.body }}</pre
-        >
-
         <ol class="grid gap-1 text-sm sm:grid-cols-2">
             <li
                 v-for="(option, index) in quiz.options"
@@ -96,3 +93,33 @@ const locked = computed(() => lockReason(props.quiz));
         <p v-if="quiz.obvious_hint" class="text-xs text-muted-foreground">💡 تلميح آخر فرصة: {{ quiz.obvious_hint }}</p>
     </div>
 </template>
+
+<style scoped>
+/* The question is a sanitized HTML fragment; give its blocks readable spacing. */
+.quiz-question :deep(p) {
+    margin-bottom: 0.35rem;
+}
+
+.quiz-question :deep(p:last-child) {
+    margin-bottom: 0;
+}
+
+.quiz-question :deep(pre) {
+    direction: ltr;
+    text-align: start;
+    overflow-x: auto;
+    margin: 0.5rem 0;
+    border-radius: 0.375rem;
+    border: 1px solid var(--border);
+    background: color-mix(in oklab, var(--muted) 40%, transparent);
+    padding: 0.5rem 0.65rem;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    font-size: 0.75rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.quiz-question :deep(code) {
+    font-family: var(--font-mono, ui-monospace, monospace);
+}
+</style>

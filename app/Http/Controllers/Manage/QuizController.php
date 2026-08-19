@@ -306,7 +306,6 @@ class QuizController extends Controller
     {
         return [
             'question' => QuizAuthor::MAX_QUESTION_CHARS,
-            'body' => QuizAuthor::MAX_BODY_CHARS,
             'option' => QuizAuthor::MAX_OPTION_CHARS,
             'explanation' => QuizAuthor::MAX_EXPLANATION_CHARS,
             'hint' => QuizAuthor::MAX_HINT_CHARS,
@@ -347,7 +346,6 @@ class QuizController extends Controller
             'quiz_topic_id' => $quiz->quiz_topic_id,
             'quiz_date' => $quiz->quiz_date->toDateString(),
             'question' => $quiz->question,
-            'body' => $quiz->body,
             'options' => $quiz->options,
             'correct_option' => $quiz->correct_option,
             'explanation' => $quiz->explanation,

@@ -4,8 +4,8 @@ export interface Quiz {
     id: number;
     quiz_topic_id: number | null;
     quiz_date: string;
+    /** The question as a sanitized HTML fragment (preamble + code + question), rendered to an image. */
     question: string;
-    body: string | null;
     options: string[];
     correct_option: number;
     explanation: string | null;
@@ -49,10 +49,9 @@ export interface Topic {
     last_used_at: string | null;
 }
 
-/** Telegram's hard caps, mirrored from the authoring constants server-side. */
+/** Length caps, mirrored from the authoring constants server-side. */
 export interface Limits {
     question: number;
-    body: number;
     option: number;
     explanation: number;
     hint: number;

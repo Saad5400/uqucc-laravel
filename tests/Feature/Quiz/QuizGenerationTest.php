@@ -33,7 +33,6 @@ function quizToolCall(array $overrides = []): ToolCall
 {
     return new ToolCall('call_1', 'submit_quiz_question', [
         'question' => 'ما البوابة المنطقية التي تعكس قيمة المدخل؟',
-        'body' => '',
         'options' => ['AND', 'OR', 'NOT', 'XOR'],
         'correct_option' => 2,
         'explanation' => 'بوابة NOT تُخرج عكس قيمة المدخل دائماً.',
@@ -66,109 +65,49 @@ it('generates a ready quiz from the least-recently-used active topic', function 
         ->and($stale->refresh()->last_used_at->isSameDay(now()->subDays(2)))->toBeTrue();
 });
 
-it('stores the optional body block from the generated question', function () {
+it('stores the authored HTML question with its code block', function () {
+    QuizTopic::factory()->create();
+
+    $html = '<p dir="rtl">في الكود التالي:</p><pre dir="ltr"><code>print(2 ** 3)</code></pre><p dir="rtl">ماذا يُطبع؟</p>';
+
+    QuizAuthoringAgent::fake([quizToolCall(['question' => $html])]);
+
+    $this->artisan('quiz:generate')->assertExitCode(0);
+
+    expect(DailyQuiz::forDate(today())->question)
+        ->toContain('<pre dir="ltr">')
+        ->toContain('print(2 ** 3)')
+        ->toContain('ماذا يُطبع؟');
+});
+
+it('strips disallowed tags and attributes from the authored question', function () {
     QuizTopic::factory()->create();
 
     QuizAuthoringAgent::fake([quizToolCall([
-        'question' => 'ماذا يُطبع؟',
-        'body' => "في الكود التالي:\n```py\nprint(2 ** 3)\n```",
+        'question' => '<p dir="rtl" onclick="x()">آمن</p><script>alert(1)</script>',
     ])]);
 
     $this->artisan('quiz:generate')->assertExitCode(0);
 
-    $quiz = DailyQuiz::forDate(today());
+    $question = DailyQuiz::forDate(today())->question;
 
-    expect($quiz->question)->toBe('ماذا يُطبع؟')
-        ->and($quiz->body)->toBe("في الكود التالي:\n```py\nprint(2 ** 3)\n```");
+    expect($question)->toContain('<p dir="rtl">آمن</p>')
+        ->not->toContain('<script')
+        ->not->toContain('onclick');
 });
 
-it('leaves the body null when the generated question omits it', function () {
-    QuizTopic::factory()->create();
-
-    QuizAuthoringAgent::fake([quizToolCall()]);
-
-    $this->artisan('quiz:generate')->assertExitCode(0);
-
-    expect(DailyQuiz::forDate(today())->body)->toBeNull();
-});
-
-it('corrects a too-long body within the same run', function () {
-    QuizTopic::factory()->create();
-
-    QuizAuthoringAgent::fake([
-        quizToolCall(['body' => str_repeat('ا', 701)]),
-        quizToolCall(['question' => 'سؤال مصحّح بعد رفض المقدمة الطويلة؟']),
-    ]);
-
-    $this->artisan('quiz:generate')->assertExitCode(0);
-
-    expect(DailyQuiz::query()->count())->toBe(1)
-        ->and(DailyQuiz::forDate(today())->question)->toBe('سؤال مصحّح بعد رفض المقدمة الطويلة؟');
-});
-
-it('rejects markdown markers in the fields telegram receives unformatted', function () {
-    QuizTopic::factory()->create();
-
-    QuizAuthoringAgent::fake([
-        quizToolCall(['question' => 'ماذا يفعل الأمر `ls -l`؟']),
-        quizToolCall(['question' => 'سؤال مصحّح بعد رفض علامات الماركداون؟']),
-    ]);
-
-    $this->artisan('quiz:generate')->assertExitCode(0);
-
-    expect(DailyQuiz::query()->count())->toBe(1)
-        ->and(DailyQuiz::forDate(today())->question)->toBe('سؤال مصحّح بعد رفض علامات الماركداون؟');
-});
-
-it('rejects a code token whose direction breaks in the poll question', function () {
-    QuizTopic::factory()->create();
-
-    QuizAuthoringAgent::fake([
-        quizToolCall(['question' => 'إذا كان ناتج ls -l لملف هو -rwxr-xr--، فما صلاحيات الآخرين؟']),
-        quizToolCall([
-            'question' => 'فما صلاحيات «الآخرين» في السلسلة أعلاه؟',
-            'body' => "ناتج الأمر:\n```text\n-rwxr-xr--\n```",
-        ]),
-    ]);
-
-    $this->artisan('quiz:generate')->assertExitCode(0);
-
-    $quiz = DailyQuiz::forDate(today());
-
-    expect(DailyQuiz::query()->count())->toBe(1)
-        ->and($quiz->question)->toBe('فما صلاحيات «الآخرين» في السلسلة أعلاه؟')
-        ->and($quiz->body)->toContain('-rwxr-xr--');
-});
-
-it('rejects a direction-breaking token in the explanation and the hints too', function () {
-    QuizTopic::factory()->create();
-
-    QuizAuthoringAgent::fake([
-        quizToolCall([
-            'explanation' => 'الرموز r-- تعني قراءة فقط.',
-            'hint' => 'راجع خيار --global أولاً.',
-        ]),
-        quizToolCall(['question' => 'سؤال مصحّح بعد رفض الشرح والتلميح؟']),
-    ]);
-
-    $this->artisan('quiz:generate')->assertExitCode(0);
-
-    expect(DailyQuiz::query()->count())->toBe(1)
-        ->and(DailyQuiz::forDate(today())->question)->toBe('سؤال مصحّح بعد رفض الشرح والتلميح؟');
-});
-
-it('accepts english terms in brackets and hyphens inside a word', function () {
+it('accepts english terms and code tokens anywhere in the question', function () {
     QuizTopic::factory()->create();
 
     QuizAuthoringAgent::fake([quizToolCall([
-        'question' => 'أي ترتيب زمني (Big-O) يصف البحث الثنائي في node.js؟',
+        'question' => '<p dir="rtl">أي ترتيب زمني (Big-O) يصف البحث الثنائي؟</p>',
         'explanation' => 'المكدس (Stack) يعمل بمبدأ الأخير دخولاً الأول خروجاً.',
     ])]);
 
     $this->artisan('quiz:generate')->assertExitCode(0);
 
     expect(DailyQuiz::forDate(today())->question)
-        ->toBe('أي ترتيب زمني (Big-O) يصف البحث الثنائي في node.js؟');
+        ->toContain('أي ترتيب زمني (Big-O) يصف البحث الثنائي؟');
 });
 
 it('skips silently while the quiz feature is disabled', function () {
@@ -334,7 +273,7 @@ it('gives up when the model never submits a question', function () {
 it('corrects a too-long question within the same run', function () {
     QuizTopic::factory()->create();
     QuizAuthoringAgent::fake([
-        quizToolCall(['question' => str_repeat('س', 301)]),
+        quizToolCall(['question' => str_repeat('س', 1201)]),
         quizToolCall(['question' => 'سؤال قصير مصحّح؟']),
     ]);
 
