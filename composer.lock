@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "cc734bba8e5de243ae80f01150a97288",
+    "content-hash": "e2f7a9a7bed90720bcbc9c46ba6d3c3d",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -5283,16 +5283,16 @@
         },
         {
             "name": "saad/ai-kit",
-            "version": "v0.6.0",
+            "version": "v0.7.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/Saad5400/ai-kit.git",
-                "reference": "851081c2f9fd00a7ea6c244b5afb2b5f2a6cbd61"
+                "reference": "9c9b325b59335b509473495fbc528a5a5de1b053"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Saad5400/ai-kit/zipball/851081c2f9fd00a7ea6c244b5afb2b5f2a6cbd61",
-                "reference": "851081c2f9fd00a7ea6c244b5afb2b5f2a6cbd61",
+                "url": "https://api.github.com/repos/Saad5400/ai-kit/zipball/9c9b325b59335b509473495fbc528a5a5de1b053",
+                "reference": "9c9b325b59335b509473495fbc528a5a5de1b053",
                 "shasum": ""
             },
             "require": {
@@ -5349,10 +5349,10 @@
                 "openrouter"
             ],
             "support": {
-                "source": "https://github.com/Saad5400/ai-kit/tree/v0.6.0",
+                "source": "https://github.com/Saad5400/ai-kit/tree/v0.7.2",
                 "issues": "https://github.com/Saad5400/ai-kit/issues"
             },
-            "time": "2026-08-19T10:10:04+00:00"
+            "time": "2026-08-19T14:04:20+00:00"
         },
         {
             "name": "scrivo/highlight.php",
