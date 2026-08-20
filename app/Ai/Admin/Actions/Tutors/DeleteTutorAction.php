@@ -8,6 +8,7 @@ use App\Ai\Admin\Actions\AdminActionException;
 use App\Models\PrivateTutor\PrivateTutor;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Saad\AiKit\Approvals\Classified\Field;
 
 /**
  * Delete a private tutor. Attached courses are detached, not deleted. Mirrors
@@ -95,6 +96,22 @@ class DeleteTutorAction extends AdminAction
             'tutor_id' => $schema->integer()
                 ->description('The id of the tutor to delete, from list_tutors.')
                 ->required(),
+        ];
+    }
+
+    /**
+     * Arabic labels for the approval card, with each field's widget restated
+     * alongside its label. Declaring a spec REPLACES the kit's value-based
+     * inference for that argument, so the widget an unlabelled field would
+     * have been given has to be named here — an id declared without
+     * `Field::readonly` would come back as an editable text box.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return [
+            'tutor_id' => Field::readonly('tutor_id', label: 'المدرّس'),
         ];
     }
 }

@@ -460,11 +460,45 @@ describe('approval pause via tools', function () {
             'widget' => 'markdown',
             'editable' => true,
             'value' => $body,
+            'label' => 'المحتوى',
         ])
             ->and(adminCardField($card, 'page_id'))->toMatchArray([
                 'widget' => 'readonly',
                 'editable' => false,
                 'value' => $page->id,
+                'label' => 'الصفحة',
+            ]);
+    });
+
+    it('labels every card field in Arabic without losing the widget the label replaces', function () {
+        $page = Page::factory()->create(['title' => 'اللوائح']);
+
+        $arguments = ['page_id' => $page->id, 'title' => 'اللوائح الدراسية', 'hidden' => true];
+
+        AdminAssistant::fake([new ToolCall('tc_1', 'update_page', $arguments)]);
+
+        [, $content] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'update_page', []));
+
+        $card = adminSseEventData($content, 'approval');
+
+        // Declaring a label REPLACES the kit's value-based inference for that
+        // argument, so the widgets are the regression to watch: the id must
+        // stay a readonly definition row and the flag a checkbox, not the
+        // text box a label-only spec would have produced.
+        expect(adminCardField($card, 'page_id'))->toMatchArray([
+            'widget' => 'readonly',
+            'editable' => false,
+            'label' => 'الصفحة',
+        ])
+            ->and(adminCardField($card, 'title'))->toMatchArray([
+                'widget' => 'text',
+                'editable' => true,
+                'label' => 'العنوان',
+            ])
+            ->and(adminCardField($card, 'hidden'))->toMatchArray([
+                'widget' => 'boolean',
+                'editable' => true,
+                'label' => 'الإخفاء من الموقع',
             ]);
     });
 
@@ -479,8 +513,8 @@ describe('approval pause via tools', function () {
 
         $card = adminSseEventData($content, 'approval');
 
-        expect(adminCardField($card, 'action'))->toMatchArray(['widget' => 'readonly', 'editable' => false, 'value' => 'rename'])
-            ->and(adminCardField($card, 'title'))->toMatchArray(['widget' => 'text', 'editable' => true]);
+        expect(adminCardField($card, 'action'))->toMatchArray(['widget' => 'readonly', 'editable' => false, 'value' => 'rename', 'label' => 'نوع التغيير'])
+            ->and(adminCardField($card, 'title'))->toMatchArray(['widget' => 'text', 'editable' => true, 'label' => 'العنوان']);
     });
 
     it('carries the model\'s suggested answers on a question card', function () {

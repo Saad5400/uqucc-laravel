@@ -10,6 +10,8 @@ use App\Models\DailyQuiz;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Carbon;
+use Saad\AiKit\Approvals\Classified\Field;
+use Saad\AiKit\Approvals\Classified\FieldWidget;
 use Throwable;
 
 /**
@@ -49,6 +51,22 @@ class RegenerateDailyQuizAction extends AdminAction
         return [
             'date' => $schema->string()
                 ->description('The day to regenerate, as YYYY-MM-DD. Defaults to today.'),
+        ];
+    }
+
+    /**
+     * Arabic labels for the approval card, with each field's widget restated
+     * alongside its label. Declaring a spec REPLACES the kit's value-based
+     * inference for that argument, so the widget an unlabelled field would
+     * have been given has to be named here — an id declared without
+     * `Field::readonly` would come back as an editable text box.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return [
+            'date' => Field::make('date', FieldWidget::Text, label: 'التاريخ'),
         ];
     }
 

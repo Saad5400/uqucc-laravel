@@ -9,6 +9,7 @@ use App\Models\PageChangeRequest;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\DB;
+use Saad\AiKit\Approvals\Classified\Field;
 use Throwable;
 
 /**
@@ -125,6 +126,22 @@ class ApprovePageChangeAction extends AdminAction
             'change_request_id' => $schema->integer()
                 ->description('The id of the pending change request to approve, from list_pending_changes.')
                 ->required(),
+        ];
+    }
+
+    /**
+     * Arabic labels for the approval card, with each field's widget restated
+     * alongside its label. Declaring a spec REPLACES the kit's value-based
+     * inference for that argument, so the widget an unlabelled field would
+     * have been given has to be named here — an id declared without
+     * `Field::readonly` would come back as an editable text box.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return [
+            'change_request_id' => Field::readonly('change_request_id', label: 'طلب التعديل'),
         ];
     }
 }

@@ -11,6 +11,7 @@ use App\Models\User;
 use App\Support\QuizContentHtml;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Str;
+use Saad\AiKit\Approvals\Classified\Field;
 use Saad\AiKit\Approvals\Classified\FieldWidget;
 
 /**
@@ -201,17 +202,24 @@ class UpdateDailyQuizAction extends AdminAction
     }
 
     /**
-     * The question is an HTML fragment and the explanation runs to a
-     * paragraph — both need an editor with room, whatever length the model
-     * happened to send.
+     * Arabic labels for the approval card, with each field's widget restated
+     * alongside its label. Declaring a spec REPLACES the kit's value-based
+     * inference for that argument, so the widget an unlabelled field would
+     * have been given has to be named here — an id declared without
+     * `Field::readonly` would come back as an editable text box.
      *
      * @return array<string, mixed>
      */
     public function fieldWidgets(): array
     {
         return [
-            'question' => FieldWidget::Code,
-            'explanation' => FieldWidget::Textarea,
+            'quiz_id' => Field::readonly('quiz_id', label: 'السؤال اليومي'),
+            'question' => Field::make('question', FieldWidget::Code, label: 'نص السؤال'),
+            'options' => Field::readonly('options', label: 'الخيارات'),
+            'correct_option' => Field::make('correct_option', FieldWidget::Number, label: 'رقم الخيار الصحيح'),
+            'explanation' => Field::make('explanation', FieldWidget::Textarea, label: 'الشرح'),
+            'hint' => Field::make('hint', FieldWidget::Textarea, label: 'تلميح'),
+            'obvious_hint' => Field::make('obvious_hint', FieldWidget::Textarea, label: 'تلميح صريح'),
         ];
     }
 }

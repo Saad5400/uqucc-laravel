@@ -10,6 +10,8 @@ use App\Models\PrivateTutor\PrivateTutor;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Validator;
+use Saad\AiKit\Approvals\Classified\Field;
+use Saad\AiKit\Approvals\Classified\FieldWidget;
 
 /**
  * Update a private tutor and sync its attached courses. Mirrors
@@ -131,6 +133,25 @@ class UpdateTutorAction extends AdminAction
             'course_ids' => $schema->array()
                 ->description('Optional ids of the courses this tutor teaches (replaces the current set), from list_tutors.')
                 ->items($schema->integer()),
+        ];
+    }
+
+    /**
+     * Arabic labels for the approval card, with each field's widget restated
+     * alongside its label. Declaring a spec REPLACES the kit's value-based
+     * inference for that argument, so the widget an unlabelled field would
+     * have been given has to be named here — an id declared without
+     * `Field::readonly` would come back as an editable text box.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return [
+            'tutor_id' => Field::readonly('tutor_id', label: 'المدرّس'),
+            'name' => Field::make('name', FieldWidget::Text, label: 'اسم المدرّس'),
+            'url' => Field::make('url', FieldWidget::Text, label: 'الرابط'),
+            'course_ids' => Field::readonly('course_ids', label: 'المواد'),
         ];
     }
 }

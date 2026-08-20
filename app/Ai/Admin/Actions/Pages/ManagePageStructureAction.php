@@ -11,6 +11,7 @@ use App\Ai\Admin\PageChangeRules;
 use App\Models\Page;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Saad\AiKit\Approvals\Classified\Field;
 use Saad\AiKit\Approvals\Classified\FieldWidget;
 
 /**
@@ -200,15 +201,22 @@ class ManagePageStructureAction extends AdminAction
     }
 
     /**
-     * `action` names the structural operation, not its payload: switching a
-     * confirmed `rename` to `delete` would make the card a preview of a
-     * different write entirely, and the Arabic summary the admin read would
-     * describe neither. It is the operation's identity, so it is readonly.
+     * Arabic labels for the approval card, with each field's widget restated
+     * alongside its label. Declaring a spec REPLACES the kit's value-based
+     * inference for that argument, so the widget an unlabelled field would
+     * have been given has to be named here — an id declared without
+     * `Field::readonly` would come back as an editable text box.
      *
      * @return array<string, mixed>
      */
     public function fieldWidgets(): array
     {
-        return ['action' => FieldWidget::Readonly];
+        return [
+            'action' => Field::readonly('action', label: 'نوع التغيير'),
+            'page_id' => Field::readonly('page_id', label: 'الصفحة'),
+            'title' => Field::make('title', FieldWidget::Text, label: 'العنوان'),
+            'parent_id' => Field::readonly('parent_id', label: 'الصفحة الأم'),
+            'ids' => Field::readonly('ids', label: 'الترتيب الجديد'),
+        ];
     }
 }

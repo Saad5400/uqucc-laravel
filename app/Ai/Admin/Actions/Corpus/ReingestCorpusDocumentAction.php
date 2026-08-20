@@ -9,6 +9,7 @@ use App\Jobs\Ai\IngestDocumentJob;
 use App\Models\Corpus\CorpusDocument;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Saad\AiKit\Approvals\Classified\Field;
 
 /**
  * Queue a re-chunk and re-embed of a corpus document's current extracted
@@ -97,6 +98,22 @@ class ReingestCorpusDocumentAction extends AdminAction
             'document_id' => $schema->integer()
                 ->description('The id of the corpus document to re-ingest, from list_corpus_documents.')
                 ->required(),
+        ];
+    }
+
+    /**
+     * Arabic labels for the approval card, with each field's widget restated
+     * alongside its label. Declaring a spec REPLACES the kit's value-based
+     * inference for that argument, so the widget an unlabelled field would
+     * have been given has to be named here — an id declared without
+     * `Field::readonly` would come back as an editable text box.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return [
+            'document_id' => Field::readonly('document_id', label: 'المستند'),
         ];
     }
 }

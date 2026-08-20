@@ -11,6 +11,8 @@ use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator as ValidatorInstance;
+use Saad\AiKit\Approvals\Classified\Field;
+use Saad\AiKit\Approvals\Classified\FieldWidget;
 
 /**
  * Update a panel user. Mirrors
@@ -220,6 +222,31 @@ class UpdateUserAction extends AdminAction
                 ->items($schema->string()),
             'requires_review' => $schema->boolean()
                 ->description('Whether this user\'s content edits must be reviewed. Applied only if you hold assign-roles.'),
+        ];
+    }
+
+    /**
+     * Arabic labels for the approval card, with each field's widget restated
+     * alongside its label. Declaring a spec REPLACES the kit's value-based
+     * inference for that argument, so the widget an unlabelled field would
+     * have been given has to be named here — an id declared without
+     * `Field::readonly` would come back as an editable text box.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return [
+            'user_id' => Field::readonly('user_id', label: 'المستخدم'),
+            'name' => Field::make('name', FieldWidget::Text, label: 'الاسم'),
+            'email' => Field::make('email', FieldWidget::Text, label: 'البريد الإلكتروني'),
+            'password' => Field::make('password', FieldWidget::Text, label: 'كلمة المرور'),
+            'verified' => Field::make('verified', FieldWidget::Boolean, label: 'البريد موثَّق'),
+            'username' => Field::make('username', FieldWidget::Text, label: 'اسم المستخدم'),
+            'url' => Field::make('url', FieldWidget::Text, label: 'الرابط'),
+            'avatar' => Field::make('avatar', FieldWidget::Text, label: 'رابط الصورة'),
+            'roles' => Field::readonly('roles', label: 'الأدوار'),
+            'requires_review' => Field::make('requires_review', FieldWidget::Boolean, label: 'تخضع تعديلاته للمراجعة'),
         ];
     }
 
