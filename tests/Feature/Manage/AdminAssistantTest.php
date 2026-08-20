@@ -4,6 +4,7 @@ use App\Ai\Admin\Actions\AssistantActionTool;
 use App\Ai\Admin\Actions\Settings\GetSettingsAction;
 use App\Ai\Admin\AdminAssistant;
 use App\Ai\Admin\SettingsRegistry;
+use App\Jobs\Ai\GenerateAdminAssistantReply;
 use App\Models\Page;
 use App\Models\PrivateTutor\PrivateTutor;
 use App\Models\User;
@@ -13,6 +14,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Ai\Models\Conversation;
@@ -22,6 +24,7 @@ use Laravel\Ai\Tools\Request as ToolRequest;
 use Saad\AiKit\Approvals\Classified\StoredApprovals;
 use Saad\AiKit\Safety\BudgetGuard;
 use Saad\AiKit\Safety\KillSwitch;
+use Saad\AiKit\Streaming\TurnBuffer;
 use Saad\AiKit\Usage\UsageEvent;
 use Tests\Support\OpenRouterSse;
 
@@ -812,5 +815,151 @@ describe('settings introspection', function () {
             ->and($registry->isSecretKey('chat_model'))->toBeFalse()
             ->and($registry->mask('1234567890:AAxxYYzz'))->toBe('••••YYzz')
             ->and($registry->mask('abc'))->toBe('••••');
+    });
+});
+
+/*
+|--------------------------------------------------------------------------
+| Resumable turns (ai-kit TurnBuffer)
+|--------------------------------------------------------------------------
+|
+| Both entry points — a fresh prompt and a decided resume — now open a
+| durable buffer, queue the generation and tail it. What these pin is that
+| the panel's contract survived that move (same POST, same events, same
+| refusals) and that the resume contract holds where it matters most: a turn
+| that paused for approval, and one whose approved write is running.
+|
+*/
+
+describe('resumable turns', function () {
+    /** Every SSE frame in the content, as [seq, event] pairs. */
+    $frames = function (string $content): array {
+        preg_match_all("/^id: (\d+)\nevent: (\S+)$/m", $content, $matches, PREG_SET_ORDER);
+
+        return array_map(fn (array $match): array => [(int) $match[1], $match[2]], $matches);
+    };
+
+    it('opens the stream with a turn handle and numbers every frame', function () use ($frames) {
+        AdminAssistant::fake(['تم.']);
+
+        $content = $this->actingAs($this->admin)
+            ->post(route('manage.assistant.send'), ['message' => 'مرحبا'])
+            ->assertOk()
+            ->streamedContent();
+
+        $seen = $frames($content);
+
+        expect($seen[0][1])->toBe('turn')
+            ->and(adminSseEventData($content, 'turn')['id'])->not->toBeEmpty()
+            ->and(array_column($seen, 0))->toBe(range(1, count($seen)));
+    });
+
+    it('replays a paused turn — cards and all — to a client that reconnects', function () {
+        // A pause is exactly the turn an operator cannot afford to lose to a
+        // dropped connection, so it is the one the replay has to reproduce.
+        $page = Page::factory()->create(['title' => 'قديم']);
+
+        AdminAssistant::fake([
+            new ToolCall('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد']),
+        ]);
+
+        [, $content] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'manage_page_structure', []));
+
+        $turnId = adminSseEventData($content, 'turn')['id'];
+        $card = adminSseEventData($content, 'approval');
+
+        expect($card)->not->toBeNull();
+
+        $resumed = $this->actingAs($this->admin)
+            ->get(route('manage.assistant.stream', ['turn' => $turnId, 'cursor' => 1]))
+            ->assertOk()
+            ->streamedContent();
+
+        // Same card, same id — the client re-renders the decision it was about
+        // to make rather than losing it.
+        expect(adminSseEventData($resumed, 'approval'))->toBe($card)
+            ->and(adminSseEventData($resumed, 'done'))->not->toBeNull();
+    });
+
+    it('keeps the decide endpoint answering as SSE, with the resume on its own turn', function () use ($frames) {
+        $page = Page::factory()->create(['title' => 'قديم']);
+
+        fakeOpenRouter([
+            OpenRouterSse::toolCallBody('tc_1', 'manage_page_structure', ['action' => 'rename', 'page_id' => $page->id, 'title' => 'جديد']),
+            OpenRouterSse::textBody('نفّذت إعادة التسمية.'),
+        ]);
+
+        [$conversationId, $content] = pauseTurnOn($this->admin, new ToolCall('tc_1', 'manage_page_structure', []));
+
+        $pausedTurn = adminSseEventData($content, 'turn')['id'];
+
+        $resumeContent = $this->actingAs($this->admin)
+            ->post(route('manage.assistant.decide', $conversationId), ['decisions' => ['tc_1' => 'approve']])
+            ->assertOk()
+            ->streamedContent();
+
+        $resumeTurn = adminSseEventData($resumeContent, 'turn')['id'];
+
+        // A resume is its own turn — separately resumable, and numbered from 1
+        // like any other, so the client's cursor bookkeeping needs no special
+        // case for it. The write still lands.
+        expect($resumeTurn)->not->toBe($pausedTurn)
+            ->and(array_column($frames($resumeContent), 0))->toBe(range(1, count($frames($resumeContent))))
+            ->and($page->refresh()->title)->toBe('جديد');
+    });
+
+    it('answers 404 on another admin\'s turn, and on an unknown one', function () {
+        AdminAssistant::fake(['تم.']);
+
+        $turnId = adminSseEventData(
+            $this->actingAs($this->admin)->post(route('manage.assistant.send'), ['message' => 'مرحبا'])->streamedContent(),
+            'turn',
+        )['id'];
+
+        $other = User::factory()->create();
+        $other->assignRole('admin');
+
+        $this->actingAs($other)->get(route('manage.assistant.stream', ['turn' => $turnId]))->assertNotFound();
+        $this->actingAs($other)->post(route('manage.assistant.cancel', ['turn' => $turnId]))->assertNotFound();
+        $this->actingAs($this->admin)->get(route('manage.assistant.stream', ['turn' => (string) Str::uuid7()]))->assertNotFound();
+    });
+
+    it('dispatches the turn onto the dedicated ai-chat queue', function () {
+        // Not `default` (one worker, no --timeout: turns serialize behind each
+        // other and are killed at 60s) and not `ai` (multi-minute corpus
+        // extraction an interactive reply would wait behind). nixpacks.toml's
+        // `worker-ai-chat` is the other half of this pairing, and the queue NAME
+        // is the whole contract between config and worker topology.
+        //
+        // The streamed body is deliberately NOT rendered: with the queue faked
+        // the turn never completes, so tailing its buffer would block until the
+        // kit's stream deadline. Only the dispatch is under test.
+        Queue::fake();
+
+        $this->actingAs($this->admin)
+            ->post(route('manage.assistant.send'), ['message' => 'مرحبا'])
+            ->assertOk();
+
+        Queue::assertPushedOn('ai-chat', GenerateAdminAssistantReply::class);
+    });
+
+    it('fails a queued turn without calling the model when the kill switch engaged after it was queued', function () {
+        AdminAssistant::fake(['لن يصل هذا الرد أبداً.']);
+
+        $buffer = app(TurnBuffer::class);
+        $turnId = (string) Str::uuid7();
+
+        $buffer->start($turnId, ['admin_id' => (int) $this->admin->id]);
+
+        app(KillSwitch::class)->engage();
+
+        (new GenerateAdminAssistantReply(turnId: $turnId, adminId: (int) $this->admin->id, prompt: 'مرحبا'))
+            ->handle($buffer, app(KillSwitch::class));
+
+        $record = $buffer->get($turnId);
+
+        expect($record['status'])->toBe('failed')
+            ->and(collect($record['events'])->pluck('event')->all())->toBe(['error'])
+            ->and(Conversation::query()->count())->toBe(0);
     });
 });

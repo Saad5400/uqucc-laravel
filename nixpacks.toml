@@ -227,6 +227,37 @@ stdout_logfile=/var/log/worker-ai-queue.log
 stderr_logfile=/var/log/worker-ai-queue.log
 '''
 
+# Interactive assistant turns (config/ai.php `chat.queue`) — the resumable
+# TurnBuffer path, for both the student and the admin surface.
+#
+# Separate from the `ai` queue above on purpose: that one carries multi-minute
+# corpus extraction and ingestion, and a visitor watching an SSE stream must
+# never be queued behind a document ingest. Equally not `default`, which is one
+# worker with no --timeout: turns would serialize behind each other, block every
+# other default-queue job, and die at 60s.
+#
+# --tries=1 because a half-streamed turn must never silently replay — the jobs'
+# own failed() hook writes the terminal error frame instead, so a killed turn
+# ends the client's stream rather than leaving it to spin. --sleep=1 keeps
+# pickup latency out of the visible reply. --timeout=300 matches the AI worker
+# and is the CEILING, not a preference: config/queue.php pins redis retry_after
+# at 360, which must stay above the longest a job may run or a still-streaming
+# turn is reclaimed and run a second time. numprocs=2 so two visitors' turns do
+# not serialize; stopwaitsecs > timeout lets an in-flight turn finish a restart.
+"worker-ai-chat.conf" = '''
+[program:worker-ai-chat]
+process_name=%(program_name)s_%(process_num)02d
+command=bash -c 'exec php /app/artisan queue:work --queue=ai-chat --sleep=1 --tries=1 --timeout=300 --max-time=3600'
+numprocs=2
+autostart=true
+autorestart=true
+stopwaitsecs=310
+stopasgroup=true
+killasgroup=true
+stdout_logfile=/var/log/worker-ai-chat.log
+stderr_logfile=/var/log/worker-ai-chat.log
+'''
+
 "worker-inertia-ssr.conf" = '''
 [program:inertia-ssr]
 command=bash -c 'exec php /app/artisan inertia:start-ssr'

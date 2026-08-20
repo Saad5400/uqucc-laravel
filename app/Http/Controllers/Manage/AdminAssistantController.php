@@ -2,21 +2,20 @@
 
 namespace App\Http\Controllers\Manage;
 
-use App\Ai\Admin\AdminAssistant;
 use App\Ai\Admin\AdminOwner;
 use App\Ai\Admin\AssistantCards;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Manage\AdminAssistantDecisionRequest;
 use App\Http\Requests\Manage\AdminAssistantMessageRequest;
+use App\Jobs\Ai\GenerateAdminAssistantReply;
 use App\Models\User;
 use App\Settings\AiSettings;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Context;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 use InvalidArgumentException;
-use Laravel\Ai\Approvals\Decisions;
 use Laravel\Ai\Models\ConversationMessage;
 use Saad\AiKit\Approvals\Classified\ResumeDecisions;
 use Saad\AiKit\Conversations\ConversationContent;
@@ -26,19 +25,33 @@ use Saad\AiKit\Safety\Exceptions\AiUnavailableException;
 use Saad\AiKit\Safety\KillSwitch;
 use Saad\AiKit\Safety\TurnGuard;
 use Saad\AiKit\Streaming\SseStream;
-use Saad\AiKit\Streaming\StreamEventMapper;
+use Saad\AiKit\Streaming\TurnBuffer;
 use Symfony\Component\HttpFoundation\StreamedResponse;
-use Throwable;
 
 /**
  * The /manage admin assistant chat API — the operator copilot whose writes
  * pause the turn on ai-kit's classified approval seam. The transport mirrors
  * the public {@see \App\Http\Controllers\Ai\ChatController} SSE contract
- * (reasoning/delta/tool/done/error) plus an `approval` or `question` event
- * per card whenever the turn paused, so the client renders تأكيد/رفض cards
- * inline. Decisions resume the SAME turn through {@see decide()} and the
- * continuation streams back over the identical SSE contract. Conversations
- * belong to the authenticated admin (AdminOwner, "admin:{id}").
+ * (turn/reasoning/delta/tool/done/error) plus an `approval` or `question`
+ * event per card whenever the turn paused, so the client renders تأكيد/رفض
+ * cards inline. Conversations belong to the authenticated admin (AdminOwner,
+ * "admin:{id}").
+ *
+ * ── Resumable turns ── Neither {@see send()} nor {@see decide()} generates
+ * inside the request any more: each opens a durable {@see TurnBuffer} turn,
+ * queues {@see GenerateAdminAssistantReply} to fold the model stream into it,
+ * and then TAILS that buffer. Both still answer as SSE over the same event
+ * contract, so the panel's transport is unchanged — but every frame now
+ * carries an `id:` line, a leading `turn {id}` frame hands the client the
+ * handle, and an operator whose connection drops mid-write reconnects to
+ * {@see stream()} with `?cursor=<last seq>` instead of losing the turn.
+ *
+ * A resume mints a NEW turn (the paused one finished when it paused), which
+ * is invisible to the client: it reads the same stream off the same POST.
+ * {@see decide()} stays keyed by CONVERSATION rather than by turn — the
+ * server's pause markers live on the conversation, so nothing about resuming
+ * has to look up a turn record, and the endpoint's URL, payload and status
+ * codes are exactly what the panel already speaks.
  *
  * `reasoning` and `tool` are ai-kit v0.5.0 defaults and are deliberately
  * left on: the panel shows thinking as a collapsible block and tool progress
@@ -50,12 +63,14 @@ use Throwable;
  * Layered gates on every endpoint: panel auth (route middleware) → ai-kit's
  * kill switch, which folds master ai_enabled AND admin_assistant_enabled
  * (503 with the reason) with the kit's cache switch → daily spend budget on
- * turn entry (503, via TurnGuard) → the route's per-admin burst limiter (429).
+ * turn entry (503, via TurnGuard) → the route's per-admin burst limiter
+ * (429). The queued job re-checks the kill switch on its way out of the
+ * queue, which is where the money — and the writes — actually land.
  */
 class AdminAssistantController extends Controller
 {
     /** Usage feature label for admin assistant turns (ai-kit usage module). */
-    private const FEATURE = 'admin_assistant';
+    private const FEATURE = GenerateAdminAssistantReply::FEATURE;
 
     /**
      * GET /manage/assistant (name: manage.assistant.index) — the chat page.
@@ -81,6 +96,7 @@ class AdminAssistantController extends Controller
         AiSettings $settings,
         TurnGuard $guard,
         ConversationOwnership $ownership,
+        TurnBuffer $buffer,
     ): JsonResponse|StreamedResponse {
         try {
             $guard->check(self::FEATURE);
@@ -95,13 +111,46 @@ class AdminAssistantController extends Controller
 
         $owner = new AdminOwner($admin);
         $conversationId = $this->ownedConversationId($request->input('conversation_id'), $owner, $ownership);
-        $prompt = $request->validated('message');
 
-        return response()->stream(
-            fn () => $this->streamTurn($prompt, $owner, $conversationId),
-            200,
-            SseStream::headers(),
-        );
+        return $this->startTurn($buffer, $admin, $conversationId, prompt: (string) $request->validated('message'));
+    }
+
+    /**
+     * GET /manage/assistant/turns/{turn}/stream (name: manage.assistant.stream)
+     * — resume a turn from `?cursor=<last seq>` (or `Last-Event-ID`). Replaying
+     * a buffer spends nothing, so only ownership gates it; an unknown or
+     * expired turn is a 404 so the client stops retrying.
+     */
+    public function stream(Request $request, TurnBuffer $buffer, string $turn): StreamedResponse
+    {
+        /** @var User $admin */
+        $admin = $request->user();
+
+        $this->ownedTurn($buffer, $turn, (int) $admin->id);
+
+        $after = max(0, (int) $request->query('cursor', $request->header('Last-Event-ID', '0')));
+
+        return $this->tail($buffer, $turn, $after);
+    }
+
+    /**
+     * POST /manage/assistant/turns/{turn}/cancel (name:
+     * manage.assistant.cancel) — the admin pressed stop. Generation runs in a
+     * queued job now, so hanging up the SSE connection no longer ends it: flag
+     * the turn and the job finishes early with whatever it had. A stop that
+     * lands after a write already paused leaves that pause standing —
+     * {@see decide()} re-checks the server's pending set regardless.
+     */
+    public function cancel(Request $request, TurnBuffer $buffer, string $turn): JsonResponse
+    {
+        /** @var User $admin */
+        $admin = $request->user();
+
+        $this->ownedTurn($buffer, $turn, (int) $admin->id);
+
+        $buffer->cancel($turn);
+
+        return response()->json(['cancelled' => true]);
     }
 
     /**
@@ -119,6 +168,7 @@ class AdminAssistantController extends Controller
         TurnGuard $guard,
         ConversationOwnership $ownership,
         AssistantCards $cards,
+        TurnBuffer $buffer,
         string $conversation,
     ): JsonResponse|StreamedResponse {
         try {
@@ -158,11 +208,14 @@ class AdminAssistantController extends Controller
         }
 
         try {
-            // The guard is passed here rather than applied afterwards because
-            // this is the only path from client input to Decisions: an edit's
-            // readonly fields are restored from the pause before a
-            // Decision::edit exists at all.
-            $decisions = ResumeDecisions::fromClient($input, $cards->editGuard($pending));
+            // The guard runs HERE, where the server's own copy of the pending
+            // call is in hand: an edit's readonly and hidden fields are
+            // restored from the pause before the decision is serialized into a
+            // job, so what the queue carries is never the raw browser payload.
+            // `guarded()` also round-trips the result through the kit's own
+            // parser, so a shape the resume could not read throws in THIS
+            // request rather than inside the job.
+            $guarded = ResumeDecisions::guarded($input, $cards->editGuard($pending));
         } catch (InvalidArgumentException) {
             // Covers both a malformed decision shape and an edit that invents
             // an argument the card never carried; a tampered readonly field
@@ -170,11 +223,10 @@ class AdminAssistantController extends Controller
             return response()->json(['message' => 'صيغة القرارات غير صالحة أو لا تطابق حقول البطاقة.'], 422);
         }
 
-        return response()->stream(
-            fn () => $this->streamTurn($decisions, $owner, $conversation),
-            200,
-            SseStream::headers(),
-        );
+        // A resume is a NEW turn — the paused one finished when it paused — but
+        // that is invisible to the client, which reads the continuation off
+        // this same response exactly as it always has.
+        return $this->startTurn($buffer, $admin, $conversation, decisions: $guarded);
     }
 
     /**
@@ -221,43 +273,79 @@ class AdminAssistantController extends Controller
     }
 
     /**
-     * Run the turn against the model and emit the SSE events, folded through
-     * ai-kit's StreamEventMapper; a pause emits its approval/question cards
-     * through {@see AssistantCards}. Every outcome — including a thrown
-     * provider error — must land as an event.
+     * Open one turn — a fresh prompt or a decided resume — and stream it: a
+     * durable buffer, a queued job to fold the model stream into it, and the
+     * tail of that buffer as the response. The two entry points differ only in
+     * what they hand the job, so the turn id, the meta and the leading `turn`
+     * frame are minted in one place.
+     *
+     * @param  array<string, mixed>|null  $decisions
      */
-    private function streamTurn(
-        Decisions|string $prompt,
-        AdminOwner $owner,
+    private function startTurn(
+        TurnBuffer $buffer,
+        User $admin,
         ?string $conversationId,
-    ): void {
-        $sse = new SseStream;
-        $sse->extendTimeLimit((int) config('ai.chat.timeout', 60) + 30);
+        string $prompt = '',
+        ?array $decisions = null,
+    ): StreamedResponse {
+        $turnId = (string) Str::uuid7();
 
-        // ai-kit's usage module records the turn (exact provider cost,
-        // tokens, timings) automatically; the label is all it needs.
-        Context::add(config('ai-kit.usage.feature_context_key'), self::FEATURE);
+        // `admin_id` is what {@see stream()} and {@see cancel()} read back to
+        // refuse a foreign turn.
+        $buffer->start($turnId, [
+            'admin_id' => (int) $admin->id,
+            'conversation_id' => $conversationId,
+        ]);
 
-        $agent = AdminAssistant::make();
-        $agent = $conversationId !== null
-            ? $agent->continue($conversationId, $owner)
-            : $agent->forUser($owner);
+        // The handle the client stores so it can resume this turn. Appended
+        // BEFORE the job is dispatched, so it is seq 1 and no worker can be
+        // appending concurrently — the buffer's single-writer rule holds.
+        $buffer->append($turnId, 'turn', ['id' => $turnId]);
 
-        try {
-            $response = $agent->stream($prompt);
+        GenerateAdminAssistantReply::dispatch(
+            turnId: $turnId,
+            adminId: (int) $admin->id,
+            prompt: $prompt,
+            conversationId: $conversationId,
+            decisions: $decisions,
+        );
 
-            app(AssistantCards::class)->attachTo(
-                (new StreamEventMapper)
-                    ->onError(fn (): string => $this->genericErrorMessage())
-                    ->doneUsing(fn (): array => [
-                        'conversation_id' => $response->conversationId ?? $conversationId,
-                    ])
-            )->run($response, fn (string $event, array $data) => $sse->emit($event, $data));
-        } catch (Throwable $exception) {
-            report($exception);
+        return $this->tail($buffer, $turnId);
+    }
 
-            $sse->emit('error', ['message' => $this->genericErrorMessage()]);
-        }
+    /**
+     * Tail one turn's durable buffer as SSE — the ONE streaming response this
+     * controller produces, whether the turn was just opened by {@see send()}
+     * or {@see decide()}, or is being resumed by {@see stream()}. The frame
+     * writing, the poll loop, the deadline and the keepalive comments are all
+     * the kit's, configured under `ai-kit.streaming`.
+     */
+    private function tail(TurnBuffer $buffer, string $turnId, int $after = 0): StreamedResponse
+    {
+        return response()->stream(function () use ($buffer, $turnId, $after): void {
+            $sse = app(SseStream::class);
+
+            $sse->extendTimeLimit((int) config('ai-kit.streaming.max_stream_seconds', 180) + 30);
+
+            $buffer->tail($turnId, $after, $sse);
+        }, 200, SseStream::headers());
+    }
+
+    /**
+     * The turn record, or a 404 — for an unknown or expired turn, and equally
+     * for one belonging to another admin. Both are 404 rather than 403: no
+     * admin needs to learn that a colleague's turn id exists.
+     *
+     * @return array<string, mixed>
+     */
+    private function ownedTurn(TurnBuffer $buffer, string $turnId, int $adminId): array
+    {
+        $record = $buffer->get($turnId);
+
+        abort_if($record === null, 404);
+        abort_unless((int) ($record['meta']['admin_id'] ?? 0) === $adminId, 404);
+
+        return $record;
     }
 
     /**
@@ -297,10 +385,5 @@ class AdminAssistantController extends Controller
         }
 
         return null;
-    }
-
-    private function genericErrorMessage(): string
-    {
-        return 'حدث خطأ أثناء توليد الرد. حاول مرة أخرى.';
     }
 }

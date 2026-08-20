@@ -45,12 +45,22 @@ return [
     | surface and the -0731 build's server default is 'high' — every caller
     | must therefore send the effort explicitly to get the faster path.
     |
+    | `queue` is where a resumable assistant turn runs (both the student and
+    | the admin surface). It gets a queue of its OWN rather than sharing one:
+    | `default` is a single worker with no --timeout, so turns would serialize
+    | behind each other, block every other default-queue job, and be killed at
+    | 60s; and `ai` carries multi-minute corpus extraction and ingestion, which
+    | an interactive reply must never wait behind. Static on purpose — like
+    | queue.php's `retry_after` it is a fixed property of our worker topology
+    | (nixpacks.toml's `worker-ai-chat`), not a per-environment knob.
+    |
     */
 
     'chat' => [
         'model' => env('AI_CHAT_MODEL', 'deepseek/deepseek-v4-flash-0731'),
         'reasoning_effort' => env('AI_CHAT_REASONING_EFFORT', 'low'),
         'timeout' => (int) env('AI_CHAT_TIMEOUT', 60),
+        'queue' => 'ai-chat',
     ],
 
     /*

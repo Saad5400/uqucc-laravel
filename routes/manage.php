@@ -55,6 +55,13 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::get('/assistant/chat/{conversation}', [AdminAssistantController::class, 'show'])->name('assistant.show');
         Route::post('/assistant/chat/{conversation}/decide', [AdminAssistantController::class, 'decide'])->middleware('throttle:15,1')->name('assistant.decide');
 
+        // Resuming or stopping a turn already under way: both read the turn
+        // buffer rather than opening one, so neither carries the per-admin
+        // burst limiter — a reconnect ladder must not be throttled into
+        // silence, and neither endpoint can spend anything.
+        Route::get('/assistant/turns/{turn}/stream', [AdminAssistantController::class, 'stream'])->name('assistant.stream');
+        Route::post('/assistant/turns/{turn}/cancel', [AdminAssistantController::class, 'cancel'])->name('assistant.cancel');
+
         Route::get('/corpus', [CorpusDocumentController::class, 'index'])->name('corpus.index');
         Route::post('/corpus', [CorpusDocumentController::class, 'store'])->name('corpus.store');
         Route::post('/corpus/text', [CorpusDocumentController::class, 'storeText'])->name('corpus.store-text');
