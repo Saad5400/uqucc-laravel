@@ -38,12 +38,19 @@ return [
     |--------------------------------------------------------------------------
     |
     | The model used for conversational and content-drafting tasks (page copy,
-    | announcements, summaries). Model ids are OpenRouter slugs, pinned to a
-    | dated build so a silent upstream reroute cannot change chat behavior.
+    | announcements, summaries). Model ids are OpenRouter slugs.
+    |
+    | `model` is deliberately EMPTY by default: the fleet's shared chat model
+    | lives in the kit (ai-kit docs/DECISIONS.md #21, `ai-kit.chat.model`) and
+    | uqucc inherits it rather than pinning a second copy of the slug here.
+    | Set AI_CHAT_MODEL to override the shared default for this app only. The
+    | whole chain — operator setting, this key, the kit default — is resolved
+    | in one place, {@see \App\Settings\AiSettings::chatModel()}.
     |
     | `reasoning_effort` is 'low' because the assistant is an interactive
-    | surface and the -0731 build's server default is 'high' — every caller
-    | must therefore send the effort explicitly to get the faster path.
+    | surface and some builds default to 'high' server-side — every caller
+    | must therefore send the effort explicitly to get the faster path. The
+    | shared Gemini Flash Lite default supports it.
     |
     | `queue` is where a resumable assistant turn runs (both the student and
     | the admin surface). It gets a queue of its OWN rather than sharing one:
@@ -57,7 +64,7 @@ return [
     */
 
     'chat' => [
-        'model' => env('AI_CHAT_MODEL', 'deepseek/deepseek-v4-flash-0731'),
+        'model' => env('AI_CHAT_MODEL'),
         'reasoning_effort' => env('AI_CHAT_REASONING_EFFORT', 'low'),
         'timeout' => (int) env('AI_CHAT_TIMEOUT', 60),
         'queue' => 'ai-chat',

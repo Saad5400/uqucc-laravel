@@ -14,7 +14,7 @@ use RuntimeException;
  * Gated on the operator-editable admin_copilot feature flag (which honours
  * the master AI kill switch) — a disabled copilot throws
  * {@see CopilotDisabledException} rather than silently calling out. The
- * model comes from AiSettings->chat_model with a config fallback, mirroring
+ * model comes from {@see \App\Settings\AiSettings::chatModel()}, mirroring
  * {@see \App\Ai\Corpus\DocumentVisionExtractor}.
  */
 class PageCopilot
@@ -129,7 +129,7 @@ class PageCopilot
         $response = (new PageCopilotAgent($instructions))->prompt(
             $prompt,
             provider: (string) config('ai.default', 'openrouter'),
-            model: $this->model(),
+            model: $this->settings->chatModel(),
             timeout: (int) config('ai.chat.timeout', 60),
         );
 
@@ -156,15 +156,5 @@ class PageCopilot
         }
 
         return ['title' => $title, 'description' => $description];
-    }
-
-    /**
-     * The operator-configured chat model, falling back to config.
-     */
-    private function model(): string
-    {
-        $model = trim($this->settings->chat_model);
-
-        return $model !== '' ? $model : (string) config('ai.chat.model', 'deepseek/deepseek-v4-flash');
     }
 }

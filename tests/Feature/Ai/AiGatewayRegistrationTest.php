@@ -2,6 +2,7 @@
 
 use Laravel\Ai\AiManager;
 use Laravel\Ai\Exceptions\AiException;
+use Saad\AiKit\Catalog\Catalog;
 use Saad\AiKit\Gateway\ReasoningOpenRouterGateway;
 use Saad\AiKit\Gateway\SpendCollector;
 
@@ -19,11 +20,19 @@ it('defaults the ai provider config to openrouter', function () {
 });
 
 it('exposes per-task model config keys', function () {
-    expect(config('ai.chat.model'))->toBeString()
-        ->and(config('ai.vision.model'))->toBeString()
+    expect(config('ai.vision.model'))->toBeString()
         ->and(config('ai.embeddings.model'))->toBe('openai/text-embedding-3-small')
         ->and(config('ai.embeddings.dimensions'))->toBe(1536)
         ->and(config('ai.embeddings.driver'))->toBeIn(['fake', 'openrouter']);
+});
+
+it('inherits the chat model from the kit instead of pinning its own', function () {
+    // `ai.chat.model` is an override hook (AI_CHAT_MODEL) and nothing more —
+    // the fleet's shared default lives in the kit (ai-kit DECISIONS.md #21),
+    // so uqucc carries no second copy of the slug to drift.
+    expect(config('ai.chat.model'))->toBeNull()
+        ->and(config('ai-kit.chat.model'))->toBe('google/gemini-3.5-flash-lite')
+        ->and(app(Catalog::class)->chatModel())->toBe('google/gemini-3.5-flash-lite');
 });
 
 it('turns an empty or invalid OpenRouter body into a clean AiException, not a TypeError', function () {

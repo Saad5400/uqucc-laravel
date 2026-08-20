@@ -91,6 +91,18 @@ return [
     | silence so proxies don't buffer the stream shut, and polls the buffer
     | every `poll_interval_ms`.
     |
+    | The log is stored as a header plus pages of `page_size` events, so an
+    | append costs the same on the ten-thousandth token as on the first.
+    | The producer heartbeats the header on every append (and with
+    | `touch()` while silent inside a long tool call); a tail that finds a
+    | running turn with no heartbeat for `stale_after_seconds` fails it
+    | with the `ai-kit::streaming.stale` message instead of spinning until
+    | the TTL — the liveness signal for a worker killed mid-turn. Keep the
+    | producer's touch interval well under it. `stale_trailing_done`
+    | appends an empty `done` after that stale `error`, for clients that
+    | only tear down on `done` (see TurnBuffer::fail()). 0 disables the
+    | stale check.
+    |
     */
 
     'streaming' => [
@@ -99,6 +111,9 @@ return [
         'max_stream_seconds' => (int) env('AI_KIT_STREAMING_MAX_SECONDS', 180),
         'keepalive_seconds' => (int) env('AI_KIT_STREAMING_KEEPALIVE_SECONDS', 15),
         'poll_interval_ms' => (int) env('AI_KIT_STREAMING_POLL_INTERVAL_MS', 150),
+        'page_size' => 64,
+        'stale_after_seconds' => 300,
+        'stale_trailing_done' => false,
     ],
 
     /*
@@ -227,10 +242,35 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Chat
+    |--------------------------------------------------------------------------
+    |
+    | The shared DEFAULT chat model for the fleet (DECISIONS.md #21). Every
+    | app inherits this slug unless it overrides it — through
+    | AI_KIT_CHAT_MODEL, through its own published config, or through an
+    | app-level setting that wins over config (uqucc's `AiSettings->chat_model`
+    | row does, and has to be migrated at adoption).
+    |
+    | The slug is PINNED by owner ruling, not chosen here: Google Gemini
+    | Flash Lite, the latest lite generation at ruling time (tools +
+    | reasoning + structured outputs + multimodal, 1M context). Cheaper prior
+    | generations (`google/gemini-3.1-flash-lite`,
+    | `google/gemini-2.5-flash-lite`) are the fallback candidates if cost or
+    | behaviour disappoints. Read it through `Catalog::chatModel()`; a model
+    | the catalog also declares picks up that entry's fallbacks and price cap.
+    |
+    */
+
+    'chat' => [
+        'model' => env('AI_KIT_CHAT_MODEL', 'google/gemini-3.5-flash-lite'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Approvals
     |--------------------------------------------------------------------------
     |
-    | Two seams live here. The DECIDED contract (DECISIONS.md #3) is the
+    | One seam lives here — the DECIDED contract (DECISIONS.md #3), the
     | classified pause on laravel/ai's native `Approvable`: tools extend
     | `Classified\ClassifiedTool`, declare a server-derived Capability
     | (read / write+undoable / destructive), reads run free, undoable
@@ -239,25 +279,17 @@ return [
     | `Classified\ApprovalCards` renders the cards and `Classified\AskUser`
     | rides the same pause for mid-turn questions.
     |
-    | TRANSITIONAL: the propose → confirm → execute machinery below
-    | predates that ruling; it stays until the apps running it (uqucc)
-    | migrate onto the classified seam, then it is retired.
+    | Executed writes claim exactly-once rows in `write_executions_table`,
+    | so a resumed or replayed turn never runs the same write twice.
     |
-    | The propose → confirm → execute pattern: proposals persist in
-    | `proposals_table`, executed plan steps claim exactly-once rows in
-    | `write_executions_table`, and proposed plans wait for their confirm
-    | turn in the plan cache store for `plan_ttl_seconds` (an abandoned plan
-    | quietly lapses). `auto_approve` lets a single non-destructive, undoable
-    | step skip the approval card; turn it off to always show the card.
+    | The transitional propose → confirm → execute machinery was RETIRED in
+    | v0.8.0; its `proposals_table`, `plan_cache_store`, `plan_ttl_seconds`
+    | and `auto_approve` keys are gone with it.
     |
     */
 
     'approvals' => [
-        'proposals_table' => 'ai_proposals',
         'write_executions_table' => 'ai_write_executions',
-        'plan_cache_store' => env('AI_KIT_PLAN_CACHE_STORE'),
-        'plan_ttl_seconds' => (int) env('AI_KIT_PLAN_TTL_SECONDS', 3600),
-        'auto_approve' => true,
 
         // Turn undo (opt-in): executed writes ledger their compensations in
         // `undo_table` and UndoTurn replays a whole turn in reverse. Keep
