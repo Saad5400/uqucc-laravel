@@ -55,6 +55,14 @@ Route::get('/mstnd/{document}', App\Http\Controllers\CorpusDocumentFileControlle
 Route::middleware('throttle:ai-chat')->group(function () {
     Route::post('/ai/chat', [ChatController::class, 'send'])->name('ai.chat.send');
     Route::post('/ai/chat/attachments', ChatAttachmentController::class)->name('ai.chat.attachments.store');
+
+    // Resuming or stopping a turn the visitor already paid for: both read the
+    // turn buffer rather than opening one, so neither spends a daily quota
+    // slot. They live under /ai/chat/turns/… so the single-segment
+    // {conversation} route below can never swallow them.
+    Route::get('/ai/chat/turns/{turn}/stream', [ChatController::class, 'stream'])->name('ai.chat.stream');
+    Route::post('/ai/chat/turns/{turn}/cancel', [ChatController::class, 'cancel'])->name('ai.chat.cancel');
+
     Route::get('/ai/chat/{conversation}', [ChatController::class, 'show'])->name('ai.chat.show');
 });
 

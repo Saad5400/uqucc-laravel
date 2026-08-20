@@ -1,6 +1,8 @@
 <?php
 
 use App\Ai\Agents\StudentAssistant;
+use App\Ai\Chat\CitationExtractor;
+use App\Jobs\Ai\GenerateChatReply;
 use App\Models\Ai\ChatAttachment;
 use App\Models\Page;
 use App\Settings\AiSettings;
@@ -10,6 +12,7 @@ use Laravel\Ai\Models\ConversationMessage;
 use Laravel\Ai\Responses\Data\ToolCall;
 use Saad\AiKit\Safety\BudgetGuard;
 use Saad\AiKit\Safety\KillSwitch;
+use Saad\AiKit\Streaming\TurnBuffer;
 use Saad\AiKit\Usage\UsageEvent;
 
 beforeEach(function () {
@@ -540,4 +543,166 @@ it('returns the visitor their own message, not the evidence wrapped around it', 
         ->json('messages');
 
     expect($messages[0]['content'])->toBe('وش أفضل تخصص؟');
+});
+
+/*
+|--------------------------------------------------------------------------
+| Resumable turns (ai-kit TurnBuffer)
+|--------------------------------------------------------------------------
+|
+| The reply is folded into a durable buffer by a queued job; the SSE
+| endpoints only tail it. What these pin is the resume contract: the turn
+| handle the client stores, the `id:` lines that are the cursor, replay from
+| a cursor, ownership on both new endpoints, and cancellation.
+|
+*/
+
+/** The reply as the client would assemble it, across however many deltas it took. */
+function sseDeltaText(string $content): string
+{
+    preg_match_all("/^event: delta\ndata: (.+)$/m", $content, $matches);
+
+    return implode('', array_map(
+        fn (string $data): string => (string) (json_decode($data, true)['text'] ?? ''),
+        $matches[1],
+    ));
+}
+
+/** Every SSE frame in the content, as [seq, event] pairs. */
+function sseFrames(string $content): array
+{
+    preg_match_all("/^id: (\d+)\nevent: (\S+)$/m", $content, $matches, PREG_SET_ORDER);
+
+    return array_map(fn (array $match): array => [(int) $match[1], $match[2]], $matches);
+}
+
+it('opens the stream with a turn handle and numbers every frame for resuming', function () {
+    StudentAssistant::fake(['أهلاً بك.']);
+
+    $content = withChatSession(chatSessionId())
+        ->post(route('ai.chat.send'), ['message' => 'مرحبا'])
+        ->assertOk()
+        ->streamedContent();
+
+    $frames = sseFrames($content);
+    $turn = sseEventData($content, 'turn');
+
+    // The handle is the FIRST frame — a client that drops immediately still
+    // knows which turn to reconnect to.
+    expect($frames[0][1])->toBe('turn')
+        ->and($turn['id'])->not->toBeEmpty()
+        ->and(app(TurnBuffer::class)->get($turn['id']))->not->toBeNull();
+
+    // Sequence numbers are dense and ascending: they ARE the cursor.
+    expect(array_column($frames, 0))->toBe(range(1, count($frames)))
+        ->and(collect($frames)->pluck(1))->toContain('delta', 'done');
+});
+
+it('replays only the frames after the cursor a client resumes at', function () {
+    StudentAssistant::fake(['أهلاً بك.']);
+
+    $sessionId = chatSessionId();
+
+    $first = withChatSession($sessionId)
+        ->post(route('ai.chat.send'), ['message' => 'مرحبا'])
+        ->streamedContent();
+
+    $turnId = sseEventData($first, 'turn')['id'];
+    $frames = sseFrames($first);
+    $lastSeq = end($frames)[0];
+
+    // Resuming where the first read stopped yields nothing new...
+    $drained = withChatSession($sessionId)
+        ->get(route('ai.chat.stream', ['turn' => $turnId, 'cursor' => $lastSeq]))
+        ->assertOk()
+        ->streamedContent();
+
+    expect(sseFrames($drained))->toBeEmpty();
+
+    // ...while resuming from the handle replays the reply itself, and only it.
+    $resumed = withChatSession($sessionId)
+        ->get(route('ai.chat.stream', ['turn' => $turnId, 'cursor' => 1]))
+        ->assertOk()
+        ->streamedContent();
+
+    expect($resumed)->not->toContain('event: turn')
+        ->and(sseDeltaText($resumed))->toBe('أهلاً بك.')
+        ->and(sseEventData($resumed, 'done'))->not->toBeNull();
+});
+
+it('resumes from Last-Event-ID when the client sends no cursor', function () {
+    StudentAssistant::fake(['أهلاً بك.']);
+
+    $sessionId = chatSessionId();
+
+    $first = withChatSession($sessionId)
+        ->post(route('ai.chat.send'), ['message' => 'مرحبا'])
+        ->streamedContent();
+
+    $turnId = sseEventData($first, 'turn')['id'];
+    $frames = sseFrames($first);
+    $lastSeq = end($frames)[0];
+
+    $resumed = withChatSession($sessionId)
+        ->withHeader('Last-Event-ID', (string) $lastSeq)
+        ->get(route('ai.chat.stream', ['turn' => $turnId]))
+        ->assertOk()
+        ->streamedContent();
+
+    expect(sseFrames($resumed))->toBeEmpty();
+});
+
+it('answers 404 on a turn belonging to another session, and on an unknown one', function () {
+    StudentAssistant::fake(['أهلاً بك.']);
+
+    $turnId = sseEventData(
+        withChatSession(chatSessionId())->post(route('ai.chat.send'), ['message' => 'مرحبا'])->streamedContent(),
+        'turn',
+    )['id'];
+
+    withChatSession(chatSessionId())->get(route('ai.chat.stream', ['turn' => $turnId]))->assertNotFound();
+    withChatSession(chatSessionId())->post(route('ai.chat.cancel', ['turn' => $turnId]))->assertNotFound();
+    withChatSession(chatSessionId())->get(route('ai.chat.stream', ['turn' => (string) Str::uuid7()]))->assertNotFound();
+});
+
+it('flags a turn cancelled for its own session', function () {
+    StudentAssistant::fake(['أهلاً بك.']);
+
+    $sessionId = chatSessionId();
+
+    $turnId = sseEventData(
+        withChatSession($sessionId)->post(route('ai.chat.send'), ['message' => 'مرحبا'])->streamedContent(),
+        'turn',
+    )['id'];
+
+    expect(app(TurnBuffer::class)->isCancelled($turnId))->toBeFalse();
+
+    withChatSession($sessionId)
+        ->post(route('ai.chat.cancel', ['turn' => $turnId]))
+        ->assertOk()
+        ->assertJson(['cancelled' => true]);
+
+    expect(app(TurnBuffer::class)->isCancelled($turnId))->toBeTrue();
+});
+
+it('fails a queued turn without calling the model when the kill switch engaged after it was queued', function () {
+    StudentAssistant::fake(['لن يصل هذا الرد أبداً.']);
+
+    $buffer = app(TurnBuffer::class);
+    $turnId = (string) Str::uuid7();
+
+    $buffer->start($turnId, ['session_id' => 'session-under-test']);
+
+    // Engaged AFTER the turn entered the queue: the job is where the money
+    // would actually be spent, so that is where the switch has to bite.
+    app(KillSwitch::class)->engage();
+
+    (new GenerateChatReply(turnId: $turnId, sessionId: 'session-under-test', prompt: 'مرحبا'))
+        ->handle($buffer, app(KillSwitch::class), app(CitationExtractor::class));
+
+    $record = $buffer->get($turnId);
+
+    expect($record['status'])->toBe('failed')
+        ->and(collect($record['events'])->pluck('event')->all())->toBe(['error'])
+        ->and(Conversation::query()->count())->toBe(0);
 });

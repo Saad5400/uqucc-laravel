@@ -2,22 +2,21 @@
 
 namespace App\Http\Controllers\Ai;
 
-use App\Ai\Agents\StudentAssistant;
 use App\Ai\Chat\AnswerLinkGuard;
 use App\Ai\Chat\AttachmentContext;
 use App\Ai\Chat\CategoryContext;
 use App\Ai\Chat\CitationExtractor;
 use App\Ai\Chat\SessionOwner;
-use App\Ai\Chat\StreamingAnswerLinkGuard;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Ai\ChatMessageRequest;
+use App\Jobs\Ai\GenerateChatReply;
 use App\Models\Ai\ChatAttachment;
 use App\Settings\AiSettings;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 use Laravel\Ai\Models\ConversationMessage;
 use Saad\AiKit\Conversations\ConversationContent;
 use Saad\AiKit\Conversations\ConversationOwnership;
@@ -26,21 +25,32 @@ use Saad\AiKit\Safety\Exceptions\AiUnavailableException;
 use Saad\AiKit\Safety\KillSwitch;
 use Saad\AiKit\Safety\TurnGuard;
 use Saad\AiKit\Streaming\SseStream;
-use Saad\AiKit\Streaming\StreamEventMapper;
-use Saad\AiKit\Streaming\StreamResult;
+use Saad\AiKit\Streaming\TurnBuffer;
 use Symfony\Component\HttpFoundation\StreamedResponse;
-use Throwable;
 
 /**
  * The anonymous student-assistant chat API. Visitors have no accounts, so a
  * conversation belongs to the SESSION that started it (SessionOwner wraps the
  * session id as the laravel/ai conversation participant).
  *
- * POST /ai/chat answers as a Server-Sent-Events stream — TRUE streaming: the
- * LLM call runs inside the request and each model text delta is flushed as a
- * `delta` event, followed by `citations` (pages the turn's content tools
- * consulted), then `done`, or `error`. Pre-flight failures (feature toggle,
- * budget, daily quota) answer as plain JSON before any stream starts.
+ * ── Resumable turns ── The reply no longer generates inside the request.
+ * POST /ai/chat opens a durable {@see TurnBuffer} turn, queues
+ * {@see GenerateChatReply} to fold the model stream into it, and then TAILS
+ * that buffer as Server-Sent Events. What the client reads is unchanged —
+ * `turn`, then `reasoning` / `delta` / `tool` / `citations` and one terminal
+ * `done` or `error` — but every frame now carries an `id:` line (its buffer
+ * sequence number), and the reply keeps generating whether or not anyone is
+ * listening. So a visitor who loses signal, backgrounds the tab or reloads
+ * reconnects to {@see stream()} with `?cursor=<last seq>` and picks the SAME
+ * turn up where it stopped, instead of losing a half-written answer.
+ *
+ * The leading `turn {id}` frame is what makes that possible: it is the handle
+ * the client stores and re-issues. It replays on a resume too (it is buffer
+ * seq 1), which the client treats as the no-op it is.
+ *
+ * Because generation is decoupled from the socket, hanging up no longer stops
+ * it — so the visitor's stop button flags the turn through {@see cancel()},
+ * and the job finishes early with whatever it had.
  *
  * ai-kit v0.5.0's `reasoning` and `tool` events are on by default here too,
  * deliberately: the page renders them as a collapsible thinking block and as
@@ -52,22 +62,27 @@ use Throwable;
  * Layered gates, in order: ai-kit's TurnGuard (503) — the assistant toggle
  * via the operator's AiSettings, the kit's cache kill switch, and the daily
  * spend budget in one call — → the `ai-chat` burst limiter on the route
- * (429) → the operator's per-session daily message quota (429).
+ * (429) → the operator's per-session daily message quota (429). The queued
+ * job re-checks the kill switch on its way out of the queue, which is where
+ * the money is actually spent.
  */
 class ChatController extends Controller
 {
     /** Usage feature label for assistant chat turns (ai-kit usage module). */
-    private const FEATURE = 'assistant';
+    private const FEATURE = GenerateChatReply::FEATURE;
 
     /**
-     * POST /ai/chat (name: ai.chat.send) — run one assistant turn as SSE.
+     * POST /ai/chat (name: ai.chat.send) — open one assistant turn and stream
+     * it. Pre-flight failures (feature toggle, budget, daily quota) answer as
+     * plain JSON before any turn is opened, so a refused visitor is never
+     * charged a turn id.
      */
     public function send(
         ChatMessageRequest $request,
         AiSettings $settings,
         TurnGuard $guard,
         ConversationOwnership $ownership,
-        CitationExtractor $citations,
+        TurnBuffer $buffer,
         AttachmentContext $attachmentContext,
         CategoryContext $categoryContext,
     ): JsonResponse|StreamedResponse {
@@ -92,11 +107,61 @@ class ChatController extends Controller
 
         $prompt = $categoryContext->wrap($attachmentContext->wrap($question, $attachments), $question);
 
-        return response()->stream(
-            fn () => $this->streamTurn($prompt, $sessionId, $conversationId, $attachments, $citations),
-            200,
-            SseStream::headers(),
+        $turnId = (string) Str::uuid7();
+
+        // `session_id` is what {@see stream()} and {@see cancel()} read back to
+        // refuse a foreign turn; the conversation id is recorded for whatever
+        // reads the turn back, while the one the reply actually resolves rides
+        // the terminal `done`.
+        $buffer->start($turnId, [
+            'session_id' => $sessionId,
+            'conversation_id' => $conversationId,
+        ]);
+
+        // The handle the client stores so it can resume this turn. Appended
+        // BEFORE the job is dispatched, so it is seq 1 and no worker can be
+        // appending concurrently — the buffer's single-writer rule holds.
+        $buffer->append($turnId, 'turn', ['id' => $turnId]);
+
+        GenerateChatReply::dispatch(
+            turnId: $turnId,
+            sessionId: $sessionId,
+            prompt: $prompt,
+            conversationId: $conversationId,
+            attachmentIds: array_map('strval', $attachments->modelKeys()),
         );
+
+        return $this->tail($buffer, $turnId);
+    }
+
+    /**
+     * GET /ai/chat/turns/{turn}/stream (name: ai.chat.stream) — resume a turn
+     * from `?cursor=<last seq>` (or `Last-Event-ID`). Replaying costs nothing
+     * and spends nothing, so only ownership gates it; an unknown or expired
+     * turn is a 404 so the client stops retrying rather than looping.
+     */
+    public function stream(Request $request, TurnBuffer $buffer, string $turn): StreamedResponse
+    {
+        $this->ownedTurn($buffer, $turn, $request->session()->getId());
+
+        $after = max(0, (int) $request->query('cursor', $request->header('Last-Event-ID', '0')));
+
+        return $this->tail($buffer, $turn, $after);
+    }
+
+    /**
+     * POST /ai/chat/turns/{turn}/cancel (name: ai.chat.cancel) — the visitor
+     * pressed stop. Generation runs in a queued job now, so hanging up the SSE
+     * connection no longer ends it: flag the turn instead and the job finishes
+     * early with whatever it had streamed.
+     */
+    public function cancel(Request $request, TurnBuffer $buffer, string $turn): JsonResponse
+    {
+        $this->ownedTurn($buffer, $turn, $request->session()->getId());
+
+        $buffer->cancel($turn);
+
+        return response()->json(['cancelled' => true]);
     }
 
     /**
@@ -146,68 +211,43 @@ class ChatController extends Controller
     }
 
     /**
-     * Run the turn against the model and emit the SSE events, folded through
-     * ai-kit's StreamEventMapper (the link guard rides the text pipeline,
-     * citations ride beforeDone). Runs inside the streamed response, so every
-     * outcome — including a thrown provider error — must land as an event
-     * the client understands.
-     *
-     * @param  EloquentCollection<int, ChatAttachment>  $attachments
+     * Tail one turn's durable buffer as SSE — the ONE streaming response this
+     * controller produces, whether the turn was just opened by {@see send()}
+     * or is being resumed by {@see stream()}. The frame writing, the poll
+     * loop, the deadline and the keepalive comments are all the kit's,
+     * configured under `ai-kit.streaming`; nothing app-specific is folded in
+     * at emit time, because the terminal `done` already carries the
+     * conversation id the client needs.
      */
-    private function streamTurn(
-        string $prompt,
-        string $sessionId,
-        ?string $conversationId,
-        EloquentCollection $attachments,
-        CitationExtractor $citations,
-    ): void {
-        $sse = new SseStream;
-        $sse->extendTimeLimit((int) config('ai.chat.timeout', 60) + 30);
+    private function tail(TurnBuffer $buffer, string $turnId, int $after = 0): StreamedResponse
+    {
+        return response()->stream(function () use ($buffer, $turnId, $after): void {
+            $sse = app(SseStream::class);
 
-        // ai-kit's usage module records the turn (exact provider cost,
-        // tokens, timings) automatically; the label is all it needs.
-        Context::add(config('ai-kit.usage.feature_context_key'), self::FEATURE);
+            // The tail outlives a single model call: it holds the connection
+            // until the turn drains or the kit's own ceiling closes it (the
+            // client then reconnects with its last id).
+            $sse->extendTimeLimit((int) config('ai-kit.streaming.max_stream_seconds', 180) + 30);
 
-        $owner = new SessionOwner($sessionId);
+            $buffer->tail($turnId, $after, $sse);
+        }, 200, SseStream::headers());
+    }
 
-        $agent = StudentAssistant::make();
-        $agent = $conversationId !== null
-            ? $agent->continue($conversationId, $owner)
-            : $agent->forUser($owner);
+    /**
+     * The turn record, or a 404 — for an unknown or expired turn, and equally
+     * for one belonging to another session. Both are 404 rather than 403: a
+     * visitor has no business learning that someone else's turn id exists.
+     *
+     * @return array<string, mixed>
+     */
+    private function ownedTurn(TurnBuffer $buffer, string $turnId, string $sessionId): array
+    {
+        $record = $buffer->get($turnId);
 
-        try {
-            $response = $agent->stream($prompt);
+        abort_if($record === null, 404);
+        abort_unless(($record['meta']['session_id'] ?? null) === $sessionId, 404);
 
-            (new StreamEventMapper)
-                ->transformText(new StreamingAnswerLinkGuard(app(AnswerLinkGuard::class)))
-                ->onError(fn (): string => $this->genericErrorMessage())
-                ->beforeDone(function (StreamResult $result, callable $emit) use ($citations): void {
-                    $items = $citations->extract($result->toolResults);
-
-                    if ($items !== []) {
-                        $emit('citations', ['items' => $items]);
-                    }
-                })
-                ->doneUsing(function () use ($response, $conversationId, $attachments): array {
-                    $finalConversationId = $response->conversationId ?? $conversationId;
-
-                    if ($finalConversationId !== null && $attachments->isNotEmpty()) {
-                        ChatAttachment::query()
-                            ->whereKey($attachments->modelKeys())
-                            ->update(['conversation_id' => $finalConversationId]);
-                    }
-
-                    return [
-                        'conversation_id' => $finalConversationId,
-                        'message_id' => $this->latestAssistantMessageId($finalConversationId),
-                    ];
-                })
-                ->run($response, fn (string $event, array $data) => $sse->emit($event, $data));
-        } catch (Throwable $exception) {
-            report($exception);
-
-            $sse->emit('error', ['message' => $this->genericErrorMessage()]);
-        }
+        return $record;
     }
 
     /**
@@ -267,26 +307,8 @@ class ChatController extends Controller
             ->get();
     }
 
-    private function latestAssistantMessageId(?string $conversationId): ?string
-    {
-        if ($conversationId === null) {
-            return null;
-        }
-
-        return ConversationMessage::query()
-            ->where('conversation_id', $conversationId)
-            ->where('role', 'assistant')
-            ->orderByDesc('id')
-            ->value('id');
-    }
-
     private function disabledResponse(): JsonResponse
     {
         return response()->json(['message' => 'المساعد الذكي غير متاح حالياً.'], 503);
-    }
-
-    private function genericErrorMessage(): string
-    {
-        return 'حدث خطأ أثناء توليد الرد. حاول مرة أخرى.';
     }
 }
