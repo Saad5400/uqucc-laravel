@@ -3,7 +3,13 @@ import ManageLayout from '@/components/manage/ManageLayout.vue';
 import PageHeader from '@/components/manage/PageHeader.vue';
 import { asApprovalCard, isQuestionCard, type AssistantApprovalCard, type CardDecision } from '@/components/manage/assistant/types';
 import { Button } from '@/components/ui/button';
-import { decide as decideChat, send as sendChat, show as showConversation } from '@/routes/manage/assistant';
+import {
+    cancel as cancelTurn,
+    decide as decideChat,
+    send as sendChat,
+    show as showConversation,
+    stream as streamTurn,
+} from '@/routes/manage/assistant';
 import { Head, Link } from '@inertiajs/vue3';
 import type { AiKitCard, ClientDecision, QuestionPayload } from '@saad5400/ai-kit/events';
 import { readSseStream } from '@saad5400/ai-kit/sse';
@@ -34,8 +40,8 @@ import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, reactive, ref,
 /**
  * The admin assistant chat: the operator copilot whose writes pause the turn
  * for approval. POST /manage/assistant/chat streams the reply as ai-kit SSE
- * frames — reasoning/delta/tool/approval/question/done/error, read with the
- * kit's `readSseStream` — the same transport as the public AssistantPage. A
+ * frames — turn/reasoning/delta/tool/approval/question/done/error, read with
+ * the kit's `readSseStream` — the same transport as the public AssistantPage. A
  * pause renders inline cards with تأكيد/رفض (or an answer box); once every
  * pending card is decided, the batch resumes the SAME turn via
  * POST /manage/assistant/chat/{conversation}/decide and the continuation
@@ -48,6 +54,23 @@ import { computed, markRaw, nextTick, onBeforeUnmount, onMounted, reactive, ref,
  * event is pushed through the timeline — it ignores the ones it does not own —
  * and `groupSegments` collapses thinking and tool runs into one disclosure
  * while text and decision cards stay top-level where they occurred.
+ *
+ * ── Resumable turns ── The reply is generated into a durable server-side
+ * buffer, so it survives the connection that asked for it. Every frame the
+ * server sends carries an `id:` — the buffer sequence number, handed to the
+ * reader's third argument — and re-issuing the last one as `?cursor=` is what
+ * makes a reconnect resume rather than replay. So a drop (a flaky link, the
+ * server's own stream ceiling) climbs a reconnect ladder against `stream`,
+ * and a page reload picks the turn back up from the id parked in
+ * sessionStorage. Seeing any frame forgives the previous drop, so a long
+ * turn never exhausts its retries.
+ *
+ * That matters most on this surface: a turn that paused for approval, or one
+ * whose approved writes are running, is exactly the turn an operator cannot
+ * afford to lose to a dropped connection.
+ *
+ * Because generation no longer rides the request, hanging up does not stop
+ * it: the stop button tells the SERVER to stop.
  *
  * Thinking and tool progress are live-only: the server never persists them,
  * so a rehydrated thread replays its stored text and repaints its pending
@@ -76,6 +99,10 @@ interface ChatMessage {
 }
 
 const CONVERSATION_STORAGE_KEY = 'manage-assistant-conversation-id';
+/** The turn still in flight when the page was left, so a reload can resume it. */
+const ACTIVE_TURN_STORAGE_KEY = 'manage-assistant-active-turn-id';
+/** Reconnect attempts before a turn is given up on — the ladder tops out at 8s a try. */
+const MAX_RECONNECTS = 8;
 const MAX_MESSAGE_LENGTH = 2000;
 
 /** First-open teaching prompts: what the assistant is actually for. */
@@ -116,6 +143,29 @@ let nextLocalId = 1;
 let abortController: AbortController | undefined;
 
 /**
+ * The turn currently being read, how far into its buffer this client has got,
+ * and whether it has reached a terminal event. `lastSeq` is the cursor every
+ * reconnect re-issues; `reconnects` is reset by any frame that lands, so
+ * progress forgives the drop that preceded it.
+ */
+let currentTurn: string | null = null;
+let lastSeq = 0;
+let reconnects = 0;
+let turnFinished = false;
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Whether the admin has walked away from the turn currently being read. */
+const readAborted = (): boolean => abortController?.signal.aborted === true;
+
+/** The answer as plain text, for matching a replayed turn against a rehydrated one. */
+const answerText = (segments: Segment[]): string =>
+    segments
+        .filter((segment) => segment.type === 'text')
+        .map((segment) => segment.text)
+        .join('');
+
+/**
  * A message whose segment list is reactive and handed to the timeline, so
  * the reducer's in-place mutations re-render the bubble.
  */
@@ -150,6 +200,20 @@ const isBubbleEmpty = (message: ChatMessage): boolean => message.streaming === t
 
 const trackCard = (card: AiKitCard): void => {
     cardDecisions[card.id] ??= { status: 'pending', decision: null, answer: null };
+};
+
+/**
+ * Cards the server reported pending while a resumable turn was outstanding.
+ * They are drawn by that turn's replay, and only fall back to being drawn
+ * here if the replay never arrives.
+ */
+let deferredCards: AiKitCard[] = [];
+
+const paintCards = (target: ChatMessage, cards: AiKitCard[]): void => {
+    for (const card of cards) {
+        target.timeline.push(card.kind === 'question' ? 'question' : 'approval', card);
+        trackCard(card);
+    }
 };
 
 const trackedFor = (card: AiKitCard): CardDecision => cardDecisions[card.id] ?? { status: 'pending', decision: null, answer: null };
@@ -237,18 +301,23 @@ const rehydrateConversation = async (): Promise<void> => {
             });
 
         // A paused turn's undecided cards repaint on the last assistant
-        // bubble (a pause always ends the stored thread on one).
+        // bubble (a pause always ends the stored thread on one) — UNLESS that
+        // turn is still resumable, in which case its own replay paints them in
+        // the bubble they actually happened in. Holding them here rather than
+        // drawing them twice; `resumeActiveTurn` draws them after all if the
+        // replay never lands.
         if (payload.pending_approvals.length > 0) {
-            let target = [...messages.value].reverse().find((message) => message.role === 'assistant');
+            if (sessionStorage.getItem(ACTIVE_TURN_STORAGE_KEY)) {
+                deferredCards = payload.pending_approvals;
+            } else {
+                let target = [...messages.value].reverse().find((message) => message.role === 'assistant');
 
-            if (!target) {
-                target = newMessage('assistant');
-                messages.value.push(target);
-            }
+                if (!target) {
+                    target = newMessage('assistant');
+                    messages.value.push(target);
+                }
 
-            for (const card of payload.pending_approvals) {
-                target.timeline.push(card.kind === 'question' ? 'question' : 'approval', card);
-                trackCard(card);
+                paintCards(target, payload.pending_approvals);
             }
         }
 
@@ -260,9 +329,36 @@ const rehydrateConversation = async (): Promise<void> => {
     }
 };
 
-const handleSseEvent = (event: string, data: Record<string, unknown>, reply: ChatMessage): void => {
-    // Everything goes through the timeline, which ignores what it does not
-    // own — the app-specific events below are handled beside it, not instead.
+/**
+ * Fold one frame from the kit's reader.
+ *
+ * `id` is the buffer sequence number the frame was stored under; recording it
+ * is the whole of what makes the next reconnect resume instead of replay.
+ */
+const handleSseEvent = (event: string, data: Record<string, unknown>, reply: ChatMessage, id?: string): void => {
+    if (id !== undefined) {
+        const seq = Number.parseInt(id, 10);
+
+        if (!Number.isNaN(seq)) {
+            lastSeq = seq;
+            reconnects = 0;
+        }
+    }
+
+    // The turn handle, always the first frame. It is not a timeline event —
+    // it is the id a reconnect (or a reload) re-issues to find this turn again.
+    if (event === 'turn') {
+        if (typeof data.id === 'string' && data.id !== '') {
+            currentTurn = data.id;
+            sessionStorage.setItem(ACTIVE_TURN_STORAGE_KEY, data.id);
+        }
+
+        return;
+    }
+
+    // Everything else goes through the timeline, which ignores what it does
+    // not own — the app-specific events below are handled beside it, not
+    // instead.
     reply.timeline.push(event, data);
 
     if (event === 'approval' || event === 'question') {
@@ -270,16 +366,145 @@ const handleSseEvent = (event: string, data: Record<string, unknown>, reply: Cha
             trackCard(data as unknown as AiKitCard);
         }
     } else if (event === 'done') {
+        // `done` and `error` are each terminal on their own (the kit's buffer
+        // contract): one or the other ends the turn, never both, so reaching
+        // either means there is nothing left to reconnect for.
+        turnFinished = true;
+
         if (typeof data.conversation_id === 'string' && data.conversation_id !== '') {
             conversationId.value = data.conversation_id;
             sessionStorage.setItem(CONVERSATION_STORAGE_KEY, data.conversation_id);
         }
     } else if (event === 'error') {
+        turnFinished = true;
         reply.failed = true;
         errorBanner.value = typeof data.message === 'string' ? data.message : 'حدث خطأ أثناء توليد الرد. حاول مرة أخرى.';
     }
 
     void scrollToBottom();
+};
+
+/** Read one SSE response to its end, folding every frame into the live reply. */
+const readTurn = async (response: Response, reply: ChatMessage): Promise<void> => {
+    await readSseStream(response, (event, data, id) => handleSseEvent(event, (data ?? {}) as Record<string, unknown>, reply, id), {
+        signal: abortController?.signal,
+    });
+};
+
+/**
+ * Keep reading the current turn across drops until it reaches a terminal
+ * event or the ladder runs out.
+ *
+ * A read ends three ways: the turn finished (nothing more to do), the server
+ * hit its own stream ceiling and hung up mid-turn, or the connection broke.
+ * The last two are the same thing to this loop — wait out the backoff and
+ * re-issue `?cursor=lastSeq`, so the server replays only what was missed.
+ * Only an abort — the admin leaving the page — returns without reconnecting,
+ * and it deliberately leaves the resume handle behind for the next load.
+ *
+ * `immediate` skips the first backoff, for a turn being picked up from
+ * storage rather than recovered from a drop.
+ */
+const followTurn = async (reply: ChatMessage, immediate = false): Promise<void> => {
+    let first = immediate;
+
+    while (!turnFinished && currentTurn !== null && !readAborted()) {
+        if (!first) {
+            if (reconnects >= MAX_RECONNECTS) {
+                turnFinished = true;
+                reply.failed = !hasText(reply) && !hasCard(reply);
+                errorBanner.value = 'انقطع الاتصال بالمساعد. حاول مرة أخرى.';
+
+                return;
+            }
+
+            reconnects++;
+            await sleep(Math.min(1000 * 2 ** (reconnects - 1), 8000));
+
+            if (readAborted()) {
+                return;
+            }
+        }
+
+        first = false;
+
+        try {
+            const response = await fetch(`${streamTurn.url(currentTurn)}?cursor=${lastSeq}`, {
+                credentials: 'same-origin',
+                headers: { Accept: 'text/event-stream' },
+                signal: abortController?.signal,
+            });
+
+            if (response.status === 404) {
+                // The buffer expired, or never belonged to this admin: there is
+                // no turn to resume, so stop rather than climb the ladder. Any
+                // cards it left pending survive on the conversation and repaint
+                // on the next rehydrate.
+                turnFinished = true;
+                reply.failed = !hasText(reply) && !hasCard(reply);
+                errorBanner.value = 'انتهت صلاحية هذا الرد. أعد إرسال طلبك.';
+
+                return;
+            }
+
+            if (!response.ok || !response.body) {
+                continue;
+            }
+
+            await readTurn(response, reply);
+        } catch (error) {
+            if ((error as Error).name === 'AbortError') {
+                return;
+            }
+        }
+    }
+};
+
+/**
+ * Settle a turn that is no longer being read: clear the live flags and drop
+ * chips nothing will ever resolve.
+ *
+ * The resume handle is forgotten only for a turn that actually ENDED — one
+ * that reached `done` / `error`, expired, or exhausted its retries. A read
+ * that stopped because the admin navigated away leaves it in place on
+ * purpose: that is precisely the turn the next page load should pick up.
+ */
+const settleTurn = async (reply: ChatMessage): Promise<void> => {
+    reply.streaming = false;
+
+    // Stopping the turn (or losing the connection for good) can leave a chip
+    // mid-flight; a spinner nothing will ever resolve is worse than no chip.
+    // Spliced in place: the timeline owns this array.
+    for (let index = reply.segments.length - 1; index >= 0; index--) {
+        const segment = reply.segments[index];
+
+        if (segment.type === 'tool' && segment.status === 'running') {
+            reply.segments.splice(index, 1);
+        }
+    }
+
+    if (reply.failed && !hasText(reply) && !hasCard(reply)) {
+        messages.value = messages.value.filter((item) => item.id !== reply.id);
+    }
+
+    if (turnFinished) {
+        sessionStorage.removeItem(ACTIVE_TURN_STORAGE_KEY);
+        currentTurn = null;
+    }
+
+    isStreaming.value = false;
+    abortController = undefined;
+    await scrollToBottom();
+};
+
+/** Reset the per-turn transport state before a fresh turn is read. */
+const beginTurn = (): void => {
+    currentTurn = null;
+    lastSeq = 0;
+    reconnects = 0;
+    turnFinished = false;
+    isStreaming.value = true;
+    abortController = new AbortController();
 };
 
 /**
@@ -288,8 +513,7 @@ const handleSseEvent = (event: string, data: Record<string, unknown>, reply: Cha
  * stream contract.
  */
 const streamInto = async (url: string, body: Record<string, unknown>, liveReply: ChatMessage): Promise<void> => {
-    isStreaming.value = true;
-    abortController = new AbortController();
+    beginTurn();
     await scrollToBottom();
 
     try {
@@ -302,7 +526,7 @@ const streamInto = async (url: string, body: Record<string, unknown>, liveReply:
                 Accept: 'text/event-stream',
             },
             body: JSON.stringify(body),
-            signal: abortController.signal,
+            signal: abortController?.signal,
         });
 
         const contentType = response.headers.get('Content-Type') ?? '';
@@ -310,6 +534,9 @@ const streamInto = async (url: string, body: Record<string, unknown>, liveReply:
         if (!contentType.includes('text/event-stream')) {
             const serverMessage = await readJsonMessage(response);
 
+            // A refusal (429 burst, 409 stale cards, 422 bad payload, 503
+            // disabled) never opened a turn, so there is nothing to resume.
+            turnFinished = true;
             liveReply.failed = true;
 
             if (response.status === 429) {
@@ -322,40 +549,32 @@ const streamInto = async (url: string, body: Record<string, unknown>, liveReply:
         }
 
         if (!response.body) {
+            turnFinished = true;
             liveReply.failed = true;
             errorBanner.value = 'حدث خطأ أثناء قراءة الرد. حاول مرة أخرى.';
             return;
         }
 
-        await readSseStream(response, (event, data) => handleSseEvent(event, (data ?? {}) as Record<string, unknown>, liveReply), {
-            signal: abortController.signal,
-        });
+        await readTurn(response, liveReply);
     } catch (error) {
-        if ((error as Error).name !== 'AbortError') {
-            liveReply.failed = !hasText(liveReply);
+        if ((error as Error).name === 'AbortError') {
+            return;
+        }
+
+        // The POST itself never got a stream open. If it managed to hand back
+        // a turn id first, the turn is running server-side and `followTurn`
+        // below picks it up; otherwise there is nothing to recover.
+        if (currentTurn === null) {
+            turnFinished = true;
+            liveReply.failed = !hasText(liveReply) && !hasCard(liveReply);
             errorBanner.value = 'تعذر الاتصال بالخادم. تأكد من اتصالك ثم أعد المحاولة.';
         }
     } finally {
-        liveReply.streaming = false;
-
-        // Stopping the turn (or losing the connection) can leave a chip
-        // mid-flight; a spinner nothing will ever resolve is worse than no
-        // chip. Spliced in place: the timeline owns this array.
-        for (let index = liveReply.segments.length - 1; index >= 0; index--) {
-            const segment = liveReply.segments[index];
-
-            if (segment.type === 'tool' && segment.status === 'running') {
-                liveReply.segments.splice(index, 1);
-            }
-        }
-
-        if (liveReply.failed && !hasText(liveReply) && !hasCard(liveReply)) {
-            messages.value = messages.value.filter((item) => item.id !== liveReply.id);
-        }
-
-        isStreaming.value = false;
-        abortController = undefined;
-        await scrollToBottom();
+        // The POST's own stream ended. Unless the turn reached a terminal
+        // event, it is still generating server-side — reconnect and follow it
+        // rather than abandoning a turn whose writes may still be running.
+        await followTurn(liveReply);
+        await settleTurn(liveReply);
     }
 };
 
@@ -424,13 +643,34 @@ const onQuestionAnswer = (card: QuestionPayload, answer: string): void => {
     void onCardDecision(card, { action: 'edit', arguments: { answer } }, answer);
 };
 
-const stopStreaming = (): void => {
-    abortController?.abort();
+/**
+ * The admin pressed stop. Generation runs server-side now, so hanging up
+ * would leave it running (and writing): tell the server first, then let the
+ * reader drain the terminal `done` the job writes on its way out. The abort
+ * is the fallback for a cancel request that never lands.
+ */
+const stopStreaming = async (): Promise<void> => {
+    const turn = currentTurn;
+
+    if (turn === null) {
+        abortController?.abort();
+        return;
+    }
+
+    try {
+        await fetch(cancelTurn.url(turn), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'X-XSRF-TOKEN': xsrfToken(), Accept: 'application/json' },
+        });
+    } catch {
+        abortController?.abort();
+    }
 };
 
 const startNewConversation = (): void => {
     if (isStreaming.value) {
-        stopStreaming();
+        void stopStreaming();
     }
 
     sessionStorage.removeItem(CONVERSATION_STORAGE_KEY);
@@ -452,8 +692,56 @@ const onComposerKeydown = (event: KeyboardEvent): void => {
     }
 };
 
+/**
+ * Pick a turn left running when the page was closed back up, replaying it
+ * from the start of its buffer. A turn that finished after the tab went away
+ * was persisted in the meantime, so the rehydrated thread already ends with
+ * its answer — the replay would duplicate it, and the settle below drops the
+ * older copy in favour of the richer replayed one.
+ */
+const resumeActiveTurn = async (): Promise<void> => {
+    const storedTurn = sessionStorage.getItem(ACTIVE_TURN_STORAGE_KEY);
+
+    if (!storedTurn || !props.assistant.enabled) {
+        return;
+    }
+
+    beginTurn();
+    // Cursor 0 — a restored turn has seen nothing of this buffer yet, so the
+    // replay rebuilds the bubble from its first frame.
+    currentTurn = storedTurn;
+
+    messages.value.push(newReply());
+    const liveReply = messages.value[messages.value.length - 1];
+
+    try {
+        await followTurn(liveReply, true);
+    } finally {
+        const text = answerText(liveReply.segments);
+        const previous = messages.value[messages.value.indexOf(liveReply) - 1];
+
+        if (text !== '' && previous?.role === 'assistant' && answerText(previous.segments) === text) {
+            messages.value = messages.value.filter((item) => item.id !== previous.id);
+        }
+
+        // The replay never reached the pause (an expired buffer, an exhausted
+        // ladder): draw the server's pending cards after all, so an operator
+        // is never left with a paused conversation and nothing to decide.
+        if (deferredCards.length > 0 && !hasCard(liveReply)) {
+            paintCards(liveReply, deferredCards);
+        }
+
+        deferredCards = [];
+
+        await settleTurn(liveReply);
+    }
+};
+
 onMounted(() => {
-    void rehydrateConversation();
+    // Restore the thread first, then pick up whatever turn was still running
+    // when the page was left — in that order, so the resumed reply lands after
+    // the history it continues, and after its cards were repainted.
+    void rehydrateConversation().then(resumeActiveTurn);
     draftInput.value?.focus();
 });
 

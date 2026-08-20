@@ -6,7 +6,7 @@ import PageHeader from '@/components/page/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { send as sendChat, show as showConversation } from '@/routes/ai/chat';
+import { cancel as cancelTurn, send as sendChat, show as showConversation, stream as streamTurn } from '@/routes/ai/chat';
 import { store as storeAttachment } from '@/routes/ai/chat/attachments';
 import { show as showPage } from '@/routes/pages';
 import { Link } from '@inertiajs/vue3';
@@ -20,7 +20,7 @@ import { markRaw, nextTick, onBeforeUnmount, onMounted, reactive, ref, useTempla
 /**
  * The student assistant chat. Anonymous, session-owned conversations:
  * POST /ai/chat streams the reply as ai-kit SSE frames
- * (reasoning/delta/tool/citations/done/error), read with the kit's
+ * (turn/reasoning/delta/tool/citations/done/error), read with the kit's
  * `readSseStream`; pre-flight failures (feature disabled 503, budget 503,
  * rate limits 429, validation 422) arrive as plain JSON. Like
  * AiSearchPalette, the disabled state is discovered lazily from the
@@ -34,6 +34,20 @@ import { markRaw, nextTick, onBeforeUnmount, onMounted, reactive, ref, useTempla
  * ones it does not own — while `citations`, `done` and `error` are handled
  * beside it. `groupSegments` then collapses thinking and tool runs into one
  * disclosure, leaving the answer text top-level.
+ *
+ * ── Resumable turns ── The reply is generated into a durable server-side
+ * buffer, so it survives the connection that asked for it. Every frame the
+ * server sends carries an `id:` — the buffer sequence number, handed to the
+ * reader's third argument — and re-issuing the last one as `?cursor=` is what
+ * makes a reconnect resume rather than replay. So a drop (lost signal, a
+ * backgrounded tab, the server's own stream ceiling) climbs a reconnect
+ * ladder against `stream`, and a page reload picks the turn back up from the
+ * id parked in sessionStorage. Seeing any frame forgives the previous drop,
+ * so a long turn never exhausts its retries.
+ *
+ * Because generation no longer rides the request, hanging up does not stop
+ * it: the stop button tells the SERVER to stop, and the turn finishes early
+ * with what it had.
  *
  * Thinking and tool progress are live-only — the server persists neither, so
  * a rehydrated thread shows the answer alone instead of inventing them.
@@ -111,6 +125,10 @@ interface PendingAttachment {
 }
 
 const CONVERSATION_STORAGE_KEY = 'assistant-conversation-id';
+/** The turn still in flight when the page was left, so a reload can resume it. */
+const ACTIVE_TURN_STORAGE_KEY = 'assistant-active-turn-id';
+/** Reconnect attempts before a turn is given up on — the ladder tops out at 8s a try. */
+const MAX_RECONNECTS = 8;
 const MAX_MESSAGE_LENGTH = 2000;
 const MAX_ATTACHMENTS = 5;
 const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
@@ -144,6 +162,29 @@ const examplePrompts = [
 let nextLocalId = 1;
 let nextClientId = 1;
 let abortController: AbortController | undefined;
+
+/**
+ * The turn currently being read, how far into its buffer this client has got,
+ * and whether it has reached a terminal event. `lastSeq` is the cursor every
+ * reconnect re-issues; `reconnects` is reset by any frame that lands, so
+ * progress forgives the drop that preceded it.
+ */
+let currentTurn: string | null = null;
+let lastSeq = 0;
+let reconnects = 0;
+let turnFinished = false;
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Whether the visitor has walked away from the turn currently being read. */
+const readAborted = (): boolean => abortController?.signal.aborted === true;
+
+/** The answer as plain text, for matching a replayed turn against a rehydrated one. */
+const answerText = (segments: Segment[]): string =>
+    segments
+        .filter((segment) => segment.type === 'text')
+        .map((segment) => segment.text)
+        .join('');
 
 /**
  * A message whose segment list is reactive and handed to the timeline, so the
@@ -238,9 +279,35 @@ const rehydrateConversation = async (): Promise<void> => {
     }
 };
 
-const handleSseEvent = (event: string, data: Record<string, unknown>, reply: ChatMessage): void => {
-    // Everything goes through the timeline, which ignores what it does not
-    // own — the app's own events below are handled beside it, not instead.
+/**
+ * Fold one frame from the kit's reader.
+ *
+ * `id` is the buffer sequence number the frame was stored under; recording it
+ * is the whole of what makes the next reconnect resume instead of replay.
+ */
+const handleSseEvent = (event: string, data: Record<string, unknown>, reply: ChatMessage, id?: string): void => {
+    if (id !== undefined) {
+        const seq = Number.parseInt(id, 10);
+
+        if (!Number.isNaN(seq)) {
+            lastSeq = seq;
+            reconnects = 0;
+        }
+    }
+
+    // The turn handle, always the first frame. It is not a timeline event —
+    // it is the id a reconnect (or a reload) re-issues to find this turn again.
+    if (event === 'turn') {
+        if (typeof data.id === 'string' && data.id !== '') {
+            currentTurn = data.id;
+            sessionStorage.setItem(ACTIVE_TURN_STORAGE_KEY, data.id);
+        }
+
+        return;
+    }
+
+    // Everything else goes through the timeline, which ignores what it does
+    // not own — the app's own events below are handled beside it, not instead.
     // A tool's name is swapped for its Arabic label on the way in: the chip
     // renders whatever the segment carries, and a student reads none of the
     // identifiers the model and the logs speak.
@@ -249,16 +316,181 @@ const handleSseEvent = (event: string, data: Record<string, unknown>, reply: Cha
     if (event === 'citations' && Array.isArray(data.items)) {
         reply.citations = data.items as Citation[];
     } else if (event === 'done') {
+        // `done` and `error` are each terminal on their own (the kit's buffer
+        // contract): one or the other ends the turn, never both, so reaching
+        // either means there is nothing left to reconnect for.
+        turnFinished = true;
+
         if (typeof data.conversation_id === 'string' && data.conversation_id !== '') {
             conversationId.value = data.conversation_id;
             sessionStorage.setItem(CONVERSATION_STORAGE_KEY, data.conversation_id);
         }
     } else if (event === 'error') {
+        turnFinished = true;
         reply.failed = true;
         errorBanner.value = typeof data.message === 'string' ? data.message : 'حدث خطأ أثناء توليد الرد. حاول مرة أخرى.';
     }
 
     void scrollToBottom();
+};
+
+/** Read one SSE response to its end, folding every frame into the live reply. */
+const readTurn = async (response: Response, reply: ChatMessage): Promise<void> => {
+    await readSseStream(response, (event, data, id) => handleSseEvent(event, (data ?? {}) as Record<string, unknown>, reply, id), {
+        signal: abortController?.signal,
+    });
+};
+
+/**
+ * Keep reading the current turn across drops until it reaches a terminal
+ * event or the ladder runs out.
+ *
+ * A read ends three ways: the turn finished (nothing more to do), the server
+ * hit its own stream ceiling and hung up mid-turn, or the connection broke.
+ * The last two are the same thing to this loop — wait out the backoff and
+ * re-issue `?cursor=lastSeq`, so the server replays only what was missed.
+ * Only an abort — the visitor leaving the page — returns without reconnecting,
+ * and it deliberately leaves the resume handle behind for the next load.
+ *
+ * `immediate` skips the first backoff, for a turn being picked up from
+ * storage rather than recovered from a drop.
+ */
+const followTurn = async (reply: ChatMessage, immediate = false): Promise<void> => {
+    let first = immediate;
+
+    while (!turnFinished && currentTurn !== null && !readAborted()) {
+        if (!first) {
+            if (reconnects >= MAX_RECONNECTS) {
+                turnFinished = true;
+                reply.failed = !hasText(reply);
+                errorBanner.value = 'انقطع الاتصال بالمساعد. حاول مرة أخرى.';
+
+                return;
+            }
+
+            reconnects++;
+            await sleep(Math.min(1000 * 2 ** (reconnects - 1), 8000));
+
+            if (readAborted()) {
+                return;
+            }
+        }
+
+        first = false;
+
+        try {
+            const response = await fetch(`${streamTurn.url(currentTurn)}?cursor=${lastSeq}`, {
+                credentials: 'same-origin',
+                headers: { Accept: 'text/event-stream' },
+                signal: abortController?.signal,
+            });
+
+            if (response.status === 404) {
+                // The buffer expired, or never belonged to this session: there
+                // is no turn to resume, so stop rather than climb the ladder.
+                turnFinished = true;
+                reply.failed = !hasText(reply);
+                errorBanner.value = 'انتهت صلاحية هذا الرد. أعد إرسال سؤالك.';
+
+                return;
+            }
+
+            if (!response.ok || !response.body) {
+                continue;
+            }
+
+            await readTurn(response, reply);
+        } catch (error) {
+            if ((error as Error).name === 'AbortError') {
+                return;
+            }
+        }
+    }
+};
+
+/**
+ * Settle a turn that is no longer being read: clear the live flags and drop
+ * chips nothing will ever resolve.
+ *
+ * The resume handle is forgotten only for a turn that actually ENDED — one
+ * that reached `done` / `error`, expired, or exhausted its retries. A read
+ * that stopped because the visitor navigated away leaves it in place on
+ * purpose: that is precisely the turn the next page load should pick up.
+ */
+const settleTurn = async (reply: ChatMessage): Promise<void> => {
+    reply.streaming = false;
+
+    // Stopping the turn (or losing the connection for good) can leave a chip
+    // mid-flight; a spinner nothing will ever resolve is worse than no chip.
+    // Spliced in place: the timeline owns this array.
+    for (let index = reply.segments.length - 1; index >= 0; index--) {
+        const segment = reply.segments[index];
+
+        if (segment.type === 'tool' && segment.status === 'running') {
+            reply.segments.splice(index, 1);
+        }
+    }
+
+    if (reply.failed && !hasText(reply)) {
+        messages.value = messages.value.filter((item) => item.id !== reply.id);
+    }
+
+    if (turnFinished) {
+        sessionStorage.removeItem(ACTIVE_TURN_STORAGE_KEY);
+        currentTurn = null;
+    }
+
+    isStreaming.value = false;
+    abortController = undefined;
+    await scrollToBottom();
+};
+
+/** Reset the per-turn transport state before a fresh turn is read. */
+const beginTurn = (): void => {
+    currentTurn = null;
+    lastSeq = 0;
+    reconnects = 0;
+    turnFinished = false;
+    isStreaming.value = true;
+    abortController = new AbortController();
+};
+
+/**
+ * Pick a turn left running when the page was closed back up, replaying it
+ * from the start of its buffer. A turn that finished after the tab went away
+ * was persisted in the meantime, so the rehydrated thread already ends with
+ * its answer — the replay would duplicate it, and the settle below drops the
+ * older copy in favour of the richer replayed one.
+ */
+const resumeActiveTurn = async (): Promise<void> => {
+    const storedTurn = sessionStorage.getItem(ACTIVE_TURN_STORAGE_KEY);
+
+    if (!storedTurn || assistantDisabled.value) {
+        return;
+    }
+
+    beginTurn();
+    // Cursor 0 — a restored turn has seen nothing of this buffer yet, so the
+    // replay rebuilds the bubble from its first frame.
+    currentTurn = storedTurn;
+
+    const reply = newMessage('assistant');
+    reply.streaming = true;
+    messages.value.push(reply);
+    const liveReply = messages.value[messages.value.length - 1];
+
+    try {
+        await followTurn(liveReply, true);
+    } finally {
+        const text = answerText(liveReply.segments);
+        const previous = messages.value[messages.value.indexOf(liveReply) - 1];
+
+        if (text !== '' && previous?.role === 'assistant' && answerText(previous.segments) === text) {
+            messages.value = messages.value.filter((item) => item.id !== previous.id);
+        }
+
+        await settleTurn(liveReply);
+    }
 };
 
 const sendMessage = async (): Promise<void> => {
@@ -288,8 +520,7 @@ const sendMessage = async (): Promise<void> => {
 
     draft.value = '';
     attachments.value = [];
-    isStreaming.value = true;
-    abortController = new AbortController();
+    beginTurn();
     await scrollToBottom();
 
     try {
@@ -306,7 +537,7 @@ const sendMessage = async (): Promise<void> => {
                 ...(conversationId.value ? { conversation_id: conversationId.value } : {}),
                 ...(attachmentIds.length > 0 ? { attachment_ids: attachmentIds } : {}),
             }),
-            signal: abortController.signal,
+            signal: abortController?.signal,
         });
 
         const contentType = response.headers.get('Content-Type') ?? '';
@@ -315,6 +546,10 @@ const sendMessage = async (): Promise<void> => {
             const serverMessage = await readJsonMessage(response);
 
             liveReply.failed = true;
+
+            // A pre-flight refusal never opened a turn, so there is nothing to
+            // resume or clean up beyond the bubble itself.
+            turnFinished = true;
 
             if (response.status === 503) {
                 markDisabled(serverMessage ?? undefined);
@@ -331,50 +566,63 @@ const sendMessage = async (): Promise<void> => {
         }
 
         if (!response.body) {
+            turnFinished = true;
             liveReply.failed = true;
             errorBanner.value = 'حدث خطأ أثناء قراءة الرد. حاول مرة أخرى.';
             return;
         }
 
-        await readSseStream(response, (event, data) => handleSseEvent(event, (data ?? {}) as Record<string, unknown>, liveReply), {
-            signal: abortController.signal,
-        });
+        await readTurn(response, liveReply);
     } catch (error) {
-        if ((error as Error).name !== 'AbortError') {
+        if ((error as Error).name === 'AbortError') {
+            return;
+        }
+
+        // The POST itself never got a stream open. If it managed to hand back
+        // a turn id first, the turn is running server-side and `followTurn`
+        // below picks it up; otherwise there is nothing to recover.
+        if (currentTurn === null) {
+            turnFinished = true;
             liveReply.failed = !hasText(liveReply);
             errorBanner.value = 'تعذر الاتصال بالخادم. تأكد من اتصالك ثم أعد المحاولة.';
         }
     } finally {
-        liveReply.streaming = false;
-
-        // Stopping the turn (or losing the connection) can leave a chip
-        // mid-flight; a spinner nothing will ever resolve is worse than no
-        // chip. Spliced in place: the timeline owns this array.
-        for (let index = liveReply.segments.length - 1; index >= 0; index--) {
-            const segment = liveReply.segments[index];
-
-            if (segment.type === 'tool' && segment.status === 'running') {
-                liveReply.segments.splice(index, 1);
-            }
-        }
-
-        if (liveReply.failed && !hasText(liveReply)) {
-            messages.value = messages.value.filter((item) => item.id !== liveReply.id);
-        }
-
-        isStreaming.value = false;
-        abortController = undefined;
-        await scrollToBottom();
+        // The POST's own stream ended. Unless the turn reached a terminal
+        // event, it is still generating server-side — reconnect and follow it
+        // rather than abandoning a reply that is still being written.
+        await followTurn(liveReply);
+        await settleTurn(liveReply);
     }
 };
 
-const stopStreaming = (): void => {
-    abortController?.abort();
+/**
+ * The visitor pressed stop. Generation runs server-side now, so hanging up
+ * would leave it running (and billing): tell the server first, then let the
+ * reader drain the terminal `done` the job writes on its way out. The abort
+ * is the fallback for a cancel request that never lands.
+ */
+const stopStreaming = async (): Promise<void> => {
+    const turn = currentTurn;
+
+    if (turn === null) {
+        abortController?.abort();
+        return;
+    }
+
+    try {
+        await fetch(cancelTurn.url(turn), {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'X-XSRF-TOKEN': xsrfToken(), Accept: 'application/json' },
+        });
+    } catch {
+        abortController?.abort();
+    }
 };
 
 const startNewConversation = (): void => {
     if (isStreaming.value) {
-        stopStreaming();
+        void stopStreaming();
     }
 
     sessionStorage.removeItem(CONVERSATION_STORAGE_KEY);
@@ -495,7 +743,11 @@ const citationUrl = (citation: Citation): string => showPage.url({ slug: citatio
 
 onMounted(() => {
     isCoarsePointer.value = window.matchMedia('(pointer: coarse)').matches;
-    void rehydrateConversation();
+
+    // Restore the thread first, then pick up whatever turn was still running
+    // when the page was left — in that order, so the resumed reply lands after
+    // the history it continues.
+    void rehydrateConversation().then(resumeActiveTurn);
 
     if (!isCoarsePointer.value) {
         focusComposer();
