@@ -70,8 +70,11 @@ return [
             'queue' => env('REDIS_QUEUE', 'default'),
             // Must exceed the longest a job may run, or a still-running job is
             // reclaimed and processed a second time. Our slowest workers set
-            // --timeout=300 (ai) and jobs declare timeout=120 (telegram), so
-            // this sits safely above 300. Static on purpose: it is a fixed
+            // --timeout=300 (ai, ai-chat) and jobs declare timeout=120
+            // (telegram), so this sits safely above 300 — which makes 300 the
+            // ceiling for any new worker, not a default to raise freely. A
+            // reclaimed assistant turn would re-run a whole reply against a
+            // buffer that already has one. Static on purpose: it is a fixed
             // property of our worker topology, not a per-environment knob.
             'retry_after' => 360,
             'block_for' => null,

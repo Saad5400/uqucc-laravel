@@ -14,6 +14,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Laravel\Ai\Models\Conversation;
@@ -921,6 +922,25 @@ describe('resumable turns', function () {
         $this->actingAs($other)->get(route('manage.assistant.stream', ['turn' => $turnId]))->assertNotFound();
         $this->actingAs($other)->post(route('manage.assistant.cancel', ['turn' => $turnId]))->assertNotFound();
         $this->actingAs($this->admin)->get(route('manage.assistant.stream', ['turn' => (string) Str::uuid7()]))->assertNotFound();
+    });
+
+    it('dispatches the turn onto the dedicated ai-chat queue', function () {
+        // Not `default` (one worker, no --timeout: turns serialize behind each
+        // other and are killed at 60s) and not `ai` (multi-minute corpus
+        // extraction an interactive reply would wait behind). nixpacks.toml's
+        // `worker-ai-chat` is the other half of this pairing, and the queue NAME
+        // is the whole contract between config and worker topology.
+        //
+        // The streamed body is deliberately NOT rendered: with the queue faked
+        // the turn never completes, so tailing its buffer would block until the
+        // kit's stream deadline. Only the dispatch is under test.
+        Queue::fake();
+
+        $this->actingAs($this->admin)
+            ->post(route('manage.assistant.send'), ['message' => 'مرحبا'])
+            ->assertOk();
+
+        Queue::assertPushedOn('ai-chat', GenerateAdminAssistantReply::class);
     });
 
     it('fails a queued turn without calling the model when the kill switch engaged after it was queued', function () {

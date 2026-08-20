@@ -6,6 +6,7 @@ use App\Jobs\Ai\GenerateChatReply;
 use App\Models\Ai\ChatAttachment;
 use App\Models\Page;
 use App\Settings\AiSettings;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Laravel\Ai\Models\Conversation;
 use Laravel\Ai\Models\ConversationMessage;
@@ -743,4 +744,26 @@ it('lets a dropped client resume and stop even once the burst limiter is exhaust
     withChatSession($sessionId)
         ->post(route('ai.chat.cancel', ['turn' => $turnId]))
         ->assertOk();
+});
+
+/*
+ * A turn must not land on `default` (one worker, no --timeout, so turns
+ * serialize behind each other and are killed at 60s) nor on `ai` (multi-minute
+ * corpus extraction and ingestion, which an interactive reply would wait
+ * behind). nixpacks.toml's `worker-ai-chat` is the other half of this pairing;
+ * the queue NAME is the whole contract between config and worker topology, so
+ * it is worth a test on each surface.
+ *
+ * The streamed body is deliberately NOT rendered: with the queue faked the turn
+ * never completes, so tailing its buffer would block until the kit's stream
+ * deadline. Only the dispatch is under test here.
+ */
+it('dispatches student assistant turns onto the dedicated ai-chat queue', function () {
+    Queue::fake();
+
+    withChatSession(chatSessionId())
+        ->post(route('ai.chat.send'), ['message' => 'مرحبا'])
+        ->assertOk();
+
+    Queue::assertPushedOn('ai-chat', GenerateChatReply::class);
 });
