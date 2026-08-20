@@ -10,7 +10,6 @@ use App\Http\Requests\Manage\AdminAssistantMessageRequest;
 use App\Jobs\Ai\GenerateAdminAssistantReply;
 use App\Models\User;
 use App\Settings\AiSettings;
-use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -213,12 +212,10 @@ class AdminAssistantController extends Controller
             // call is in hand: an edit's readonly and hidden fields are
             // restored from the pause before the decision is serialized into a
             // job, so what the queue carries is never the raw browser payload.
-            $guarded = $this->guardDecisions($input, $cards->editGuard($pending));
-
-            // Round-trips the guarded payload through the kit's own parser,
-            // which is what rejects an unknown action shape — the same call the
-            // job makes, so nothing reaches the queue the resume cannot read.
-            ResumeDecisions::fromClient($guarded);
+            // `guarded()` also round-trips the result through the kit's own
+            // parser, so a shape the resume could not read throws in THIS
+            // request rather than inside the job.
+            $guarded = ResumeDecisions::guarded($input, $cards->editGuard($pending));
         } catch (InvalidArgumentException) {
             // Covers both a malformed decision shape and an edit that invents
             // an argument the card never carried; a tampered readonly field
@@ -230,33 +227,6 @@ class AdminAssistantController extends Controller
         // that is invisible to the client, which reads the continuation off
         // this same response exactly as it always has.
         return $this->startTurn($buffer, $admin, $conversation, decisions: $guarded);
-    }
-
-    /**
-     * Reconcile every EDIT decision against the server's pending call before it
-     * travels any further. Approvals and rejections pass through untouched —
-     * they carry no arguments to tamper with.
-     *
-     * TODO(kit 0.7.3): replace with `ResumeDecisions::guarded($input, $guard)`.
-     * The kit's `fromClient()` takes the guard but returns a `Decisions`
-     * object, and a queued resume needs the guarded ARRAY (a Decisions cannot
-     * ride a job payload), so the round-trip is spelled out here for now.
-     *
-     * @param  array<string, mixed>  $input
-     * @param  Closure(string, array<string, mixed>): array<string, mixed>  $guard
-     * @return array<string, mixed>
-     */
-    private function guardDecisions(array $input, Closure $guard): array
-    {
-        $guarded = [];
-
-        foreach ($input as $id => $decision) {
-            $guarded[(string) $id] = is_array($decision) && ($decision['action'] ?? null) === 'edit'
-                ? ['action' => 'edit', 'arguments' => $guard((string) $id, (array) ($decision['arguments'] ?? []))]
-                : $decision;
-        }
-
-        return $guarded;
     }
 
     /**
