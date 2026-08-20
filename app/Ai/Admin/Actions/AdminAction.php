@@ -15,11 +15,10 @@ use Illuminate\JsonSchema\Types\Type;
  *   - The MCP server ({@see \App\Mcp\Tools\AdminActionTool}) wraps it as an
  *     immediate-write tool, gated by {@see requiredAbility()} over OAuth.
  *   - The in-app assistant ({@see \App\Ai\Admin\Actions\AssistantActionTool})
- *     wraps a WRITE as a confirm-gated proposal (ai-kit's ProposalExecutor
- *     persists a pending {@see \Saad\AiKit\Approvals\Proposal} a human
- *     confirms, then re-validates and calls {@see execute()} through the
- *     {@see \App\Ai\Admin\ProposableAdminAction} adapter), and a READ as an
- *     immediate call.
+ *     wraps a WRITE as a confirm-gated pause on ai-kit's classified seam:
+ *     the tool pauses the turn, the admin decides on a card, and their
+ *     decision resumes the SAME call, re-validating before {@see run()}. A
+ *     READ is an immediate call.
  *
  * Contract for writes: {@see validate()} normalizes raw model input against
  * live state (throwing {@see AdminActionException} with an Arabic reason on

@@ -844,6 +844,11 @@ onBeforeUnmount(() => abortController?.abort());
                                     :answer="trackedFor(group.card).answer"
                                     :skipped="trackedFor(group.card).decision?.action === 'reject'"
                                     placeholder="اكتب إجابتك…"
+                                    send-label="إرسال"
+                                    skip-label="تخطٍّ"
+                                    answered-label="إجابتك"
+                                    skipped-label="تم التخطي"
+                                    pending-label="بانتظار ردّك"
                                     @answer="(answer: string) => onQuestionAnswer(group.card as QuestionPayload, answer)"
                                     @skip="onCardDecision(group.card, { action: 'reject' })"
                                 />
@@ -855,6 +860,14 @@ onBeforeUnmount(() => abortController?.abort());
                                         :key="group.card.id"
                                         :card="asApprovalCard(group.card)"
                                         :disabled="!isPending(group.card) || isStreaming"
+                                        :pending="isPending(group.card)"
+                                        confirm-label="تأكيد"
+                                        reject-label="رفض"
+                                        destructive-label="لا يمكن التراجع"
+                                        undoable-label="قابل للتراجع"
+                                        pending-label="بانتظار موافقتك"
+                                        details-label="تفاصيل تقنية"
+                                        empty-label="غير محدَّد"
                                         @decide="(decision: ClientDecision) => onCardDecision(group.card, decision)"
                                     >
                                         <template #icon>

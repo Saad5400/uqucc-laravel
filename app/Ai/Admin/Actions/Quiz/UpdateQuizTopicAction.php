@@ -8,6 +8,8 @@ use App\Ai\Admin\Actions\AdminActionException;
 use App\Models\QuizTopic;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Saad\AiKit\Approvals\Classified\Field;
+use Saad\AiKit\Approvals\Classified\FieldWidget;
 
 /**
  * Edit a daily-quiz topic, mirroring
@@ -48,6 +50,26 @@ class UpdateQuizTopicAction extends AdminAction
             'prompt_hint' => $schema->string()->description('New generation hint. Pass an empty string to clear it.'),
             'is_spotlight' => $schema->boolean()->description('Whether this is a weekly spotlight (major-specific) topic.'),
             'is_active' => $schema->boolean()->description('Whether the topic is active (eligible to be picked).'),
+        ];
+    }
+
+    /**
+     * Arabic labels for the approval card, with each field's widget restated
+     * alongside its label. Declaring a spec REPLACES the kit's value-based
+     * inference for that argument, so the widget an unlabelled field would
+     * have been given has to be named here — an id declared without
+     * `Field::readonly` would come back as an editable text box.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return [
+            'topic_id' => Field::readonly('topic_id', label: 'الموضوع'),
+            'name' => Field::make('name', FieldWidget::Text, label: 'اسم الموضوع'),
+            'prompt_hint' => Field::make('prompt_hint', FieldWidget::Textarea, label: 'تلميح التوليد'),
+            'is_spotlight' => Field::make('is_spotlight', FieldWidget::Boolean, label: 'موضوع الأسبوع'),
+            'is_active' => Field::make('is_active', FieldWidget::Boolean, label: 'مُفعَّل'),
         ];
     }
 

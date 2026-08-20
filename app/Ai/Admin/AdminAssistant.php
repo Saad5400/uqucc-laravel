@@ -36,8 +36,8 @@ use Stringable;
  *     // or ->continue($conversationId, new AdminOwner($admin))
  *     $response = $agent->stream($prompt);
  *
- * Model/provider wiring is identical to the public assistant: the
- * operator-editable AiSettings->chat_model on the configured default
+ * Model/provider wiring is identical to the public assistant:
+ * {@see \App\Settings\AiSettings::chatModel()} on the configured default
  * provider.
  */
 #[MaxSteps(12)]
@@ -79,7 +79,7 @@ class AdminAssistant implements Agent, Conversational, HasProviderOptions, HasTo
      */
     public function provider(): array
     {
-        return [(string) config('ai.default', 'openrouter') => $this->model()];
+        return [(string) config('ai.default', 'openrouter') => $this->settings->chatModel()];
     }
 
     public function timeout(): int
@@ -143,15 +143,5 @@ class AdminAssistant implements Agent, Conversational, HasProviderOptions, HasTo
         - الإجراءات الحساسة (حذف صفحة، إيقاف مفتاح تشغيل): نبّه المشرف إلى أثر التغيير في ملخصك.
         - ارفض بلطف أي طلب خارج إدارة الموقع (أسئلة عامة، محتوى غير لائق) واذكر أن تخصصك إدارة صفحات الموقع وإعداداته.
         PROMPT;
-    }
-
-    /**
-     * The operator-configured chat model, falling back to config.
-     */
-    private function model(): string
-    {
-        $model = trim($this->settings->chat_model);
-
-        return $model !== '' ? $model : (string) config('ai.chat.model', 'deepseek/deepseek-v4-flash');
     }
 }

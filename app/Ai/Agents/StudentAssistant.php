@@ -32,9 +32,10 @@ use Stringable;
  * {@see \App\Ai\Chat\SessionOwner} value object whose id is the visitor's
  * session id (web) or a transport-prefixed key such as "telegram:12345".
  *
- * The model comes from the operator-editable AiSettings->chat_model, falling
- * back to config('ai.chat.model'); the provider stays behind the config
- * seam (config('ai.default')), so this class never names OpenRouter.
+ * The model comes from {@see \App\Settings\AiSettings::chatModel()} — the
+ * operator's setting over this app's config over the kit's shared fleet
+ * default; the provider stays behind the config seam (config('ai.default')),
+ * so this class never names OpenRouter.
  */
 #[MaxSteps(12)]
 class StudentAssistant implements Agent, Conversational, HasProviderOptions, HasTools
@@ -67,7 +68,7 @@ class StudentAssistant implements Agent, Conversational, HasProviderOptions, Has
      */
     public function provider(): array
     {
-        return [(string) config('ai.default', 'openrouter') => $this->model()];
+        return [(string) config('ai.default', 'openrouter') => $this->settings->chatModel()];
     }
 
     public function timeout(): int
@@ -142,15 +143,5 @@ class StudentAssistant implements Agent, Conversational, HasProviderOptions, Has
         - لا تختلق روابط أو أرقاماً أو مواد لوائح؛ وإن لم تكن متأكداً فقل إنك غير متأكد.
         - انتبه لتاريخ «آخر تحديث» في نتائج البحث والصفحات: إذا مضى على تحديث الصفحة التي استندت إليها سنة أو أكثر فنبّه الطالب إلى أن المعلومة قد تكون قديمة ويُستحسن التأكد منها.
         PROMPT;
-    }
-
-    /**
-     * The operator-configured chat model, falling back to config.
-     */
-    private function model(): string
-    {
-        $model = trim($this->settings->chat_model);
-
-        return $model !== '' ? $model : (string) config('ai.chat.model', 'deepseek/deepseek-v4-flash');
     }
 }

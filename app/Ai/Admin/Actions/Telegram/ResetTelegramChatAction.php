@@ -8,6 +8,7 @@ use App\Ai\Admin\Actions\AdminActionException;
 use App\Models\TelegramChatSetting;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Saad\AiKit\Approvals\Classified\Field;
 
 /**
  * Forget the assistant's current conversation for a Telegram chat so it starts
@@ -41,6 +42,22 @@ class ResetTelegramChatAction extends AdminAction
             'chat_id' => $schema->string()
                 ->description('The Telegram chat_id of the chat to reset, from list_telegram_chats.')
                 ->required(),
+        ];
+    }
+
+    /**
+     * Arabic labels for the approval card, with each field's widget restated
+     * alongside its label. Declaring a spec REPLACES the kit's value-based
+     * inference for that argument, so the widget an unlabelled field would
+     * have been given has to be named here — an id declared without
+     * `Field::readonly` would come back as an editable text box.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return [
+            'chat_id' => Field::readonly('chat_id', label: 'معرّف المحادثة'),
         ];
     }
 

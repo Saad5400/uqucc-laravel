@@ -12,6 +12,8 @@ use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
+use Saad\AiKit\Approvals\Classified\Field;
+use Saad\AiKit\Approvals\Classified\FieldWidget;
 
 /**
  * Update a page's settings — title, slug, icon and visibility flags — mirroring
@@ -153,5 +155,39 @@ class UpdatePageAction extends AdminAction
             'smart_search' => $schema->boolean()->description('Whether the page is included in smart search.'),
             'requires_prefix' => $schema->boolean()->description('Whether the Telegram bot only surfaces this page when the message carries the guide keyword prefix.'),
         ];
+    }
+
+    /**
+     * Arabic labels for the approval card, drawn from the SAME
+     * {@see FIELD_LABELS} vocabulary {@see summarize()} writes its sentence
+     * from, so the card's labels and its summary cannot drift apart.
+     *
+     * Each field's widget is restated alongside its label because declaring
+     * a spec REPLACES the kit's value-based inference for that argument: an
+     * id declared without `Field::readonly` would come back as an editable
+     * text box, and a boolean as a text input.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        $widgets = [
+            'title' => FieldWidget::Text,
+            'slug' => FieldWidget::Text,
+            'icon' => FieldWidget::Text,
+            'hidden' => FieldWidget::Boolean,
+            'hidden_from_bot' => FieldWidget::Boolean,
+            'hidden_from_ai' => FieldWidget::Boolean,
+            'smart_search' => FieldWidget::Boolean,
+            'requires_prefix' => FieldWidget::Boolean,
+        ];
+
+        $fields = ['page_id' => Field::readonly('page_id', label: 'الصفحة')];
+
+        foreach ($widgets as $name => $widget) {
+            $fields[$name] = Field::make($name, $widget, label: self::FIELD_LABELS[$name]);
+        }
+
+        return $fields;
     }
 }

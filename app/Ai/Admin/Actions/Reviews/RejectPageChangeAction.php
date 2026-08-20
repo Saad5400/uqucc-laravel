@@ -8,6 +8,7 @@ use App\Ai\Admin\Actions\AdminActionException;
 use App\Models\PageChangeRequest;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Saad\AiKit\Approvals\Classified\Field;
 use Saad\AiKit\Approvals\Classified\FieldWidget;
 
 /**
@@ -114,13 +115,19 @@ class RejectPageChangeAction extends AdminAction
     }
 
     /**
-     * The rejection note is prose the reviewer usually rewrites, so it gets
-     * an editor rather than a single line.
+     * Arabic labels for the approval card, with each field's widget restated
+     * alongside its label. Declaring a spec REPLACES the kit's value-based
+     * inference for that argument, so the widget an unlabelled field would
+     * have been given has to be named here — an id declared without
+     * `Field::readonly` would come back as an editable text box.
      *
      * @return array<string, mixed>
      */
     public function fieldWidgets(): array
     {
-        return ['note' => FieldWidget::Textarea];
+        return [
+            'change_request_id' => Field::readonly('change_request_id', label: 'طلب التعديل'),
+            'note' => Field::make('note', FieldWidget::Textarea, label: 'سبب الرفض'),
+        ];
     }
 }

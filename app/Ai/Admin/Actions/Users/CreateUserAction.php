@@ -9,6 +9,8 @@ use App\Http\Requests\Manage\StoreUserRequest;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
 use Illuminate\Support\Facades\Validator;
+use Saad\AiKit\Approvals\Classified\Field;
+use Saad\AiKit\Approvals\Classified\FieldWidget;
 
 /**
  * Create a panel user. Mirrors
@@ -133,6 +135,26 @@ class CreateUserAction extends AdminAction
                 ->items($schema->string()),
             'requires_review' => $schema->boolean()
                 ->description('Whether this user\'s content edits must be reviewed before going live. Applied only if you hold assign-roles.'),
+        ];
+    }
+
+    /**
+     * Arabic labels for the approval card, with each field's widget restated
+     * alongside its label. Declaring a spec REPLACES the kit's value-based
+     * inference for that argument, so the widget an unlabelled field would
+     * have been given has to be named here — an id declared without
+     * `Field::readonly` would come back as an editable text box.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return [
+            'name' => Field::make('name', FieldWidget::Text, label: 'الاسم'),
+            'email' => Field::make('email', FieldWidget::Text, label: 'البريد الإلكتروني'),
+            'password' => Field::make('password', FieldWidget::Text, label: 'كلمة المرور'),
+            'roles' => Field::readonly('roles', label: 'الأدوار'),
+            'requires_review' => Field::make('requires_review', FieldWidget::Boolean, label: 'تخضع تعديلاته للمراجعة'),
         ];
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Settings;
 
+use Saad\AiKit\Catalog\Catalog;
 use Spatie\LaravelSettings\Settings;
 
 class AiSettings extends Settings
@@ -33,6 +34,29 @@ class AiSettings extends Settings
     public static function group(): string
     {
         return 'ai';
+    }
+
+    /**
+     * The chat model every assistant surface sends to — the ONE place the
+     * resolution chain lives, so the three surfaces cannot drift apart.
+     *
+     * The operator's setting wins, as it always has. An empty row falls
+     * through to config('ai.chat.model') — this app's own AI_CHAT_MODEL
+     * override — and finally to the kit's shared fleet default (ai-kit
+     * docs/DECISIONS.md #21), which is the floor of the chain so the model
+     * decision lives in one place across the three apps instead of three.
+     */
+    public function chatModel(): string
+    {
+        $model = trim($this->chat_model);
+
+        if ($model !== '') {
+            return $model;
+        }
+
+        $configured = trim((string) config('ai.chat.model', ''));
+
+        return $configured !== '' ? $configured : app(Catalog::class)->chatModel();
     }
 
     /**

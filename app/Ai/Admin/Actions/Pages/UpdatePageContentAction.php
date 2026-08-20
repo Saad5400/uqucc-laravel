@@ -10,6 +10,7 @@ use App\Ai\Copilot\TipTapContent;
 use App\Models\Page;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Saad\AiKit\Approvals\Classified\Field;
 use Saad\AiKit\Approvals\Classified\FieldWidget;
 
 /**
@@ -124,15 +125,20 @@ class UpdatePageContentAction extends AdminAction
     }
 
     /**
-     * A whole page body is the one argument on this card worth reading
-     * before confirming, so it gets the markdown editor rather than the
-     * single-line input a short first draft would otherwise infer.
+     * Arabic labels for the approval card, with each field's widget restated
+     * alongside its label. Declaring a spec REPLACES the kit's value-based
+     * inference for that argument, so the widget an unlabelled field would
+     * have been given has to be named here — an id declared without
+     * `Field::readonly` would come back as an editable text box.
      *
      * @return array<string, mixed>
      */
     public function fieldWidgets(): array
     {
-        return ['content' => FieldWidget::Markdown];
+        return [
+            'page_id' => Field::readonly('page_id', label: 'الصفحة'),
+            'content' => Field::make('content', FieldWidget::Markdown, label: 'المحتوى'),
+        ];
     }
 
     /**

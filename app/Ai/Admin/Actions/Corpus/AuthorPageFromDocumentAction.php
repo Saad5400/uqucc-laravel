@@ -10,6 +10,7 @@ use App\Jobs\Ai\AuthorPageFromDocumentJob;
 use App\Models\Corpus\CorpusDocument;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Saad\AiKit\Approvals\Classified\Field;
 use Saad\AiKit\Safety\BudgetGuard;
 
 /**
@@ -123,6 +124,22 @@ class AuthorPageFromDocumentAction extends AdminAction
             'document_id' => $schema->integer()
                 ->description('The id of the extracted corpus document to author a page from, from list_corpus_documents.')
                 ->required(),
+        ];
+    }
+
+    /**
+     * Arabic labels for the approval card, with each field's widget restated
+     * alongside its label. Declaring a spec REPLACES the kit's value-based
+     * inference for that argument, so the widget an unlabelled field would
+     * have been given has to be named here — an id declared without
+     * `Field::readonly` would come back as an editable text box.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return [
+            'document_id' => Field::readonly('document_id', label: 'المستند'),
         ];
     }
 }

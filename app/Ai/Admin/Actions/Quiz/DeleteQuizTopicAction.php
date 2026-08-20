@@ -8,6 +8,7 @@ use App\Ai\Admin\Actions\AdminActionException;
 use App\Models\QuizTopic;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Saad\AiKit\Approvals\Classified\Field;
 
 /**
  * Delete a daily-quiz topic, mirroring
@@ -49,6 +50,22 @@ class DeleteQuizTopicAction extends AdminAction
             'topic_id' => $schema->integer()
                 ->description('The id of the topic to delete, from list_quiz_topics.')
                 ->required(),
+        ];
+    }
+
+    /**
+     * Arabic labels for the approval card, with each field's widget restated
+     * alongside its label. Declaring a spec REPLACES the kit's value-based
+     * inference for that argument, so the widget an unlabelled field would
+     * have been given has to be named here — an id declared without
+     * `Field::readonly` would come back as an editable text box.
+     *
+     * @return array<string, mixed>
+     */
+    public function fieldWidgets(): array
+    {
+        return [
+            'topic_id' => Field::readonly('topic_id', label: 'الموضوع'),
         ];
     }
 
