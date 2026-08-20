@@ -706,3 +706,41 @@ it('fails a queued turn without calling the model when the kill switch engaged a
         ->and(collect($record['events'])->pluck('event')->all())->toBe(['error'])
         ->and(Conversation::query()->count())->toBe(0);
 });
+
+it('lets a dropped client resume and stop even once the burst limiter is exhausted', function () {
+    StudentAssistant::fake(fn () => 'رد.');
+
+    $sessionId = chatSessionId();
+
+    $turnId = sseEventData(
+        withChatSession($sessionId)->post(route('ai.chat.send'), ['message' => 'مرحبا'])->streamedContent(),
+        'turn',
+    )['id'];
+
+    // Spend the rest of the 5-per-minute burst budget, then prove it really is
+    // spent: a sixth NEW turn is refused.
+    foreach (range(2, 5) as $index) {
+        withChatSession($sessionId)
+            ->post(route('ai.chat.send'), ['message' => "رسالة {$index}"])
+            ->streamedContent();
+    }
+
+    withChatSession($sessionId)
+        ->postJson(route('ai.chat.send'), ['message' => 'السادسة'])
+        ->assertTooManyRequests();
+
+    // The reconnect ladder still gets through. One long turn can need several
+    // reconnects (the kit's tail closes at its ceiling and the client re-issues
+    // its cursor), so counting them against the same five would 429 a client
+    // back into exactly the lost reply resumability exists to prevent — for a
+    // turn already generated and charged.
+    withChatSession($sessionId)
+        ->get(route('ai.chat.stream', ['turn' => $turnId, 'cursor' => 1]))
+        ->assertOk();
+
+    // And so does the stop, which is the only way to end a queued turn early
+    // now that hanging up does not.
+    withChatSession($sessionId)
+        ->post(route('ai.chat.cancel', ['turn' => $turnId]))
+        ->assertOk();
+});

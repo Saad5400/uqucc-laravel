@@ -55,16 +55,28 @@ Route::get('/mstnd/{document}', App\Http\Controllers\CorpusDocumentFileControlle
 Route::middleware('throttle:ai-chat')->group(function () {
     Route::post('/ai/chat', [ChatController::class, 'send'])->name('ai.chat.send');
     Route::post('/ai/chat/attachments', ChatAttachmentController::class)->name('ai.chat.attachments.store');
-
-    // Resuming or stopping a turn the visitor already paid for: both read the
-    // turn buffer rather than opening one, so neither spends a daily quota
-    // slot. They live under /ai/chat/turns/… so the single-segment
-    // {conversation} route below can never swallow them.
-    Route::get('/ai/chat/turns/{turn}/stream', [ChatController::class, 'stream'])->name('ai.chat.stream');
-    Route::post('/ai/chat/turns/{turn}/cancel', [ChatController::class, 'cancel'])->name('ai.chat.cancel');
-
     Route::get('/ai/chat/{conversation}', [ChatController::class, 'show'])->name('ai.chat.show');
 });
+
+// Resuming or stopping a turn the visitor ALREADY paid for, deliberately
+// OUTSIDE the burst limiter above.
+//
+// `ai-chat` is 5 requests per minute per session, and a single long turn can
+// need several of them: the opening POST, then one reconnect every time the
+// kit's tail closes at its `max_stream_seconds` ceiling, plus a stop. Counting
+// those against the same five would 429 the reconnect ladder — which strands a
+// turn that has already been generated and charged for, the exact failure
+// resumability exists to prevent. The manage-side pair is excluded for the
+// same reason.
+//
+// Nothing is given away by excluding them: both read the turn buffer instead of
+// opening a turn, so they spend no model call, no daily quota slot and no
+// budget, and both 404 anything the visitor's own session does not own. The
+// `/ai/chat/turns/…` prefix is what keeps the single-segment {conversation}
+// route from swallowing them — never the group, which has no bearing on
+// matching.
+Route::get('/ai/chat/turns/{turn}/stream', [ChatController::class, 'stream'])->name('ai.chat.stream');
+Route::post('/ai/chat/turns/{turn}/cancel', [ChatController::class, 'cancel'])->name('ai.chat.cancel');
 
 // AI assistant chat page (must come before catch-all route) - with response caching.
 // Always renders; the chat endpoints report the disabled state at runtime.
