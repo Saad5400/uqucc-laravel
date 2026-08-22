@@ -31,7 +31,7 @@ export const manageNavItems: ManageNavItem[] = [
     { title: 'المراجعات', href: '/manage/reviews', icon: ListChecks, reviewOnly: true },
     { title: 'المستخدمون', href: '/manage/users', icon: Users, permission: 'manage-users' },
     { title: 'الخصوصيون', href: '/manage/tutors', icon: GraduationCap, permission: 'manage-private-tutors' },
-    { title: 'قروبات الدفعات', href: '/manage/cohorts', icon: MessagesSquare, permission: 'manage-student-groups' },
+    { title: 'قروبات الدفعات', href: '/manage/cohorts', icon: MessagesSquare },
     { title: 'المساعد الإداري', href: '/manage/assistant', icon: Sparkles },
     { title: 'مستندات الذكاء الاصطناعي', href: '/manage/corpus', icon: FileUp },
     { title: 'ذكاء بوت التليجرام', href: '/manage/telegram-chats', icon: Bot },

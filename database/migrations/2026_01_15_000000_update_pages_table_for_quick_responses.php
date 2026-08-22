@@ -24,19 +24,19 @@ return new class extends Migration
                 $table->dropColumn('og_image');
             }
 
-            if (!Schema::hasColumn('pages', 'quick_response_enabled')) {
+            if (! Schema::hasColumn('pages', 'quick_response_enabled')) {
                 $table->boolean('quick_response_enabled')->default(false)->after('extension');
             }
-            if (!Schema::hasColumn('pages', 'quick_response_send_link')) {
+            if (! Schema::hasColumn('pages', 'quick_response_send_link')) {
                 $table->boolean('quick_response_send_link')->default(true)->after('quick_response_enabled');
             }
-            if (!Schema::hasColumn('pages', 'quick_response_message')) {
+            if (! Schema::hasColumn('pages', 'quick_response_message')) {
                 $table->text('quick_response_message')->nullable()->after('quick_response_send_link');
             }
-            if (!Schema::hasColumn('pages', 'quick_response_buttons')) {
+            if (! Schema::hasColumn('pages', 'quick_response_buttons')) {
                 $table->json('quick_response_buttons')->nullable()->after('quick_response_message');
             }
-            if (!Schema::hasColumn('pages', 'quick_response_attachments')) {
+            if (! Schema::hasColumn('pages', 'quick_response_attachments')) {
                 $table->json('quick_response_attachments')->nullable()->after('quick_response_buttons');
             }
 

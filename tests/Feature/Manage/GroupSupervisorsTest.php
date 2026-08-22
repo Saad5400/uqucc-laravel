@@ -33,15 +33,21 @@ describe('authorization', function () {
         $this->delete("/manage/supervisors/{$supervisor->id}")->assertRedirect(route('manage.login'));
     });
 
-    it('blocks editors from every supervisor mutation', function () {
+    it('lets editors manage supervisors — the area is not behind its own permission', function () {
         $supervisor = GroupSupervisorFactory::new()->forGroup($this->group)->create();
 
         $this->actingAs($this->editor);
 
-        $this->post("/manage/groups/{$this->group->id}/supervisors", ['name' => 'أحمد'])->assertForbidden();
-        $this->put("/manage/supervisors/{$supervisor->id}", ['name' => 'أحمد'])->assertForbidden();
-        $this->delete("/manage/supervisors/{$supervisor->id}")->assertForbidden();
-        $this->post("/manage/groups/{$this->group->id}/supervisors/reorder", ['ids' => [$supervisor->id]])->assertForbidden();
+        $this->post("/manage/groups/{$this->group->id}/supervisors", [
+            'name' => 'أحمد',
+            'telegram_username' => 'ahmad_editor',
+            'section' => 'men',
+        ])->assertSessionHasNoErrors();
+        $this->put("/manage/supervisors/{$supervisor->id}", ['name' => 'أحمد'])->assertSessionHasNoErrors();
+        $this->post("/manage/groups/{$this->group->id}/supervisors/reorder", ['ids' => [$supervisor->id]])->assertSessionHasNoErrors();
+        $this->delete("/manage/supervisors/{$supervisor->id}")->assertSessionHasNoErrors();
+
+        expect(GroupSupervisor::query()->where('telegram_username', 'ahmad_editor')->exists())->toBeTrue();
     });
 });
 

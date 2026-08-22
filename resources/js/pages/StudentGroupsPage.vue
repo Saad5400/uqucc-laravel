@@ -123,6 +123,8 @@ const programmeGroup = computed<StudentGroup | null>(() => {
     return programmeGroups.value.find((group) => group.major === major.value && group.branch === branch.value) ?? null;
 });
 
+const cohortLabel = computed(() => activeCohort.value?.name ?? '');
+
 const majorLabel = computed(() => majorOptions.value.find((option) => option.value === major.value)?.label ?? '');
 
 const branchOption = computed(() => branchOptions.value.find((option) => option.value === branch.value));
@@ -130,6 +132,14 @@ const branchOption = computed(() => branchOptions.value.find((option) => option.
 /** The compact «الرئيسي» rather than «الفرع الرئيسي — مكة المكرمة»: the folded
  *  summary and the card subtitle both have one line to work with on a phone. */
 const branchShortLabel = computed(() => branchOption.value?.short ?? branchOption.value?.label ?? '');
+
+/**
+ * The programme card names its batch as well as its branch. «علوم الحاسب الآلي
+ * / الرئيسي» alone reads as *the* CS group, when it is only the CS group for
+ * whichever batch is selected — a دفعة ٤٧ student handed that card would have
+ * no way to tell it was not theirs.
+ */
+const programmeSubtitle = computed(() => [cohortLabel.value, branchShortLabel.value].filter((part) => part).join(' · '));
 
 /** The programme exists in this batch, just not at the branch they picked. */
 const branchesOfferingMajor = computed(() =>
@@ -222,8 +232,6 @@ watch([cohortId, section, branch, major], ([cohort, chosenSection, chosenBranch,
 });
 
 const selectorOpen = ref(true);
-
-const cohortLabel = computed(() => activeCohort.value?.name ?? '');
 
 /** The one-line version of step 1, shown once it is folded away. */
 const choiceSummary = computed(() =>
@@ -350,10 +358,7 @@ const sectionOptions: Option[] = [
                     <span class="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
                         {{ arabicDigits(2) }}
                     </span>
-                    <div>
-                        <h2 class="m-0 text-lg font-bold">جهّز هذي قبل ما تراسل</h2>
-                        <p class="m-0 text-sm text-muted-foreground">أرسلها لكل مشرف من المشرفَين.</p>
-                    </div>
+                    <h2 class="m-0 text-lg font-bold">جهّز هذي قبل ما تراسل</h2>
                 </div>
 
                 <div class="rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
@@ -367,18 +372,8 @@ const sectionOptions: Option[] = [
                     <span class="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
                         {{ arabicDigits(3) }}
                     </span>
-                    <div>
-                        <h2 class="m-0 text-lg font-bold">راسل مشرفي القروبين</h2>
-                        <p class="m-0 text-sm text-muted-foreground">
-                            تنضم لقروبين معاً: القروب العام لدفعتك، وقروب تخصصك. راسل مشرف كل واحد منهما — ونرشّح لك مشرفاً عشوائياً في كل زيارة حتى
-                            تتوزّع الطلبات بالتساوي.
-                        </p>
-                    </div>
+                    <h2 class="m-0 text-lg font-bold">راسل مشرفي القروبين</h2>
                 </div>
-
-                <p v-if="activeCohort?.note" class="rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
-                    {{ activeCohort.note }}
-                </p>
 
                 <div v-if="section === null" class="rounded-2xl border border-dashed border-border px-6 py-12 text-center">
                     <p class="font-medium">اختر شطرك أولاً</p>
@@ -396,7 +391,7 @@ const sectionOptions: Option[] = [
 
                     <GroupAnswer
                         :title="major === null ? 'قروب تخصصك' : majorLabel"
-                        :subtitle="major === null ? undefined : branchShortLabel"
+                        :subtitle="major === null ? undefined : programmeSubtitle"
                         :group="programmeGroup"
                         :section-key="section"
                     >

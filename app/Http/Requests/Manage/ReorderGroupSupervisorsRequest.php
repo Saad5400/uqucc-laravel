@@ -12,7 +12,8 @@ class ReorderGroupSupervisorsRequest extends FormRequest
     /**
      * Determine if the user is authorized to make this request.
      *
-     * Authorization is enforced by the `can:manage-student-groups` route middleware.
+     * Authorization is enforced by the `manage.access` route middleware, which
+     * gates the whole panel.
      */
     public function authorize(): bool
     {
