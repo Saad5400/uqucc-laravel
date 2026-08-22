@@ -140,7 +140,7 @@ Route::prefix('manage')->name('manage.')->group(function () {
             Route::post('/cohorts/{cohort}/groups', [StudentGroupController::class, 'store'])->name('cohorts.groups.store');
             Route::post('/cohorts/{cohort}/groups/reorder', [StudentGroupController::class, 'reorder'])->name('cohorts.groups.reorder');
             Route::put('/groups/{group}', [StudentGroupController::class, 'update'])->name('groups.update');
-            Route::delete('/groups/{group}', [StudentGroupController::class, 'destroy'])->name('groups.destroy');
+            Route::delete('/cohorts/{cohort}/groups/{group}', [StudentGroupController::class, 'destroy'])->name('cohorts.groups.destroy');
 
             Route::post('/groups/{group}/supervisors', [GroupSupervisorController::class, 'store'])->name('groups.supervisors.store');
             Route::post('/groups/{group}/supervisors/reorder', [GroupSupervisorController::class, 'reorder'])->name('groups.supervisors.reorder');

@@ -4,8 +4,7 @@ namespace App\Models\StudentGroup;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasManyThrough;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Support\Facades\Cache;
 use Spatie\Activitylog\LogOptions;
 use Spatie\Activitylog\Traits\LogsActivity;
@@ -40,6 +39,25 @@ class Cohort extends Model implements Sortable
     {
         static::saved(fn () => Cache::forget(self::CACHE_KEY));
         static::deleted(fn () => Cache::forget(self::CACHE_KEY));
+
+        /*
+         * Groups reach an intake through a pivot, so dropping the intake would
+         * otherwise leave its groups behind with no owner. A group another
+         * intake still shares is only detached — deleting دفعة ٤٦ must not take
+         * the programme groups away from دفعة ٤٧ — and one nobody else holds is
+         * deleted along with its supervisors.
+         */
+        static::deleting(function (self $cohort): void {
+            $cohort->groups()->get()->each(function (StudentGroup $group) use ($cohort): void {
+                if ($group->cohorts()->count() > 1) {
+                    $group->cohorts()->detach($cohort->id);
+
+                    return;
+                }
+
+                $group->delete();
+            });
+        });
     }
 
     protected $fillable = [
@@ -68,25 +86,14 @@ class Cohort extends Model implements Sortable
     ];
 
     /**
-     * The groups a student of this intake can be admitted to.
+     * The groups a student of this intake can be admitted to — its global group
+     * plus one per programme and branch. A group may be shared with another
+     * intake, so this is a pivot rather than a foreign key.
      */
-    public function groups(): HasMany
+    public function groups(): BelongsToMany
     {
-        return $this->hasMany(StudentGroup::class, 'student_cohort_id');
-    }
-
-    /**
-     * Every supervisor across the intake's groups — for the counts that tell an
-     * admin at a glance whether the intake is usable right now.
-     */
-    public function supervisors(): HasManyThrough
-    {
-        return $this->hasManyThrough(
-            GroupSupervisor::class,
-            StudentGroup::class,
-            'student_cohort_id',
-            'student_group_id',
-        );
+        return $this->belongsToMany(StudentGroup::class, 'student_group_cohort', 'student_cohort_id', 'student_group_id')
+            ->withTimestamps();
     }
 
     /**

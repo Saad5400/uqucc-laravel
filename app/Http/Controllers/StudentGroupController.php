@@ -66,7 +66,7 @@ class StudentGroupController extends Controller
             fn () => Cohort::query()
                 ->where('is_active', true)
                 ->with([
-                    'groups' => fn ($query) => $query->where('is_active', true)->orderBy('order'),
+                    'groups' => fn ($query) => $query->where('is_active', true)->orderBy('student_groups.order'),
                     'groups.supervisors' => fn ($query) => $query->where('is_available', true)->orderBy('order'),
                 ])
                 ->orderByDesc('is_featured')

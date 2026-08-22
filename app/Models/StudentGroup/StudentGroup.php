@@ -4,7 +4,7 @@ namespace App\Models\StudentGroup;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Cache;
 use Spatie\Activitylog\LogOptions;
@@ -14,13 +14,13 @@ use Spatie\EloquentSortable\SortableTrait;
 
 /**
  * One Telegram group a student can be admitted to, identified by what it is
- * for rather than by a typed-in name: a {@see Major} and a {@see Branch}
- * inside a {@see Cohort}.
+ * for rather than by a typed-in name: a {@see Major} and a {@see Branch},
+ * serving one or more {@see Cohort}s.
  *
- * A group with no major is that intake's **general** group — the one list
- * published to every newcomer before they know their programme. Everything
- * else is specialized, and the pair (major, branch) is what a student actually
- * picks on the public page.
+ * A group with no major is a **global** group — the one list published to every
+ * student of an intake regardless of programme. A student joins BOTH: the
+ * global group for their batch and the programme group for their major and
+ * branch. Neither replaces the other.
  *
  * Naming is derived, never stored: two admins would otherwise spell the same
  * programme differently and split the filter that students navigate by.
@@ -39,7 +39,6 @@ class StudentGroup extends Model implements Sortable
     }
 
     protected $fillable = [
-        'student_cohort_id',
         'major',
         'branch',
         'is_active',
@@ -49,7 +48,6 @@ class StudentGroup extends Model implements Sortable
     protected function casts(): array
     {
         return [
-            'student_cohort_id' => 'integer',
             'major' => Major::class,
             'branch' => Branch::class,
             'is_active' => 'boolean',
@@ -62,9 +60,14 @@ class StudentGroup extends Model implements Sortable
         'sort_when_creating' => true,
     ];
 
-    public function cohort(): BelongsTo
+    /**
+     * The intakes this group serves. Usually one; the college's programme groups
+     * for دفعة ٤٦ و٤٧ serve two, which is why this is not a plain foreign key.
+     */
+    public function cohorts(): BelongsToMany
     {
-        return $this->belongsTo(Cohort::class, 'student_cohort_id');
+        return $this->belongsToMany(Cohort::class, 'student_group_cohort', 'student_group_id', 'student_cohort_id')
+            ->withTimestamps();
     }
 
     public function supervisors(): HasMany
@@ -98,7 +101,7 @@ class StudentGroup extends Model implements Sortable
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['student_cohort_id', 'major', 'branch', 'is_active', 'order'])
+            ->logOnly(['major', 'branch', 'is_active', 'order'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs();
     }

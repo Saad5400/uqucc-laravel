@@ -12,7 +12,19 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { Switch } from '@/components/ui/switch';
 import { arabicSupervisors } from '@/lib/arabic';
 import { router } from '@inertiajs/vue3';
-import { ArrowDown, ArrowUp, ChevronDown, EllipsisVertical, GripVertical, Pencil, Plus, Trash2, TriangleAlert, UserRound } from 'lucide-vue-next';
+import {
+    ArrowDown,
+    ArrowUp,
+    ChevronDown,
+    EllipsisVertical,
+    GripVertical,
+    Pencil,
+    Plus,
+    Share2,
+    Trash2,
+    TriangleAlert,
+    UserRound,
+} from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 import SupervisorFormDialog from './SupervisorFormDialog.vue';
 import SupervisorList from './SupervisorList.vue';
@@ -108,6 +120,10 @@ const confirmingDeletion = ref(false);
                     <span class="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span class="font-medium">{{ group.name }}</span>
                         <Badge v-if="group.is_general" variant="secondary">عام</Badge>
+                        <Badge v-for="shared in group.shared_with" :key="shared.id" variant="outline">
+                            <Share2 aria-hidden="true" />
+                            مشترك مع {{ shared.name }}
+                        </Badge>
                         <Badge v-if="!isActive" variant="secondary">مخفي</Badge>
                         <Badge v-else-if="isUnreachable" variant="destructive">
                             <TriangleAlert aria-hidden="true" />
@@ -154,7 +170,7 @@ const confirmingDeletion = ref(false);
                     <DropdownMenuSeparator />
                     <DropdownMenuItem variant="destructive" @select="confirmingDeletion = true">
                         <Trash2 />
-                        حذف القروب
+                        {{ group.shared_with.length ? 'إزالة من هذه الدفعة' : 'حذف القروب' }}
                     </DropdownMenuItem>
                 </DropdownMenuContent>
             </DropdownMenu>
@@ -198,17 +214,23 @@ const confirmingDeletion = ref(false);
 
         <ConfirmDialog
             v-model:open="confirmingDeletion"
-            title="حذف القروب"
+            :title="group.shared_with.length ? 'إزالة القروب من هذه الدفعة' : 'حذف القروب'"
             destructive
-            confirm-label="حذف"
+            :confirm-label="group.shared_with.length ? 'إزالة' : 'حذف'"
             @confirm="
                 confirmingDeletion = false;
                 emit('delete');
             "
         >
-            سيتم حذف قروب «{{ group.name }}»
-            {{ group.supervisors.length ? `و${arabicSupervisors(group.supervisors.length)} فيه` : 'ولا يوجد مشرفون فيه' }}
-            نهائياً. إن كان الغرض إخفاءه عن الزوار فقط، أوقف مفتاح العرض بدلاً من الحذف.
+            <template v-if="group.shared_with.length">
+                سيُزال قروب «{{ group.name }}» من هذه الدفعة فقط، ويبقى كما هو في
+                {{ group.shared_with.map((shared) => shared.name).join('، ') }} بمشرفيه.
+            </template>
+            <template v-else>
+                سيتم حذف قروب «{{ group.name }}»
+                {{ group.supervisors.length ? `و${arabicSupervisors(group.supervisors.length)} فيه` : 'ولا يوجد مشرفون فيه' }}
+                نهائياً. إن كان الغرض إخفاءه عن الزوار فقط، أوقف مفتاح العرض بدلاً من الحذف.
+            </template>
         </ConfirmDialog>
     </li>
 </template>

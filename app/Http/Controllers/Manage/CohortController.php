@@ -27,11 +27,10 @@ class CohortController extends Controller
     {
         return Inertia::render('manage/groups/Index', [
             'cohorts' => Cohort::query()
-                ->withCount([
-                    'groups',
+                ->with(['groups' => fn ($query) => $query->withCount([
                     'supervisors',
-                    'supervisors as available_supervisors_count' => fn ($query) => $query->where('is_available', true),
-                ])
+                    'supervisors as available_supervisors_count' => fn ($inner) => $inner->where('is_available', true),
+                ])])
                 ->orderBy('order')
                 ->get()
                 ->map(fn (Cohort $cohort) => $this->summarize($cohort)),
@@ -46,16 +45,16 @@ class CohortController extends Controller
      */
     public function show(Cohort $cohort): Response
     {
-        $cohort->loadCount([
-            'groups',
-            'supervisors',
-            'supervisors as available_supervisors_count' => fn ($query) => $query->where('is_available', true),
-        ]);
-
         $groups = $cohort->groups()
-            ->with(['supervisors' => fn ($query) => $query->orderBy('order')])
-            ->orderBy('order')
+            ->with(['supervisors' => fn ($query) => $query->orderBy('order'), 'cohorts'])
+            ->withCount([
+                'supervisors',
+                'supervisors as available_supervisors_count' => fn ($query) => $query->where('is_available', true),
+            ])
+            ->orderBy('student_groups.order')
             ->get();
+
+        $cohort->setRelation('groups', $groups);
 
         return Inertia::render('manage/groups/Show', [
             'cohort' => $this->summarize($cohort),
@@ -67,6 +66,11 @@ class CohortController extends Controller
                 'branch' => $group->branch?->value,
                 'branch_label' => $group->branch?->label() ?? 'كل الفروع',
                 'is_active' => $group->is_active,
+                // Which other intakes would keep this group if it were removed here.
+                'shared_with' => $group->cohorts
+                    ->reject(fn (Cohort $other) => $other->id === $cohort->id)
+                    ->map(fn (Cohort $other) => ['id' => $other->id, 'name' => $other->name])
+                    ->values(),
                 'supervisors' => $group->supervisors->map(fn (GroupSupervisor $supervisor) => [
                     'id' => $supervisor->id,
                     'name' => $supervisor->name,
@@ -90,6 +94,9 @@ class CohortController extends Controller
                     fn (SupervisorSection $section) => ['value' => $section->value, 'label' => $section->label()],
                     SupervisorSection::ordered(),
                 ),
+                'cohorts' => Cohort::query()->orderBy('order')->get()
+                    ->map(fn (Cohort $option) => ['value' => (string) $option->id, 'label' => $option->name])
+                    ->values(),
             ],
         ]);
     }
@@ -149,10 +156,16 @@ class CohortController extends Controller
      * whether an intake is usable, and both the list and the workspace open the
      * same edit dialog, which needs the full settings.
      *
+     * Supervisor totals are summed from the loaded groups rather than a
+     * `withCount`: groups reach an intake through a pivot, so there is no single
+     * relation to count through.
+     *
      * @return array<string, mixed>
      */
     private function summarize(Cohort $cohort): array
     {
+        $groups = $cohort->relationLoaded('groups') ? $cohort->groups : collect();
+
         return [
             'id' => $cohort->id,
             'name' => $cohort->name,
@@ -161,9 +174,9 @@ class CohortController extends Controller
             'requirements' => array_values($cohort->requirements ?? []),
             'is_active' => $cohort->is_active,
             'is_featured' => $cohort->is_featured,
-            'groups_count' => $cohort->groups_count ?? 0,
-            'supervisors_count' => $cohort->supervisors_count ?? 0,
-            'available_supervisors_count' => $cohort->available_supervisors_count ?? 0,
+            'groups_count' => $groups->count(),
+            'supervisors_count' => (int) $groups->sum('supervisors_count'),
+            'available_supervisors_count' => (int) $groups->sum('available_supervisors_count'),
         ];
     }
 

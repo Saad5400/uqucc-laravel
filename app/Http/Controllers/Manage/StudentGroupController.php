@@ -17,7 +17,8 @@ class StudentGroupController extends Controller
      */
     public function store(StoreStudentGroupRequest $request, Cohort $cohort): RedirectResponse
     {
-        $cohort->groups()->create($this->attributesFrom($request->validated()));
+        $group = StudentGroup::create($this->attributesFrom($request->validated()));
+        $group->cohorts()->sync($this->cohortIdsFrom($request->validated(), $cohort));
 
         return back();
     }
@@ -30,14 +31,31 @@ class StudentGroupController extends Controller
     {
         $group->update($this->attributesFrom($request->validated()));
 
+        if ($request->has('cohort_ids')) {
+            $group->cohorts()->sync($request->validated('cohort_ids'));
+            $group->touch();
+        }
+
         return back();
     }
 
     /**
-     * Delete a group along with its supervisors.
+     * Remove a group from this intake.
+     *
+     * A group serving more than one intake is only detached here — deleting the
+     * دفعة ٤٦ و٤٧ programme groups off one batch would take them away from the
+     * other, which is never what "remove it from this list" means. The row is
+     * deleted outright once no intake is left holding it.
      */
-    public function destroy(StudentGroup $group): RedirectResponse
+    public function destroy(Cohort $cohort, StudentGroup $group): RedirectResponse
     {
+        if ($group->cohorts()->count() > 1) {
+            $group->cohorts()->detach($cohort->id);
+            $group->touch();
+
+            return back();
+        }
+
         $group->delete();
 
         return back();
@@ -52,13 +70,27 @@ class StudentGroupController extends Controller
     public function reorder(ReorderStudentGroupsRequest $request, Cohort $cohort): RedirectResponse
     {
         $ids = $request->validated('ids');
-        $groups = $cohort->groups()->findMany($ids)->keyBy('id');
+        $groups = $cohort->groups()->whereIn('student_groups.id', $ids)->get()->keyBy('id');
 
         foreach ($ids as $index => $id) {
             $groups[$id]->update(['order' => $index + 1]);
         }
 
         return back();
+    }
+
+    /**
+     * The intakes a new group serves: whatever was ticked, always including the
+     * one it is being created in.
+     *
+     * @param  array<string, mixed>  $validated
+     * @return array<int, int>
+     */
+    private function cohortIdsFrom(array $validated, Cohort $cohort): array
+    {
+        $ids = array_map('intval', $validated['cohort_ids'] ?? []);
+
+        return array_values(array_unique([...$ids, $cohort->id]));
     }
 
     /**

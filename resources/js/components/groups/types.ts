@@ -40,9 +40,6 @@ export interface Cohort {
     groups: StudentGroup[];
 }
 
-/** The «I have not declared a programme yet» choice, which resolves to the general group. */
-export const GENERAL_MAJOR = '__general__';
-
 /** The avatar letter for a supervisor — codepoint-safe, so Arabic names work. */
 export function initialOf(name: string): string {
     return [...name.trim()][0] ?? '؟';

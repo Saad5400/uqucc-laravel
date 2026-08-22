@@ -6,12 +6,21 @@ use App\Models\StudentGroup\StudentGroup;
 
 class UpdateStudentGroupRequest extends StudentGroupRequest
 {
-    /** A group never moves between intakes, so the intake comes from the row. */
-    protected function cohortId(): ?int
+    /**
+     * Where the group would live after this request: the intakes being synced
+     * if the payload names them, otherwise the ones it already serves.
+     *
+     * @return array<int, int>
+     */
+    protected function cohortIds(): array
     {
+        if ($this->has('cohort_ids')) {
+            return array_map('intval', $this->input('cohort_ids', []));
+        }
+
         $group = $this->route('group');
 
-        return $group instanceof StudentGroup ? $group->student_cohort_id : null;
+        return $group instanceof StudentGroup ? $group->cohorts()->pluck('student_cohorts.id')->all() : [];
     }
 
     /** Keeping the same pair while editing is not a duplicate. */

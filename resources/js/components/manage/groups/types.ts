@@ -37,6 +37,8 @@ export interface GroupRow {
     branch: string | null;
     branch_label: string;
     is_active: boolean;
+    /** Other intakes serving this same group — the college shares its ٤٦/٤٧ programme groups. */
+    shared_with: { id: number; name: string }[];
     supervisors: SupervisorRow[];
 }
 
@@ -49,6 +51,7 @@ export interface Taxonomy {
     majors: TaxonomyOption[];
     branches: TaxonomyOption[];
     sections: TaxonomyOption[];
+    cohorts: TaxonomyOption[];
 }
 
 /** The empty-string sentinel a `<Select>` needs, since it cannot hold null. */

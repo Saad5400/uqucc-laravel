@@ -71,7 +71,8 @@ function openEditGroup(group: GroupRow): void {
 }
 
 function deleteGroup(group: GroupRow): void {
-    router.delete(`/manage/groups/${group.id}`, { preserveScroll: true });
+    // Scoped to this intake: the server detaches a shared group instead of deleting it.
+    router.delete(`/manage/cohorts/${props.cohort.id}/groups/${group.id}`, { preserveScroll: true });
 }
 </script>
 

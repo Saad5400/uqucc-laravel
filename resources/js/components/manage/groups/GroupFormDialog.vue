@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -20,10 +21,11 @@ const open = defineModel<boolean>('open', { default: false });
 
 const isEditing = computed(() => props.group !== null);
 
-const form = useForm<{ major: string; branch: string; is_active: boolean }>({
+const form = useForm<{ major: string; branch: string; is_active: boolean; cohort_ids: number[] }>({
     major: NO_VALUE,
     branch: NO_VALUE,
     is_active: true,
+    cohort_ids: [],
 });
 
 watch(open, (isOpen) => {
@@ -32,8 +34,14 @@ watch(open, (isOpen) => {
         form.major = toSelectValue(props.group?.major ?? null);
         form.branch = toSelectValue(props.group?.branch ?? null);
         form.is_active = props.group?.is_active ?? true;
+        form.cohort_ids = props.group ? [props.cohortId, ...props.group.shared_with.map((cohort) => cohort.id)] : [props.cohortId];
     }
 });
+
+/** The intake being edited from always stays ticked — untick it elsewhere. */
+function toggleCohort(id: number, checked: boolean): void {
+    form.cohort_ids = checked ? [...new Set([...form.cohort_ids, id])] : form.cohort_ids.filter((current) => current !== id);
+}
 
 const isGeneral = computed(() => form.major === NO_VALUE);
 
@@ -99,6 +107,22 @@ function submit(): void {
                     </Select>
                     <p v-if="form.errors.branch" class="text-sm text-destructive-foreground">{{ form.errors.branch }}</p>
                     <p v-else-if="isGeneral" class="text-xs text-muted-foreground">القروب العام يُعرض قبل قروبات التخصصات.</p>
+                </div>
+
+                <div class="space-y-2">
+                    <Label>الدفعات</Label>
+                    <div class="space-y-2 rounded-lg border border-border p-3">
+                        <div v-for="option in taxonomy.cohorts" :key="option.value" class="flex items-center gap-2">
+                            <Checkbox
+                                :id="`group-cohort-${option.value}`"
+                                :model-value="form.cohort_ids.includes(Number(option.value))"
+                                @update:model-value="toggleCohort(Number(option.value), $event === true)"
+                            />
+                            <Label :for="`group-cohort-${option.value}`" class="font-normal">{{ option.label }}</Label>
+                        </div>
+                    </div>
+                    <p v-if="form.errors.cohort_ids" class="text-sm text-destructive-foreground">{{ form.errors.cohort_ids }}</p>
+                    <p v-else class="text-xs text-muted-foreground">القروب الواحد يخدم أكثر من دفعة عند الحاجة، بدل تكراره ومزامنته يدوياً.</p>
                 </div>
 
                 <div class="flex items-start justify-between gap-4 rounded-lg border border-border p-3">

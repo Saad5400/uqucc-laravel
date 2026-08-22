@@ -205,6 +205,22 @@ describe('update', function () {
 });
 
 describe('delete', function () {
+    it('keeps a group another cohort still shares, and drops the rest', function () {
+        $cohort = CohortFactory::new()->create();
+        $other = CohortFactory::new()->create();
+
+        $shared = StudentGroupFactory::new()->forCohort($cohort, $other)->create();
+        $ownOnly = StudentGroupFactory::new()->forCohort($cohort)->general()->create();
+        GroupSupervisorFactory::new()->forGroup($shared)->create();
+        GroupSupervisorFactory::new()->forGroup($ownOnly)->create();
+
+        $this->actingAs($this->admin)->delete("/manage/cohorts/{$cohort->id}")->assertRedirect('/manage/cohorts');
+
+        expect(StudentGroup::query()->pluck('id')->all())->toBe([$shared->id])
+            ->and(GroupSupervisor::query()->count())->toBe(1)
+            ->and($other->groups()->count())->toBe(1);
+    });
+
     it('deletes a cohort along with its groups and their supervisors', function () {
         $cohort = CohortFactory::new()->create();
         $group = StudentGroupFactory::new()->forCohort($cohort)->create();

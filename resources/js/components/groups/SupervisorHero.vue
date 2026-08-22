@@ -48,8 +48,8 @@ const iconFor = (kind: string) => (kind === 'whatsapp' ? MessageCircle : Send);
 </script>
 
 <template>
-    <div class="rounded-2xl bg-gradient-to-b from-primary/10 to-card p-px shadow-sm ring-1 ring-primary/20">
-        <div class="rounded-[calc(1rem-1px)] px-6 py-8 text-center sm:px-8">
+    <div class="rounded-xl bg-gradient-to-b from-primary/10 to-card ring-1 ring-primary/20">
+        <div class="px-5 py-6 text-center">
             <Transition
                 mode="out-in"
                 enter-active-class="transition duration-200 ease-out"
@@ -59,14 +59,14 @@ const iconFor = (kind: string) => (kind === 'whatsapp' ? MessageCircle : Send);
             >
                 <div v-if="picked" :key="picked.id" class="flex flex-col items-center gap-4">
                     <span
-                        class="flex size-16 items-center justify-center rounded-full bg-primary/15 text-2xl font-bold text-primary ring-4 ring-primary/5"
+                        class="flex size-14 items-center justify-center rounded-full bg-primary/15 text-xl font-bold text-primary ring-4 ring-primary/5"
                         aria-hidden="true"
                     >
                         {{ initialOf(picked.name) }}
                     </span>
 
                     <div class="space-y-1">
-                        <p class="text-2xl font-bold sm:text-3xl">{{ picked.name }}</p>
+                        <p class="text-2xl font-bold">{{ picked.name }}</p>
                         <p class="text-sm text-muted-foreground">
                             <bdi dir="ltr">{{ picked.contacts[0]?.handle }}</bdi>
                         </p>
@@ -92,9 +92,9 @@ const iconFor = (kind: string) => (kind === 'whatsapp' ? MessageCircle : Send);
                 </div>
 
                 <div v-else class="flex flex-col items-center gap-4">
-                    <Skeleton class="size-16 rounded-full" />
+                    <Skeleton class="size-14 rounded-full" />
                     <div class="flex flex-col items-center gap-2">
-                        <Skeleton class="h-8 w-40" />
+                        <Skeleton class="h-7 w-36" />
                         <Skeleton class="h-4 w-24" />
                     </div>
                     <Skeleton class="h-10 w-full max-w-sm" />

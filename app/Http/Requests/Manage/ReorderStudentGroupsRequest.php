@@ -3,7 +3,6 @@
 namespace App\Http\Requests\Manage;
 
 use App\Models\StudentGroup\Cohort;
-use App\Models\StudentGroup\StudentGroup;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -50,11 +49,9 @@ class ReorderStudentGroupsRequest extends FormRequest
                     return;
                 }
 
-                $foreign = StudentGroup::query()
-                    ->findMany($this->input('ids'))
-                    ->contains(fn (StudentGroup $group) => $group->student_cohort_id !== $cohort->id);
+                $belonging = $cohort->groups()->whereIn('student_groups.id', $this->input('ids'))->count();
 
-                if ($foreign) {
+                if ($belonging !== count($this->input('ids'))) {
                     $validator->errors()->add('ids', 'قائمة الترتيب تحتوي على قروب من دفعة أخرى.');
                 }
             },

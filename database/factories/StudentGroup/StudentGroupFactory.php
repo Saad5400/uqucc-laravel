@@ -23,25 +23,24 @@ class StudentGroupFactory extends Factory
     public function definition(): array
     {
         return [
-            'student_cohort_id' => CohortFactory::new(),
             'major' => Major::ComputerScience,
             'branch' => Branch::Main,
             'is_active' => true,
         ];
     }
 
-    /** The cohort's general group: no programme, every branch. */
+    /** A batch's global group: no programme, every branch. */
     public function general(): static
     {
         return $this->state(fn (array $attributes) => ['major' => null, 'branch' => null]);
     }
 
-    public function major(Major $major): static
+    public function major(?Major $major): static
     {
         return $this->state(fn (array $attributes) => ['major' => $major]);
     }
 
-    public function branch(Branch $branch): static
+    public function branch(?Branch $branch): static
     {
         return $this->state(fn (array $attributes) => ['branch' => $branch]);
     }
@@ -51,9 +50,14 @@ class StudentGroupFactory extends Factory
         return $this->state(fn (array $attributes) => ['is_active' => false]);
     }
 
-    /** Attach the group to an existing cohort. */
-    public function forCohort(Cohort $cohort): static
+    /**
+     * Serve one or more intakes. Passing several is how the college's shared
+     * programme groups are modelled, so tests can reproduce that directly.
+     */
+    public function forCohort(Cohort ...$cohorts): static
     {
-        return $this->state(fn (array $attributes) => ['student_cohort_id' => $cohort->id]);
+        $ids = array_map(fn (Cohort $cohort) => $cohort->id, $cohorts);
+
+        return $this->afterCreating(fn (StudentGroup $group) => $group->cohorts()->syncWithoutDetaching($ids));
     }
 }
