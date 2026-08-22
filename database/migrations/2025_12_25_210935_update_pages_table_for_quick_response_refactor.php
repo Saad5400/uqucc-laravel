@@ -18,16 +18,16 @@ return new class extends Migration
             }
 
             // Add new auto-extract and customization toggles
-            if (!Schema::hasColumn('pages', 'quick_response_auto_extract')) {
+            if (! Schema::hasColumn('pages', 'quick_response_auto_extract')) {
                 $table->boolean('quick_response_auto_extract')->default(false)->after('extension');
             }
-            if (!Schema::hasColumn('pages', 'quick_response_customize_message')) {
+            if (! Schema::hasColumn('pages', 'quick_response_customize_message')) {
                 $table->boolean('quick_response_customize_message')->default(false)->after('quick_response_auto_extract');
             }
-            if (!Schema::hasColumn('pages', 'quick_response_customize_buttons')) {
+            if (! Schema::hasColumn('pages', 'quick_response_customize_buttons')) {
                 $table->boolean('quick_response_customize_buttons')->default(false)->after('quick_response_customize_message');
             }
-            if (!Schema::hasColumn('pages', 'quick_response_customize_attachments')) {
+            if (! Schema::hasColumn('pages', 'quick_response_customize_attachments')) {
                 $table->boolean('quick_response_customize_attachments')->default(false)->after('quick_response_customize_buttons');
             }
         });
@@ -40,7 +40,7 @@ return new class extends Migration
     {
         Schema::table('pages', function (Blueprint $table) {
             // Restore quick_response_enabled
-            if (!Schema::hasColumn('pages', 'quick_response_enabled')) {
+            if (! Schema::hasColumn('pages', 'quick_response_enabled')) {
                 $table->boolean('quick_response_enabled')->default(false)->after('extension');
             }
 

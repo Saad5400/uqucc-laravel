@@ -33,20 +33,22 @@ describe('authorization', function () {
         $this->get('/manage/cohorts')->assertRedirect(route('manage.login'));
     });
 
-    it('blocks editors from the cohorts workspace', function () {
-        $this->actingAs($this->editor)->get('/manage/cohorts')->assertForbidden();
+    it('lets editors open the cohorts workspace — the area is not behind its own permission', function () {
+        $this->actingAs($this->editor)->get('/manage/cohorts')->assertOk();
     });
 
-    it('blocks editors from every cohort mutation', function () {
+    it('lets editors manage cohorts — the area is not behind its own permission', function () {
         $cohort = CohortFactory::new()->create();
 
         $this->actingAs($this->editor);
 
-        $this->get("/manage/cohorts/{$cohort->id}")->assertForbidden();
-        $this->post('/manage/cohorts', ['name' => 'دفعة ٤٩'])->assertForbidden();
-        $this->put("/manage/cohorts/{$cohort->id}", ['name' => 'جديد'])->assertForbidden();
-        $this->delete("/manage/cohorts/{$cohort->id}")->assertForbidden();
-        $this->post('/manage/cohorts/reorder', ['ids' => [$cohort->id]])->assertForbidden();
+        $this->get("/manage/cohorts/{$cohort->id}")->assertOk();
+        $this->post('/manage/cohorts', ['name' => 'دفعة ٤٩'])->assertSessionHasNoErrors();
+        $this->put("/manage/cohorts/{$cohort->id}", ['name' => 'جديد'])->assertSessionHasNoErrors();
+        $this->post('/manage/cohorts/reorder', ['ids' => [$cohort->id]])->assertSessionHasNoErrors();
+        $this->delete("/manage/cohorts/{$cohort->id}")->assertSessionHasNoErrors();
+
+        expect(Cohort::query()->where('name', 'دفعة ٤٩')->exists())->toBeTrue();
     });
 
     it('allows admins to open the cohorts workspace', function () {

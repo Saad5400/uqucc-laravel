@@ -129,24 +129,22 @@ Route::prefix('manage')->name('manage.')->group(function () {
             Route::delete('/courses/{course}', [PrivateTutorCourseController::class, 'destroy'])->name('courses.destroy');
         });
 
-        Route::middleware('can:manage-student-groups')->group(function () {
-            Route::get('/cohorts', [CohortController::class, 'index'])->name('cohorts.index');
-            Route::post('/cohorts', [CohortController::class, 'store'])->name('cohorts.store');
-            Route::post('/cohorts/reorder', [CohortController::class, 'reorder'])->name('cohorts.reorder');
-            Route::get('/cohorts/{cohort}', [CohortController::class, 'show'])->name('cohorts.show');
-            Route::put('/cohorts/{cohort}', [CohortController::class, 'update'])->name('cohorts.update');
-            Route::delete('/cohorts/{cohort}', [CohortController::class, 'destroy'])->name('cohorts.destroy');
+        Route::get('/cohorts', [CohortController::class, 'index'])->name('cohorts.index');
+        Route::post('/cohorts', [CohortController::class, 'store'])->name('cohorts.store');
+        Route::post('/cohorts/reorder', [CohortController::class, 'reorder'])->name('cohorts.reorder');
+        Route::get('/cohorts/{cohort}', [CohortController::class, 'show'])->name('cohorts.show');
+        Route::put('/cohorts/{cohort}', [CohortController::class, 'update'])->name('cohorts.update');
+        Route::delete('/cohorts/{cohort}', [CohortController::class, 'destroy'])->name('cohorts.destroy');
 
-            Route::post('/cohorts/{cohort}/groups', [StudentGroupController::class, 'store'])->name('cohorts.groups.store');
-            Route::post('/cohorts/{cohort}/groups/reorder', [StudentGroupController::class, 'reorder'])->name('cohorts.groups.reorder');
-            Route::put('/groups/{group}', [StudentGroupController::class, 'update'])->name('groups.update');
-            Route::delete('/cohorts/{cohort}/groups/{group}', [StudentGroupController::class, 'destroy'])->name('cohorts.groups.destroy');
+        Route::post('/cohorts/{cohort}/groups', [StudentGroupController::class, 'store'])->name('cohorts.groups.store');
+        Route::post('/cohorts/{cohort}/groups/reorder', [StudentGroupController::class, 'reorder'])->name('cohorts.groups.reorder');
+        Route::put('/groups/{group}', [StudentGroupController::class, 'update'])->name('groups.update');
+        Route::delete('/cohorts/{cohort}/groups/{group}', [StudentGroupController::class, 'destroy'])->name('cohorts.groups.destroy');
 
-            Route::post('/groups/{group}/supervisors', [GroupSupervisorController::class, 'store'])->name('groups.supervisors.store');
-            Route::post('/groups/{group}/supervisors/reorder', [GroupSupervisorController::class, 'reorder'])->name('groups.supervisors.reorder');
-            Route::put('/supervisors/{supervisor}', [GroupSupervisorController::class, 'update'])->name('supervisors.update');
-            Route::delete('/supervisors/{supervisor}', [GroupSupervisorController::class, 'destroy'])->name('supervisors.destroy');
-        });
+        Route::post('/groups/{group}/supervisors', [GroupSupervisorController::class, 'store'])->name('groups.supervisors.store');
+        Route::post('/groups/{group}/supervisors/reorder', [GroupSupervisorController::class, 'reorder'])->name('groups.supervisors.reorder');
+        Route::put('/supervisors/{supervisor}', [GroupSupervisorController::class, 'update'])->name('supervisors.update');
+        Route::delete('/supervisors/{supervisor}', [GroupSupervisorController::class, 'destroy'])->name('supervisors.destroy');
 
         Route::middleware('can:review-changes')->group(function () {
             Route::get('/reviews', [PageChangeRequestController::class, 'index'])->name('reviews.index');

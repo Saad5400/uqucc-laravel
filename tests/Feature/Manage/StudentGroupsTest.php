@@ -34,15 +34,17 @@ describe('authorization', function () {
         $this->delete("/manage/cohorts/{$this->cohort->id}/groups/{$group->id}")->assertRedirect(route('manage.login'));
     });
 
-    it('blocks editors from every group mutation', function () {
+    it('lets editors manage groups — the area is not behind its own permission', function () {
         $group = StudentGroupFactory::new()->forCohort($this->cohort)->create();
 
         $this->actingAs($this->editor);
 
-        $this->post("/manage/cohorts/{$this->cohort->id}/groups", ['major' => 'cybersecurity', 'branch' => 'main'])->assertForbidden();
-        $this->put("/manage/groups/{$group->id}", ['is_active' => false])->assertForbidden();
-        $this->delete("/manage/cohorts/{$this->cohort->id}/groups/{$group->id}")->assertForbidden();
-        $this->post("/manage/cohorts/{$this->cohort->id}/groups/reorder", ['ids' => [$group->id]])->assertForbidden();
+        $this->post("/manage/cohorts/{$this->cohort->id}/groups", ['major' => 'cybersecurity', 'branch' => 'main'])->assertSessionHasNoErrors();
+        $this->put("/manage/groups/{$group->id}", ['is_active' => false])->assertSessionHasNoErrors();
+        $this->post("/manage/cohorts/{$this->cohort->id}/groups/reorder", ['ids' => [$group->id]])->assertSessionHasNoErrors();
+        $this->delete("/manage/cohorts/{$this->cohort->id}/groups/{$group->id}")->assertSessionHasNoErrors();
+
+        expect(StudentGroup::query()->where('major', Major::Cybersecurity)->exists())->toBeTrue();
     });
 });
 

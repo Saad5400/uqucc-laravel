@@ -23,7 +23,6 @@ class RolesAndPermissionsSeeder extends Seeder
             'assign-roles',
             'edit-content',
             'manage-private-tutors',
-            'manage-student-groups',
             'view-activity-logs',
         ];
 
@@ -33,7 +32,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // Create roles and assign permissions
         $adminRole = Role::firstOrCreate(['name' => 'admin']);
-        $adminRole->givePermissionTo(['manage-users', 'assign-roles', 'edit-content', 'manage-private-tutors', 'manage-student-groups', 'view-activity-logs']);
+        $adminRole->givePermissionTo(['manage-users', 'assign-roles', 'edit-content', 'manage-private-tutors', 'view-activity-logs']);
 
         $editorRole = Role::firstOrCreate(['name' => 'editor']);
         $editorRole->givePermissionTo(['edit-content', 'view-activity-logs']);
