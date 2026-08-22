@@ -4,15 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Services\OgImageService;
 use App\Support\ScreenshotConfig;
-use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Log;
 
 class OgImageController extends Controller
 {
     public function __construct(
         protected OgImageService $ogImageService
-    ) {
-    }
+    ) {}
 
     /**
      * Generate and return an OG image for a given route.

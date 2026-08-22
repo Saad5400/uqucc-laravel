@@ -9,6 +9,8 @@ export interface SeoData {
     canonical: string;
     ogType: string;
     schema: Record<string, unknown>[];
+    /** Unlisted pages ask crawlers to stay out; omitted means indexable. */
+    noindex?: boolean;
 }
 
 const props = defineProps<{
@@ -45,6 +47,7 @@ const ogImageUrl = computed(() => {
         <meta head-key="twitter:description" name="twitter:description" :content="seo.description" />
         <meta head-key="twitter:url" name="twitter:url" :content="seo.canonical" />
         <meta head-key="twitter:image" name="twitter:image" :content="ogImageUrl" />
+        <meta v-if="seo.noindex" head-key="robots" name="robots" content="noindex, nofollow" />
         <link head-key="canonical" rel="canonical" :href="seo.canonical" />
     </Head>
 </template>
