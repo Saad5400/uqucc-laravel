@@ -35,7 +35,7 @@ const iconFor = (kind: string) => (kind === 'whatsapp' ? MessageCircle : Send);
         </div>
 
         <CollapsibleContent>
-            <ul class="mt-3 grid list-none gap-1 p-0 sm:grid-cols-2">
+            <ul class="mt-3 grid list-none gap-1 p-0">
                 <li v-for="supervisor in section.supervisors" :key="supervisor.id">
                     <div class="flex items-center gap-3 rounded-xl border border-border p-3">
                         <span

@@ -125,12 +125,13 @@ const branchOption = computed(() => branchOptions.value.find((option) => option.
 const branchShortLabel = computed(() => branchOption.value?.short ?? branchOption.value?.label ?? '');
 
 /**
- * The programme card names its batch as well as its branch. «علوم الحاسب الآلي
- * / الرئيسي» alone reads as *the* CS group, when it is only the CS group for
- * whichever batch is selected — a دفعة ٤٧ student handed that card would have
- * no way to tell it was not theirs.
+ * Both cards are labelled with the batch and nothing else. The branch is a
+ * field the student set two rows above; repeating it on the card is noise.
  */
-const programmeSubtitle = computed(() => [cohortLabel.value, branchShortLabel.value].filter((part) => part).join(' · '));
+const programmeSubtitle = computed(() => cohortLabel.value);
+
+/** Nothing below step 1 is shown until the student has said both of these. */
+const hasAnswered = computed(() => section.value !== null && major.value !== null);
 
 /** The programme exists in this batch, just not at the branch they picked. */
 const branchesOfferingMajor = computed(() =>
@@ -280,7 +281,7 @@ const sectionOptions: Option[] = [
 
             <!-- 2 · what to have ready. Above the contact buttons on purpose: tapping one
                  leaves the site for WhatsApp or Telegram, so anything under it is never read. -->
-            <section v-if="activeCohort?.requirements.length" class="space-y-4">
+            <section v-if="hasAnswered && activeCohort?.requirements.length" class="space-y-4">
                 <div class="flex items-center gap-3">
                     <span class="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
                         {{ arabicDigits(2) }}
@@ -294,7 +295,7 @@ const sectionOptions: Option[] = [
             </section>
 
             <!-- 3 · both groups, side by side: joining one is not joining -->
-            <section class="space-y-4">
+            <section v-if="hasAnswered" class="space-y-4">
                 <div class="flex items-center gap-3">
                     <span class="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
                         {{ arabicDigits(3) }}
@@ -302,13 +303,8 @@ const sectionOptions: Option[] = [
                     <h2 class="m-0 text-lg font-bold">راسل مشرفي القروبين</h2>
                 </div>
 
-                <div v-if="section === null" class="rounded-2xl border border-dashed border-border px-6 py-12 text-center">
-                    <p class="font-medium">اختر شطرك أولاً</p>
-                    <p class="mt-1 text-sm text-muted-foreground">نعرض لك مشرفاً من شطرك، لأن الانضمام يتم عن طريق مشرفي الشطر نفسه.</p>
-                </div>
-
                 <!-- items-start so an empty slot (a batch with no global group) does not stretch to match a filled one -->
-                <div v-else class="grid items-start gap-4 md:grid-cols-2">
+                <div class="grid items-start gap-4 md:grid-cols-2">
                     <GroupAnswer title="القروب العام" :subtitle="activeCohort?.name" :group="globalGroup" :section-key="section">
                         <template #empty>
                             <span v-if="!globalGroup">لا يوجد قروب عام لهذه الدفعة — اكتفِ بقروب تخصصك.</span>
@@ -316,15 +312,9 @@ const sectionOptions: Option[] = [
                         </template>
                     </GroupAnswer>
 
-                    <GroupAnswer
-                        :title="major === null ? 'قروب تخصصك' : majorLabel"
-                        :subtitle="major === null ? undefined : programmeSubtitle"
-                        :group="programmeGroup"
-                        :section-key="section"
-                    >
+                    <GroupAnswer :title="majorLabel" :subtitle="programmeSubtitle" :group="programmeGroup" :section-key="section">
                         <template #empty>
-                            <span v-if="major === null">اختر تخصصك أعلاه ليظهر لك مشرف قروب تخصصك.</span>
-                            <span v-else-if="!programmeGroup && branchesOfferingMajor.length" class="block space-y-3">
+                            <span v-if="!programmeGroup && branchesOfferingMajor.length" class="block space-y-3">
                                 <span class="block">«{{ majorLabel }}» ليس له قروب في هذا الفرع. متاح في:</span>
                                 <span class="flex flex-wrap justify-center gap-2">
                                     <Button
