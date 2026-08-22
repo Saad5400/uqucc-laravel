@@ -6,6 +6,7 @@ use App\Http\Controllers\OgImageController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\PrivateTutorController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\StudentGroupController;
 use App\Http\Controllers\ToolController;
 use App\Http\Middleware\CacheResponse;
 use Illuminate\Support\Facades\Route;
@@ -33,6 +34,13 @@ Route::middleware(CacheResponse::class)->group(function () {
     Route::get('/adwat/jdwal-alsawab', [ToolController::class, 'truthTable'])->name('tools.truth-table');
     Route::get('/adwat/alkhosousieen', [PrivateTutorController::class, 'index'])->name('tools.private-tutors');
 });
+
+// Student Telegram groups directory (must come before catch-all route) - with
+// response caching. Which supervisor a visitor is handed is randomized in the
+// browser, so one cached HTML response still spreads requests across everyone.
+Route::get('/qroubat', [StudentGroupController::class, 'index'])
+    ->middleware(CacheResponse::class)
+    ->name('student-groups');
 
 // Truth table generation endpoint (JSON; used by the tool page) - rate limited, never cached
 Route::post('/adwat/jdwal-alsawab', [ToolController::class, 'generateTruthTable'])

@@ -132,6 +132,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
+import { normalizeArabic } from '@/lib/arabic';
 import { vAutoAnimate } from '@formkit/auto-animate/vue';
 import { Code2, ExternalLink, GraduationCap, Search, User } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
@@ -186,35 +187,6 @@ const developerLabel = 'مطوّر الموقع';
 
 function isDeveloper(name: string): boolean {
     return name === developerName;
-}
-
-/**
- * Normalize Arabic text for better search matching
- * - Removes diacritics (tashkeel)
- * - Normalizes different forms of similar letters
- */
-function normalizeArabic(text: string): string {
-    return (
-        text
-            .toLowerCase()
-            // Remove Arabic diacritics (tashkeel)
-            .replace(/[\u064B-\u065F\u0670]/g, '')
-            // Normalize alef variations to plain alef
-            .replace(/[\u0622\u0623\u0625\u0627\u0671]/g, '\u0627')
-            // Normalize teh marbuta to heh
-            .replace(/\u0629/g, '\u0647')
-            // Normalize alef maksura to yeh
-            .replace(/\u0649/g, '\u064A')
-            // Normalize waw with hamza to waw
-            .replace(/\u0624/g, '\u0648')
-            // Normalize yeh with hamza to yeh
-            .replace(/\u0626/g, '\u064A')
-            // Remove tatweel (kashida)
-            .replace(/\u0640/g, '')
-            // Remove extra spaces
-            .replace(/\s+/g, ' ')
-            .trim()
-    );
 }
 
 /**

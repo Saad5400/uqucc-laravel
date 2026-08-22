@@ -51,3 +51,41 @@ export function arabicTeams(count: number): string {
 export function arabicCategories(count: number): string {
     return arabicCount(count, { singular: 'تصنيف', dual: 'تصنيفان', plural: 'تصنيفات', feminineOne: 'واحد' });
 }
+
+/** «مشرف واحد»، «مشرفان»، «5 مشرفين»، «20 مشرف». */
+export function arabicSupervisors(count: number): string {
+    return arabicCount(count, { singular: 'مشرف', dual: 'مشرفان', plural: 'مشرفين', feminineOne: 'واحد' });
+}
+
+/**
+ * Fold the spelling variants Arabic readers treat as the same letter, so a
+ * search box matches «الامن السيبراني» against «الأمن السيبراني».
+ *
+ * Removes diacritics and tatweel, and unifies the alef forms, ta marbuta,
+ * alef maksura and the hamza-carrying waw/ya.
+ */
+export function normalizeArabic(text: string): string {
+    return (
+        text
+            .toLowerCase()
+            // Tashkeel only. Written as escapes because these characters are
+            // invisible or reorder under bidi in an editor, which makes a range
+            // like this impossible to proofread as literals — and the range must
+            // stop before U+0660, where the Arabic-Indic digits start («دفعة ٤٨»
+            // has to keep its number).
+            .replace(/[\u064B-\u065F\u0670]/g, '')
+            // Alef forms → bare alef
+            .replace(/[\u0622\u0623\u0625\u0627\u0671]/g, '\u0627')
+            // Ta marbuta → ha
+            .replace(/\u0629/g, '\u0647')
+            // Alef maksura → ya
+            .replace(/\u0649/g, '\u064A')
+            // Hamza carriers → their bare letter
+            .replace(/\u0624/g, '\u0648')
+            .replace(/\u0626/g, '\u064A')
+            // Tatweel (kashida)
+            .replace(/\u0640/g, '')
+            .replace(/\s+/g, ' ')
+            .trim()
+    );
+}
