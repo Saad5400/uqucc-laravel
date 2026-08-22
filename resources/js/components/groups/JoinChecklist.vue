@@ -12,10 +12,10 @@ defineProps<{
 </script>
 
 <template>
-    <ol class="m-0 list-none space-y-3 p-0">
-        <li v-for="(requirement, index) in requirements" :key="index" class="flex items-start gap-3">
+    <ol class="m-0 list-none space-y-2 p-0">
+        <li v-for="(requirement, index) in requirements" :key="index" class="flex items-start gap-2.5">
             <span
-                class="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary tabular-nums"
+                class="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[0.7rem] font-semibold text-primary tabular-nums"
                 aria-hidden="true"
             >
                 {{ arabicDigits(index + 1) }}

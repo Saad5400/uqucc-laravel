@@ -101,6 +101,9 @@ class StudentGroupController extends Controller
             'major' => $group->major?->value,
             'branch' => $group->branch?->value,
             'branch_label' => $group->branch?->label() ?? 'كل الفروع',
+            // Compact form for summaries and card subtitles, where the full
+            // «الفرع الرئيسي — مكة المكرمة» wraps or truncates on a phone.
+            'branch_short' => $group->branch?->shortLabel() ?? 'كل الفروع',
             'sections' => $this->sectionsFor($group),
             'supervisors_count' => $group->supervisors->count(),
         ];

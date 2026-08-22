@@ -24,7 +24,14 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), { hasContent: false });
 
-const SECTION_KEY = 'uqucc-section';
+const CHOICE_KEY = 'uqucc-groups-choice';
+
+interface StoredChoice {
+    cohort?: number;
+    section?: string;
+    major?: string;
+    branch?: string;
+}
 
 /* ------------------------------------------------------------------ */
 /* What the student tells us about themselves                          */
@@ -40,17 +47,24 @@ const activeCohort = computed<Cohort | null>(() => props.cohorts.find((cohort) =
 interface Option {
     value: string;
     label: string;
+    /** Compact form, for the folded summary and card subtitles. */
+    short?: string;
 }
 
 /** Distinct values in the order the panel put the groups in, so admins control it. */
-function distinctBy(groups: StudentGroup[], value: (group: StudentGroup) => string | null, label: (group: StudentGroup) => string): Option[] {
+function distinctBy(
+    groups: StudentGroup[],
+    value: (group: StudentGroup) => string | null,
+    label: (group: StudentGroup) => string,
+    short?: (group: StudentGroup) => string,
+): Option[] {
     const seen = new Map<string, Option>();
 
     for (const group of groups) {
         const key = value(group);
 
         if (key !== null && !seen.has(key)) {
-            seen.set(key, { value: key, label: label(group) });
+            seen.set(key, { value: key, label: label(group), short: short?.(group) });
         }
     }
 
@@ -67,6 +81,7 @@ const branchOptions = computed(() =>
         programmeGroups.value,
         (group) => group.branch,
         (group) => group.branch_label,
+        (group) => group.branch_short,
     ),
 );
 
@@ -110,7 +125,11 @@ const programmeGroup = computed<StudentGroup | null>(() => {
 
 const majorLabel = computed(() => majorOptions.value.find((option) => option.value === major.value)?.label ?? '');
 
-const branchLabel = computed(() => branchOptions.value.find((option) => option.value === branch.value)?.label ?? '');
+const branchOption = computed(() => branchOptions.value.find((option) => option.value === branch.value));
+
+/** The compact «الرئيسي» rather than «الفرع الرئيسي — مكة المكرمة»: the folded
+ *  summary and the card subtitle both have one line to work with on a phone. */
+const branchShortLabel = computed(() => branchOption.value?.short ?? branchOption.value?.label ?? '');
 
 /** The programme exists in this batch, just not at the branch they picked. */
 const branchesOfferingMajor = computed(() =>
@@ -124,52 +143,73 @@ const branchesOfferingMajor = computed(() =>
 /* ------------------------------------------------------------------ */
 
 /**
- * Restore what we can without asking twice: the section is the one answer that
- * never changes for a person, and a shared link carries the rest. Both are read
- * after mount — this page is prerendered on the server, where neither
- * `localStorage` nor the query string exists.
+ * Restore what we can without asking twice: what this browser answered last
+ * time, then anything a shared link overrides. Both are read after mount — this
+ * page is prerendered on the server, where neither `localStorage` nor the query
+ * string exists.
  */
 onMounted(() => {
-    const stored = localStorage.getItem(SECTION_KEY);
+    restore(readStoredChoice());
+    restore(readLinkedChoice());
 
-    if (stored === 'men' || stored === 'women') {
-        section.value = stored;
+    // A student arriving on a link that already answers everything — the shape
+    // the college shares — should land on the contacts, not on the form.
+    selectorOpen.value = !(section.value !== null && major.value !== null);
+});
+
+function readStoredChoice(): StoredChoice {
+    try {
+        return JSON.parse(localStorage.getItem(CHOICE_KEY) ?? '{}') as StoredChoice;
+    } catch {
+        return {};
     }
+}
 
+function readLinkedChoice(): StoredChoice {
     const params = new URLSearchParams(window.location.search);
-    const linkedCohort = Number(params.get('cohort'));
 
-    if (props.cohorts.some((cohort) => cohort.id === linkedCohort)) {
-        cohortId.value = linkedCohort;
+    return {
+        cohort: Number(params.get('cohort')) || undefined,
+        section: params.get('section') ?? undefined,
+        major: params.get('major') ?? undefined,
+        branch: params.get('branch') ?? undefined,
+    };
+}
+
+/** Apply only the parts that still name something this batch actually has. */
+function restore(choice: StoredChoice): void {
+    if (props.cohorts.some((cohort) => cohort.id === choice.cohort)) {
+        cohortId.value = choice.cohort ?? null;
     }
 
-    const linkedSection = params.get('section');
-
-    if (linkedSection === 'men' || linkedSection === 'women') {
-        section.value = linkedSection;
+    if (choice.section === 'men' || choice.section === 'women') {
+        section.value = choice.section;
     }
 
-    const linkedBranch = params.get('branch');
-
-    if (branchOptions.value.some((option) => option.value === linkedBranch)) {
-        branch.value = linkedBranch;
+    if (branchOptions.value.some((option) => option.value === choice.branch)) {
+        branch.value = choice.branch ?? null;
     }
 
-    const linkedMajor = params.get('major');
-
-    if (majorOptions.value.some((option) => option.value === linkedMajor)) {
-        major.value = linkedMajor;
+    if (majorOptions.value.some((option) => option.value === choice.major)) {
+        major.value = choice.major ?? null;
     }
-});
-
-watch(section, (value) => {
-    if (value !== null) {
-        localStorage.setItem(SECTION_KEY, value);
-    }
-});
-
-/** Keep the address bar shareable without asking the server for anything. */
+}
+/**
+ * Remember the whole answer, not just the section. Students come back to this
+ * page — the تنويه itself tells them to try another supervisor if nobody
+ * replies — and re-answering four questions each time is the tax.
+ */
 watch([cohortId, section, branch, major], ([cohort, chosenSection, chosenBranch, chosenMajor]) => {
+    localStorage.setItem(
+        CHOICE_KEY,
+        JSON.stringify({
+            cohort: cohort ?? undefined,
+            section: chosenSection ?? undefined,
+            major: chosenMajor ?? undefined,
+            branch: chosenBranch ?? undefined,
+        }),
+    );
+
     const params = new URLSearchParams();
 
     if (cohort !== null) params.set('cohort', String(cohort));
@@ -180,6 +220,17 @@ watch([cohortId, section, branch, major], ([cohort, chosenSection, chosenBranch,
     const query = params.toString();
     window.history.replaceState(null, '', query === '' ? window.location.pathname : `?${query}`);
 });
+
+const selectorOpen = ref(true);
+
+const cohortLabel = computed(() => activeCohort.value?.name ?? '');
+
+/** The one-line version of step 1, shown once it is folded away. */
+const choiceSummary = computed(() =>
+    [cohortLabel.value, sectionOptions.find((option) => option.value === section.value)?.label, majorLabel.value, branchShortLabel.value]
+        .filter((part) => part)
+        .join(' · '),
+);
 
 const sectionOptions: Option[] = [
     { value: 'men', label: 'شطر الطلاب' },
@@ -216,10 +267,22 @@ const sectionOptions: Option[] = [
                     <span class="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
                         {{ arabicDigits(1) }}
                     </span>
-                    <h2 class="m-0 text-lg font-bold">عرّفنا بنفسك</h2>
+                    <h2 class="m-0 flex-1 text-lg font-bold">عرّفنا بنفسك</h2>
+                    <Button v-if="!selectorOpen" variant="ghost" size="sm" @click="selectorOpen = true">تغيير</Button>
                 </div>
 
-                <div class="space-y-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
+                <!-- Folded once it is already answered: four fields is most of a phone
+                     screen, and a returning student has nothing left to say here. -->
+                <button
+                    v-if="!selectorOpen"
+                    type="button"
+                    class="w-full rounded-2xl border border-border bg-card p-4 text-start text-sm shadow-sm transition-colors hover:bg-accent/40"
+                    @click="selectorOpen = true"
+                >
+                    {{ choiceSummary }}
+                </button>
+
+                <div v-else class="space-y-4 rounded-2xl border border-border bg-card p-4 shadow-sm sm:p-5">
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div class="space-y-2">
                             <Label for="cohort-select">الدفعة</Label>
@@ -306,7 +369,10 @@ const sectionOptions: Option[] = [
                     </span>
                     <div>
                         <h2 class="m-0 text-lg font-bold">راسل مشرفي القروبين</h2>
-                        <p class="m-0 text-sm text-muted-foreground">تنضم لقروبين معاً: القروب العام لدفعتك، وقروب تخصصك. راسل مشرف كل واحد منهما.</p>
+                        <p class="m-0 text-sm text-muted-foreground">
+                            تنضم لقروبين معاً: القروب العام لدفعتك، وقروب تخصصك. راسل مشرف كل واحد منهما — ونرشّح لك مشرفاً عشوائياً في كل زيارة حتى
+                            تتوزّع الطلبات بالتساوي.
+                        </p>
                     </div>
                 </div>
 
@@ -330,7 +396,7 @@ const sectionOptions: Option[] = [
 
                     <GroupAnswer
                         :title="major === null ? 'قروب تخصصك' : majorLabel"
-                        :subtitle="major === null ? undefined : branchLabel"
+                        :subtitle="major === null ? undefined : branchShortLabel"
                         :group="programmeGroup"
                         :section-key="section"
                     >

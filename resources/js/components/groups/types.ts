@@ -26,6 +26,7 @@ export interface StudentGroup {
     major: string | null;
     branch: string | null;
     branch_label: string;
+    branch_short: string;
     sections: GroupSection[];
     supervisors_count: number;
 }

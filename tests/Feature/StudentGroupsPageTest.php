@@ -77,6 +77,7 @@ it('names a group by its programme and marks the general one', function () {
         ->where('cohorts.0.groups.0.name', 'القروب العام')
         ->where('cohorts.0.groups.0.is_general', true)
         ->where('cohorts.0.groups.0.branch_label', 'كل الفروع')
+        ->where('cohorts.0.groups.0.branch_short', 'كل الفروع')
         ->where('cohorts.0.groups.0.sections.0.key', 'both')
         ->where('cohorts.0.groups.0.sections.0.label', 'للشطرين')
         ->where('cohorts.0.groups.1.name', 'الأمن السيبراني')
@@ -84,6 +85,7 @@ it('names a group by its programme and marks the general one', function () {
         ->where('cohorts.0.groups.1.major', 'cybersecurity')
         ->where('cohorts.0.groups.1.branch', 'jamoum')
         ->where('cohorts.0.groups.1.branch_label', 'فرع الجموم')
+        ->where('cohorts.0.groups.1.branch_short', 'الجموم')
     );
 });
 
