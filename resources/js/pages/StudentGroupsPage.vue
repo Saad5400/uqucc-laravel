@@ -11,7 +11,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { arabicDigits } from '@/lib/arabic';
 import { MessagesSquare } from 'lucide-vue-next';
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 defineOptions({ layout: false });
 
@@ -23,15 +23,6 @@ interface Props {
 }
 
 const props = withDefaults(defineProps<Props>(), { hasContent: false });
-
-const CHOICE_KEY = 'uqucc-groups-choice';
-
-interface StoredChoice {
-    cohort?: number;
-    section?: string;
-    major?: string;
-    branch?: string;
-}
 
 /* ------------------------------------------------------------------ */
 /* What the student tells us about themselves                          */
@@ -149,89 +140,25 @@ const branchesOfferingMajor = computed(() =>
 );
 
 /* ------------------------------------------------------------------ */
-/* Remembered + shareable                                              */
+/* Folding step 1                                                      */
 /* ------------------------------------------------------------------ */
 
-/**
- * Restore what we can without asking twice: what this browser answered last
- * time, then anything a shared link overrides. Both are read after mount — this
- * page is prerendered on the server, where neither `localStorage` nor the query
- * string exists.
- */
-onMounted(() => {
-    restore(readStoredChoice());
-    restore(readLinkedChoice());
-
-    // A student arriving on a link that already answers everything — the shape
-    // the college shares — should land on the contacts, not on the form.
-    selectorOpen.value = !(section.value !== null && major.value !== null);
-});
-
-function readStoredChoice(): StoredChoice {
-    try {
-        return JSON.parse(localStorage.getItem(CHOICE_KEY) ?? '{}') as StoredChoice;
-    } catch {
-        return {};
-    }
-}
-
-function readLinkedChoice(): StoredChoice {
-    const params = new URLSearchParams(window.location.search);
-
-    return {
-        cohort: Number(params.get('cohort')) || undefined,
-        section: params.get('section') ?? undefined,
-        major: params.get('major') ?? undefined,
-        branch: params.get('branch') ?? undefined,
-    };
-}
-
-/** Apply only the parts that still name something this batch actually has. */
-function restore(choice: StoredChoice): void {
-    if (props.cohorts.some((cohort) => cohort.id === choice.cohort)) {
-        cohortId.value = choice.cohort ?? null;
-    }
-
-    if (choice.section === 'men' || choice.section === 'women') {
-        section.value = choice.section;
-    }
-
-    if (branchOptions.value.some((option) => option.value === choice.branch)) {
-        branch.value = choice.branch ?? null;
-    }
-
-    if (majorOptions.value.some((option) => option.value === choice.major)) {
-        major.value = choice.major ?? null;
-    }
-}
-/**
- * Remember the whole answer, not just the section. Students come back to this
- * page — the تنويه itself tells them to try another supervisor if nobody
- * replies — and re-answering four questions each time is the tax.
- */
-watch([cohortId, section, branch, major], ([cohort, chosenSection, chosenBranch, chosenMajor]) => {
-    localStorage.setItem(
-        CHOICE_KEY,
-        JSON.stringify({
-            cohort: cohort ?? undefined,
-            section: chosenSection ?? undefined,
-            major: chosenMajor ?? undefined,
-            branch: chosenBranch ?? undefined,
-        }),
-    );
-
-    const params = new URLSearchParams();
-
-    if (cohort !== null) params.set('cohort', String(cohort));
-    if (chosenSection !== null) params.set('section', chosenSection);
-    if (chosenMajor !== null) params.set('major', chosenMajor);
-    if (chosenMajor !== null && chosenBranch !== null) params.set('branch', chosenBranch);
-
-    const query = params.toString();
-    window.history.replaceState(null, '', query === '' ? window.location.pathname : `?${query}`);
-});
-
 const selectorOpen = ref(true);
+
+/**
+ * Fold step 1 away as soon as the answer is complete.
+ *
+ * Nothing is remembered between visits, so every student fills this in every
+ * time — which means the form would otherwise sit open above the answer for the
+ * whole session, and on a phone that is most of a screen. Folding on the change
+ * that completes the answer hands the screen back at exactly the moment there
+ * is something to show. «تغيير» reopens it.
+ */
+watch([cohortId, section, branch, major], () => {
+    if (section.value !== null && major.value !== null) {
+        selectorOpen.value = false;
+    }
+});
 
 /** The one-line version of step 1, shown once it is folded away. */
 const choiceSummary = computed(() =>
