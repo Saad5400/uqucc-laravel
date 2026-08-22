@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { arabicDigits } from '@/lib/arabic';
-import { MessagesSquare, TriangleAlert, UserRound, UsersRound } from 'lucide-vue-next';
+import { MessagesSquare } from 'lucide-vue-next';
 import { computed, onMounted, ref, watch } from 'vue';
 
 defineOptions({ layout: false });
@@ -236,21 +236,17 @@ const sectionOptions: Option[] = [
                         </div>
 
                         <div class="space-y-2">
-                            <Label>الشطر</Label>
-                            <div class="grid grid-cols-2 gap-2">
-                                <Button
-                                    v-for="option in sectionOptions"
-                                    :key="option.value"
-                                    :variant="section === option.value ? 'default' : 'outline'"
-                                    :aria-pressed="section === option.value"
-                                    class="w-full"
-                                    @click="section = option.value"
-                                >
-                                    <UserRound v-if="option.value === 'men'" />
-                                    <UsersRound v-else />
-                                    {{ option.label }}
-                                </Button>
-                            </div>
+                            <Label for="section-select">الشطر</Label>
+                            <Select :model-value="section ?? undefined" @update:model-value="section = String($event)">
+                                <SelectTrigger id="section-select" class="w-full">
+                                    <SelectValue placeholder="اختر شطرك" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem v-for="option in sectionOptions" :key="option.value" :value="option.value">
+                                        {{ option.label }}
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
                         </div>
 
                         <div class="space-y-2">
@@ -314,12 +310,8 @@ const sectionOptions: Option[] = [
                     </div>
                 </div>
 
-                <p
-                    v-if="activeCohort?.note"
-                    class="flex items-start gap-2 rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground"
-                >
-                    <TriangleAlert class="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-                    <span>{{ activeCohort.note }}</span>
+                <p v-if="activeCohort?.note" class="rounded-2xl border border-border bg-muted/40 p-4 text-sm text-muted-foreground">
+                    {{ activeCohort.note }}
                 </p>
 
                 <div v-if="section === null" class="rounded-2xl border border-dashed border-border px-6 py-12 text-center">

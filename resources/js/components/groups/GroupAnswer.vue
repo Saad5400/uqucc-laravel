@@ -6,7 +6,6 @@
  */
 import { Badge } from '@/components/ui/badge';
 import { arabicSupervisors } from '@/lib/arabic';
-import { Info } from 'lucide-vue-next';
 import { computed } from 'vue';
 import SupervisorHero from './SupervisorHero.vue';
 import SupervisorRoster from './SupervisorRoster.vue';
@@ -38,10 +37,7 @@ const section = computed(() => (props.group && props.sectionKey ? sectionFor(pro
         <template v-if="section">
             <SupervisorHero :section="section" />
 
-            <p class="flex items-start gap-2 text-xs text-muted-foreground">
-                <Info class="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
-                نرشّح مشرفاً عشوائياً في كل زيارة حتى تتوزّع الطلبات بالتساوي.
-            </p>
+            <p class="text-xs text-muted-foreground">نرشّح مشرفاً عشوائياً في كل زيارة حتى تتوزّع الطلبات بالتساوي.</p>
 
             <SupervisorRoster :section="section" />
         </template>
