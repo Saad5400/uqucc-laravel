@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { arabicSupervisors, normalizeArabic } from './arabic';
+import { arabicDigits, arabicSupervisors, normalizeArabic } from './arabic';
 
 describe('normalizeArabic', () => {
     it('folds the alef forms so a plain spelling matches a hamza one', () => {
@@ -34,5 +34,13 @@ describe('arabicSupervisors', () => {
         expect(arabicSupervisors(2)).toBe('مشرفان');
         expect(arabicSupervisors(5)).toBe('5 مشرفين');
         expect(arabicSupervisors(20)).toBe('20 مشرف');
+    });
+});
+
+describe('arabicDigits', () => {
+    it('renders ornamental numbers in Arabic-Indic digits', () => {
+        expect(arabicDigits(1)).toBe('١');
+        expect(arabicDigits(4)).toBe('٤');
+        expect(arabicDigits(10)).toBe('١٠');
     });
 });

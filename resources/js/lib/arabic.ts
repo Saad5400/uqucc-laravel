@@ -89,3 +89,17 @@ export function normalizeArabic(text: string): string {
             .trim()
     );
 }
+
+const arabicNumberFormatter = new Intl.NumberFormat('ar-EG');
+
+/**
+ * Arabic-Indic digits — «٣» rather than «3».
+ *
+ * Deliberately NOT the default for numbers on this site: counts, IDs and sizes
+ * stay Latin inside `dir="ltr"` islands (see `formatters.ts`). This is for the
+ * ornamental kind — a step badge or list marker sitting inside Arabic prose,
+ * where a Latin glyph reads as a foreign object rather than as a number.
+ */
+export function arabicDigits(value: number): string {
+    return arabicNumberFormatter.format(value);
+}

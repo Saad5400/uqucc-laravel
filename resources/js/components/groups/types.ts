@@ -40,16 +40,8 @@ export interface Cohort {
     groups: StudentGroup[];
 }
 
-/** Which section a visitor wants to see; «all» is the unfiltered default. */
-export type SectionFilter = 'all' | 'men' | 'women';
-
-/**
- * A «للشطرين» roster answers to either filter — that is what it is for — so it
- * survives every setting, and «all» keeps everything.
- */
-export function sectionMatchesFilter(sectionKey: string, filter: SectionFilter): boolean {
-    return filter === 'all' || sectionKey === 'both' || sectionKey === filter;
-}
+/** The «I have not declared a programme yet» choice, which resolves to the general group. */
+export const GENERAL_MAJOR = '__general__';
 
 /** The avatar letter for a supervisor — codepoint-safe, so Arabic names work. */
 export function initialOf(name: string): string {
@@ -59,4 +51,12 @@ export function initialOf(name: string): string {
 /** Arabic label for a contact method, used on buttons and links. */
 export function contactLabel(kind: ContactKind): string {
     return kind === 'telegram' ? 'تيليجرام' : 'واتساب';
+}
+
+/**
+ * The section a student of `sectionKey` should be shown: their own if the group
+ * splits by section, otherwise the mixed «للشطرين» roster the general lists use.
+ */
+export function sectionFor(group: StudentGroup, sectionKey: string): GroupSection | null {
+    return group.sections.find((section) => section.key === sectionKey) ?? group.sections.find((section) => section.key === 'both') ?? null;
 }
