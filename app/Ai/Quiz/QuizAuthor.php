@@ -8,7 +8,10 @@ use App\Services\Quiz\QuizTopicVote;
 use App\Settings\AiSettings;
 use App\Support\QuizContentHtml;
 use Carbon\CarbonInterface;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Context;
+use Illuminate\Support\Str;
 use RuntimeException;
 use Saad\AiKit\Safety\BudgetGuard;
 
@@ -62,8 +65,33 @@ class QuizAuthor
     /** How many structured-generation attempts before giving up for the day. */
     private const MAX_ATTEMPTS = 2;
 
-    /** How many recent questions the prompt lists as "do not repeat". */
+    /**
+     * How many of the most recent questions — whatever their topic — the
+     * prompt lists as "do not repeat". This window guards only against
+     * near-neighbours: two topics circling the same ground within a fortnight.
+     * It is deliberately shorter than one topic cycle (14 regular topics, so a
+     * topic's turn returns about every 16 days once the weekly spotlight day is
+     * interleaved) and so can never be what stops a topic repeating itself —
+     * {@see self::RECENT_TOPIC_QUESTIONS} is.
+     */
     private const RECENT_QUESTIONS = 15;
+
+    /**
+     * How many of the day's own topic's past questions the prompt lists, on
+     * top of the recency window. Repeats come overwhelmingly from a topic
+     * revisiting its own ground a cycle later, by which point the recency
+     * window has already dropped it — so that topic's history is listed
+     * however old it is, up to this cap (about half a year of its turns).
+     */
+    private const RECENT_TOPIC_QUESTIONS = 12;
+
+    /**
+     * Per-question cap on the listed history. The concept a question teaches
+     * sits in its opening lines, which is all the model needs to recognize a
+     * repeat, so trimming here keeps the longer list from costing more than
+     * the untrimmed 15 it replaces.
+     */
+    private const RECENT_QUESTION_CHARS = 400;
 
     private const INSTRUCTIONS = <<<'PROMPT'
         أنت مؤلف «سؤال اليوم» في مجموعة تيليجرام لطلاب كلية الحاسبات بجامعة أم القرى.
@@ -308,21 +336,50 @@ class QuizAuthor
             $prompt .= "\n".'هذا موضوع «يوم التخصص» الأسبوعي: خذ فكرة من هذا التخصص لكن قدّمها بطريقة يفهمها ويستمتع بها غير المتخصص وطالب السنة الأولى — عرّف الجمهور بجمال هذا المجال بدل التعمق في مقرراته.';
         }
 
-        $recent = DailyQuiz::query()
+        $sameTopic = $this->pastQuestions(self::RECENT_TOPIC_QUESTIONS, $topic);
+        $recent = $this->pastQuestions(self::RECENT_QUESTIONS)->diff($sameTopic)->values();
+
+        if ($sameTopic->isNotEmpty()) {
+            $prompt .= "\n\n".'أسئلة سابقة من موضوع اليوم نفسه — هنا يقع التكرار عادةً، فاقرأها كلها أولاً ولا تؤلف سؤالاً يشرح المفهوم نفسه ولو بأرقام أو صياغة مختلفة:'."\n"
+                .$this->asList($sameTopic);
+        }
+
+        if ($recent->isNotEmpty()) {
+            $prompt .= "\n\n".'أسئلة الأيام الماضية — لا تكرر أياً منها ولا فكرتها:'."\n"
+                .$this->asList($recent);
+        }
+
+        return $prompt;
+    }
+
+    /**
+     * The last `$limit` questions as plain text, newest first — restricted to
+     * one topic when given. Days admins have already buffered ahead count as
+     * past here: a question is just as repeated when it is already scheduled.
+     *
+     * @return \Illuminate\Support\Collection<int, string>
+     */
+    private function pastQuestions(int $limit, ?QuizTopic $topic = null): Collection
+    {
+        return DailyQuiz::query()
+            ->when($topic !== null, fn (Builder $query) => $query->where('quiz_topic_id', $topic->id))
             ->latest('quiz_date')
-            ->limit(self::RECENT_QUESTIONS)
+            ->limit($limit)
             ->pluck('question')
             ->filter()
             ->map(fn (string $question): string => QuizContentHtml::toPlainText($question))
             ->filter()
             ->values();
+    }
 
-        if ($recent->isNotEmpty()) {
-            $prompt .= "\n\n".'أسئلة الأيام الماضية — لا تكرر أياً منها ولا فكرتها:'."\n"
-                .$recent->map(fn (string $question): string => '- '.$question)->implode("\n");
-        }
-
-        return $prompt;
+    /**
+     * @param  \Illuminate\Support\Collection<int, string>  $questions
+     */
+    private function asList(Collection $questions): string
+    {
+        return $questions
+            ->map(fn (string $question): string => '- '.Str::limit($question, self::RECENT_QUESTION_CHARS))
+            ->implode("\n");
     }
 
     /**
