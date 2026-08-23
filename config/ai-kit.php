@@ -262,7 +262,7 @@ return [
     */
 
     'chat' => [
-        'model' => env('AI_KIT_CHAT_MODEL', 'google/gemini-3.5-flash-lite'),
+        'model' => env('AI_KIT_CHAT_MODEL', 'deepseek/deepseek-v4-pro-0813'),
     ],
 
     /*
