@@ -2,6 +2,7 @@
 
 namespace App\Ai\Agents;
 
+use App\Ai\ModelRegistry;
 use App\Ai\Tools\Toolbox;
 use App\Settings\AiSettings;
 use Laravel\Ai\Attributes\MaxSteps;
@@ -32,7 +33,7 @@ use Stringable;
  * {@see \App\Ai\Chat\SessionOwner} value object whose id is the visitor's
  * session id (web) or a transport-prefixed key such as "telegram:12345".
  *
- * The model comes from {@see \App\Settings\AiSettings::chatModel()} — the
+ * The model comes from {@see \App\Ai\ModelRegistry::chat()} — the
  * operator's setting over this app's config over the kit's shared fleet
  * default; the provider stays behind the config seam (config('ai.default')),
  * so this class never names OpenRouter.
@@ -42,7 +43,10 @@ class StudentAssistant implements Agent, Conversational, HasProviderOptions, Has
 {
     use Promptable, RemembersConversations;
 
-    public function __construct(private readonly AiSettings $settings) {}
+    public function __construct(
+        private readonly AiSettings $settings,
+        private readonly ModelRegistry $models,
+    ) {}
 
     /**
      * The full public toolbox — the same six read-only tools the MCP server
@@ -68,7 +72,7 @@ class StudentAssistant implements Agent, Conversational, HasProviderOptions, Has
      */
     public function provider(): array
     {
-        return [(string) config('ai.default', 'openrouter') => $this->settings->chatModel()];
+        return [(string) config('ai.default', 'openrouter') => $this->models->chat()];
     }
 
     public function timeout(): int
@@ -90,7 +94,7 @@ class StudentAssistant implements Agent, Conversational, HasProviderOptions, Has
         }
 
         return [
-            'reasoning' => ['effort' => (string) config('ai.chat.reasoning_effort', 'medium')],
+            'reasoning' => ['effort' => $this->models->chatReasoningEffort()],
         ];
     }
 

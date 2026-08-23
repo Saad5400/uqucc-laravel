@@ -1,5 +1,6 @@
 <?php
 
+use App\Ai\ModelRegistry;
 use App\Models\User;
 use App\Settings\AiSettings;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -16,14 +17,6 @@ describe('AiSettings defaults', function () {
             ->and($settings->admin_copilot_enabled)->toBeFalse();
     });
 
-    it('has the expected default models', function () {
-        $settings = app(AiSettings::class);
-
-        expect($settings->chat_model)->toBe('google/gemini-3.5-flash-lite')
-            ->and($settings->vision_model)->toBe('google/gemini-3.1-flash-lite')
-            ->and($settings->embedding_model)->toBe('openai/text-embedding-3-small');
-    });
-
     it('has the expected default cost controls', function () {
         $settings = app(AiSettings::class);
 
@@ -33,31 +26,57 @@ describe('AiSettings defaults', function () {
     });
 });
 
-describe('AiSettings chat model resolution', function () {
-    it('sends the operator setting when one is stored', function () {
-        $settings = app(AiSettings::class);
-        $settings->chat_model = 'openai/gpt-test';
-        $settings->save();
-
-        expect($settings->chatModel())->toBe('openai/gpt-test');
-    });
-
-    it('falls back to this app\'s config override when the setting is blank', function () {
-        config()->set('ai.chat.model', 'anthropic/claude-test');
-
-        $settings = app(AiSettings::class);
-        $settings->chat_model = '  ';
-
-        expect($settings->chatModel())->toBe('anthropic/claude-test');
-    });
-
-    it('falls through to the kit\'s shared fleet default when neither is set', function () {
+describe('model resolution', function () {
+    // ai-kit docs/DECISIONS.md #26: model choice is CONFIG, and the database
+    // row that used to sit above it is gone. These assert the whole remaining
+    // chain, because the incident that produced #26 was a layer nobody
+    // realised was winning.
+    it('serves the kit\'s shared fleet defaults when this app pins nothing', function () {
         config()->set('ai.chat.model', null);
+        config()->set('ai.chat.reasoning_effort', null);
+        config()->set('ai.vision.model', null);
 
-        $settings = app(AiSettings::class);
-        $settings->chat_model = '';
+        $models = app(ModelRegistry::class);
 
-        expect($settings->chatModel())->toBe('google/gemini-3.5-flash-lite');
+        expect($models->chat())->toBe('deepseek/deepseek-v4-flash')
+            ->and($models->chatReasoningEffort())->toBe('medium')
+            ->and($models->vision())->toBe('google/gemini-2.5-flash-lite');
+    });
+
+    it('lets this app override the fleet default through its own config', function () {
+        config()->set('ai.chat.model', 'anthropic/claude-test');
+        config()->set('ai.vision.model', 'openai/gpt-vision-test');
+
+        $models = app(ModelRegistry::class);
+
+        expect($models->chat())->toBe('anthropic/claude-test')
+            ->and($models->vision())->toBe('openai/gpt-vision-test');
+    });
+
+    it('treats a blank config value as inherit, never as a nameless model', function () {
+        config()->set('ai.chat.model', '   ');
+
+        expect(app(ModelRegistry::class)->chat())->toBe('deepseek/deepseek-v4-flash');
+    });
+
+    it('keeps chat and vision on different models, because the chat model cannot see', function () {
+        $models = app(ModelRegistry::class);
+
+        expect($models->vision())->not->toBe($models->chat());
+    });
+
+    it('no longer exposes a database row that can override config', function () {
+        // The three model rows were deleted by the 2026-08-24 settings
+        // migration; reflection is what the admin assistant's SettingsRegistry
+        // reads, so this also proves the assistant can no longer set them.
+        $properties = array_map(
+            fn (ReflectionProperty $property): string => $property->getName(),
+            (new ReflectionClass(AiSettings::class))->getProperties(ReflectionProperty::IS_PUBLIC),
+        );
+
+        expect($properties)->not->toContain('chat_model')
+            ->and($properties)->not->toContain('vision_model')
+            ->and($properties)->not->toContain('embedding_model');
     });
 });
 
@@ -104,9 +123,6 @@ describe('manage settings AI card', function () {
             'telegram_ai_enabled' => false,
             'admin_copilot_enabled' => true,
             'admin_assistant_enabled' => false,
-            'chat_model' => 'deepseek/deepseek-v4-flash',
-            'vision_model' => 'google/gemini-3.1-flash-lite',
-            'embedding_model' => 'openai/text-embedding-3-small',
             'daily_budget_usd' => 7.5,
             'per_session_rate_limit' => 25,
             'per_conversation_rate_limit' => 40,
@@ -138,9 +154,8 @@ describe('manage settings AI card', function () {
             ->assertInertia(fn (Assert $page) => $page
                 ->component('manage/settings/Index')
                 ->where('ai.ai_enabled', false)
-                ->where('ai.chat_model', 'google/gemini-3.5-flash-lite')
-                ->where('ai.vision_model', 'google/gemini-3.1-flash-lite')
-                ->where('ai.embedding_model', 'openai/text-embedding-3-small')
+                ->where('models.chat', 'deepseek/deepseek-v4-flash')
+                ->where('models.vision', 'google/gemini-2.5-flash-lite')
                 ->where('ai.daily_budget_usd', 5)
                 ->where('ai.per_session_rate_limit', 20)
                 ->where('ai.per_conversation_rate_limit', 30)
@@ -174,9 +189,6 @@ describe('manage settings AI card', function () {
             ->put('/manage/settings/ai', validAiSettingsPayload($overrides))
             ->assertSessionHasErrors([$field => $message]);
     })->with([
-        'missing chat model' => [['chat_model' => ''], 'chat_model', 'حقل نموذج المحادثة مطلوب.'],
-        'missing vision model' => [['vision_model' => ''], 'vision_model', 'حقل نموذج الرؤية مطلوب.'],
-        'missing embedding model' => [['embedding_model' => ''], 'embedding_model', 'حقل نموذج التضمين مطلوب.'],
         'negative budget' => [['daily_budget_usd' => -1], 'daily_budget_usd', 'الميزانية اليومية لا يمكن أن تكون سالبة.'],
         'non-numeric budget' => [['daily_budget_usd' => 'abc'], 'daily_budget_usd', 'الميزانية اليومية يجب أن تكون رقماً.'],
         'zero session limit' => [['per_session_rate_limit' => 0], 'per_session_rate_limit', 'حد الرسائل لكل جلسة يجب أن يكون 1 على الأقل.'],
@@ -185,7 +197,7 @@ describe('manage settings AI card', function () {
 
     it('does not change settings when validation fails', function () {
         $this->actingAs($this->admin)
-            ->put('/manage/settings/ai', validAiSettingsPayload(['chat_model' => '']));
+            ->put('/manage/settings/ai', validAiSettingsPayload(['per_session_rate_limit' => 0]));
 
         expect(app(AiSettings::class)->ai_enabled)->toBeFalse();
     });

@@ -2,6 +2,7 @@
 
 namespace App\Ai\Copilot;
 
+use App\Ai\ModelRegistry;
 use App\Settings\AiSettings;
 use RuntimeException;
 
@@ -14,7 +15,7 @@ use RuntimeException;
  * Gated on the operator-editable admin_copilot feature flag (which honours
  * the master AI kill switch) — a disabled copilot throws
  * {@see CopilotDisabledException} rather than silently calling out. The
- * model comes from {@see \App\Settings\AiSettings::chatModel()}, mirroring
+ * model comes from {@see \App\Ai\ModelRegistry::chat()}, mirroring
  * {@see \App\Ai\Corpus\DocumentVisionExtractor}.
  */
 class PageCopilot
@@ -53,7 +54,10 @@ class PageCopilot
         - بدون أي نص آخر وبدون أسوار أكواد حول الناتج.
         PROMPT;
 
-    public function __construct(private readonly AiSettings $settings) {}
+    public function __construct(
+        private readonly AiSettings $settings,
+        private readonly ModelRegistry $models,
+    ) {}
 
     /**
      * Rewrite page markdown for clarity/correctness, optionally steered by an
@@ -129,7 +133,7 @@ class PageCopilot
         $response = (new PageCopilotAgent($instructions))->prompt(
             $prompt,
             provider: (string) config('ai.default', 'openrouter'),
-            model: $this->settings->chatModel(),
+            model: $this->models->chat(),
             timeout: (int) config('ai.chat.timeout', 60),
         );
 

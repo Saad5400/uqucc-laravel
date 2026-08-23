@@ -6,6 +6,7 @@ use App\Ai\Admin\Actions\AdminAction;
 use App\Ai\Admin\Actions\AdminActionRegistry;
 use App\Ai\Admin\Actions\AssistantActionTool;
 use App\Ai\Agents\NamedTool;
+use App\Ai\ModelRegistry;
 use App\Ai\Tools\GetPageTool;
 use App\Ai\Tools\SearchContentTool;
 use App\Settings\AiSettings;
@@ -37,7 +38,7 @@ use Stringable;
  *     $response = $agent->stream($prompt);
  *
  * Model/provider wiring is identical to the public assistant:
- * {@see \App\Settings\AiSettings::chatModel()} on the configured default
+ * {@see \App\Ai\ModelRegistry::chat()} on the configured default
  * provider.
  */
 #[MaxSteps(12)]
@@ -45,7 +46,10 @@ class AdminAssistant implements Agent, Conversational, HasProviderOptions, HasTo
 {
     use Promptable, RemembersConversations;
 
-    public function __construct(private readonly AiSettings $settings) {}
+    public function __construct(
+        private readonly AiSettings $settings,
+        private readonly ModelRegistry $models,
+    ) {}
 
     /**
      * The unified admin actions (read tools run immediately, writes pause
@@ -79,7 +83,7 @@ class AdminAssistant implements Agent, Conversational, HasProviderOptions, HasTo
      */
     public function provider(): array
     {
-        return [(string) config('ai.default', 'openrouter') => $this->settings->chatModel()];
+        return [(string) config('ai.default', 'openrouter') => $this->models->chat()];
     }
 
     public function timeout(): int
@@ -97,7 +101,7 @@ class AdminAssistant implements Agent, Conversational, HasProviderOptions, HasTo
         }
 
         return [
-            'reasoning' => ['effort' => (string) config('ai.chat.reasoning_effort', 'medium')],
+            'reasoning' => ['effort' => $this->models->chatReasoningEffort()],
         ];
     }
 

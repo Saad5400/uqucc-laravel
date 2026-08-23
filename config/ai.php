@@ -40,17 +40,17 @@ return [
     | The model used for conversational and content-drafting tasks (page copy,
     | announcements, summaries). Model ids are OpenRouter slugs.
     |
-    | `model` is deliberately EMPTY by default: the fleet's shared chat model
-    | lives in the kit (ai-kit docs/DECISIONS.md #21, `ai-kit.chat.model`) and
-    | uqucc inherits it rather than pinning a second copy of the slug here.
-    | Set AI_CHAT_MODEL to override the shared default for this app only. The
-    | whole chain — operator setting, this key, the kit default — is resolved
-    | in one place, {@see \App\Settings\AiSettings::chatModel()}.
+    | `model` and `reasoning_effort` are deliberately EMPTY by default: the
+    | fleet's shared chat model and effort live in the kit (ai-kit
+    | docs/DECISIONS.md #26, `ai-kit.chat.*`) and uqucc inherits them rather
+    | than pinning a second copy that can drift. Set AI_CHAT_MODEL /
+    | AI_CHAT_REASONING_EFFORT to override for this app only. The chain — this
+    | key, then the kit default — resolves in one place,
+    | {@see \App\Ai\ModelRegistry}.
     |
-    | `reasoning_effort` is 'low' because the assistant is an interactive
-    | surface and some builds default to 'high' server-side — every caller
-    | must therefore send the effort explicitly to get the faster path. The
-    | shared Gemini Flash Lite default supports it.
+    | The shared effort is 'medium'. Every caller still sends it explicitly,
+    | because some builds default to 'high' server-side and the effort a turn
+    | gets must be ours, not the provider's.
     |
     | `queue` is where a resumable assistant turn runs (both the student and
     | the admin surface). It gets a queue of its OWN rather than sharing one:
@@ -65,7 +65,7 @@ return [
 
     'chat' => [
         'model' => env('AI_CHAT_MODEL'),
-        'reasoning_effort' => env('AI_CHAT_REASONING_EFFORT', 'low'),
+        'reasoning_effort' => env('AI_CHAT_REASONING_EFFORT'),
         'timeout' => (int) env('AI_CHAT_TIMEOUT', 60),
         'queue' => 'ai-chat',
     ],
@@ -127,13 +127,19 @@ return [
     |--------------------------------------------------------------------------
     |
     | The "eyes only" pass that turns uploaded images (posters, screenshots,
-    | transcripts) into structured text. Kept separate from chat so a cheap
-    | vision-capable model can be pinned independently.
+    | transcripts) into structured text.
+    |
+    | Separate from chat by necessity, not preference: the fleet's chat model
+    | is TEXT-ONLY on OpenRouter, so an image routed at it fails outright.
+    | `model` is EMPTY so the kit's shared vision default applies (ai-kit
+    | docs/DECISIONS.md #26b — currently `google/gemini-2.5-flash-lite`, the
+    | cheapest vision-capable model that keeps tools + structured outputs).
+    | Set AI_VISION_MODEL to override for this app only.
     |
     */
 
     'vision' => [
-        'model' => env('AI_VISION_MODEL', 'google/gemini-3.1-flash-lite'),
+        'model' => env('AI_VISION_MODEL'),
         'timeout' => (int) env('AI_VISION_TIMEOUT', 45),
         'document_timeout' => (int) env('AI_VISION_DOCUMENT_TIMEOUT', 180),
         'max_tokens' => (int) env('AI_VISION_MAX_TOKENS', 2500),

@@ -2,6 +2,7 @@
 
 namespace App\Ai\Quiz;
 
+use App\Ai\ModelRegistry;
 use Laravel\Ai\Attributes\MaxSteps;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasProviderOptions;
@@ -58,7 +59,7 @@ class QuizAuthoringAgent implements Agent, HasProviderOptions, HasTools
     public function provider(): array
     {
         return [
-            (string) config('ai.default', 'openrouter') => (string) config('ai.authoring.model', 'deepseek/deepseek-v4-pro'),
+            (string) config('ai.default', 'openrouter') => app(ModelRegistry::class)->authoring(),
         ];
     }
 

@@ -826,8 +826,11 @@ describe('settings introspection', function () {
 
         expect($output)->toContain('group: ai')
             ->and($output)->toContain('group: telegram')
-            ->and($output)->toContain('chat_model')
-            ->and($output)->toContain('page_management_allowed_chat_ids');
+            ->and($output)->toContain('ai_enabled')
+            ->and($output)->toContain('page_management_allowed_chat_ids')
+            // #26 deleted the model rows, so the assistant can no longer see
+            // or propose a change to them.
+            ->and($output)->not->toContain('chat_model');
     });
 
     it('refuses while the feature toggle is off', function () {
@@ -846,7 +849,7 @@ describe('settings introspection', function () {
         expect($registry->isSecretKey('bot_token'))->toBeTrue()
             ->and($registry->isSecretKey('api_key'))->toBeTrue()
             ->and($registry->isSecretKey('webhook_secret'))->toBeTrue()
-            ->and($registry->isSecretKey('chat_model'))->toBeFalse()
+            ->and($registry->isSecretKey('daily_budget_usd'))->toBeFalse()
             ->and($registry->mask('1234567890:AAxxYYzz'))->toBe('••••YYzz')
             ->and($registry->mask('abc'))->toBe('••••');
     });
