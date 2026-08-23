@@ -390,3 +390,51 @@ it('lists recent questions in the prompt so the model avoids repeats', function 
         fn (Laravel\Ai\Prompts\AgentPrompt $prompt): bool => str_contains((string) $prompt->prompt, 'سؤال الأمس المميز جداً؟'),
     );
 });
+
+it("lists the day's topic's own older questions even once they fall out of the recency window", function () {
+    $topic = QuizTopic::factory()->create(['name' => 'أساسيات البرمجة']);
+    $other = QuizTopic::factory()->create(['name' => 'الشبكات']);
+
+    DailyQuiz::factory()->closed()->create([
+        'quiz_topic_id' => $topic->id,
+        'quiz_date' => today()->subDays(40),
+        'question' => '<p dir="rtl">سؤال قديم عن الفهرسة من الصفر؟</p>',
+    ]);
+
+    collect(range(1, 35))->each(fn (int $offset) => DailyQuiz::factory()->closed()->create([
+        'quiz_topic_id' => $other->id,
+        'quiz_date' => today()->subDays($offset),
+        'question' => "<p dir=\"rtl\">سؤال حشو رقم {$offset}؟</p>",
+    ]));
+
+    QuizAuthoringAgent::fake([quizToolCall()]);
+
+    app(QuizAuthor::class)->generateForDate(today(), $topic);
+
+    QuizAuthoringAgent::assertPrompted(function (Laravel\Ai\Prompts\AgentPrompt $prompt): bool {
+        $text = (string) $prompt->prompt;
+
+        return str_contains($text, 'سؤال قديم عن الفهرسة من الصفر؟')
+            && str_contains($text, 'أسئلة سابقة من موضوع اليوم نفسه')
+            && str_contains($text, 'سؤال حشو رقم 15؟')
+            && ! str_contains($text, 'سؤال حشو رقم 16؟');
+    });
+});
+
+it('does not list the same question twice when it is both recent and on the day\'s topic', function () {
+    $topic = QuizTopic::factory()->create();
+
+    DailyQuiz::factory()->closed()->create([
+        'quiz_topic_id' => $topic->id,
+        'quiz_date' => today()->subDay(),
+        'question' => '<p dir="rtl">سؤال الأمس عن الموضوع نفسه؟</p>',
+    ]);
+
+    QuizAuthoringAgent::fake([quizToolCall()]);
+
+    app(QuizAuthor::class)->generateForDate(today(), $topic);
+
+    QuizAuthoringAgent::assertPrompted(
+        fn (Laravel\Ai\Prompts\AgentPrompt $prompt): bool => substr_count((string) $prompt->prompt, 'سؤال الأمس عن الموضوع نفسه؟') === 1,
+    );
+});
