@@ -6,8 +6,9 @@ import PageHeader from '@/components/page/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { formatFileSize } from '@/lib/formatters';
 import { cancel as cancelTurn, send as sendChat, show as showConversation, stream as streamTurn } from '@/routes/ai/chat';
-import { store as storeAttachment } from '@/routes/ai/chat/attachments';
+import { show as attachmentFile, store as storeAttachment } from '@/routes/ai/chat/attachments';
 import { show as showPage } from '@/routes/pages';
 import { Link } from '@inertiajs/vue3';
 import { readSseStream } from '@saad5400/ai-kit/sse';
@@ -70,12 +71,28 @@ interface Citation {
     heading: string | null;
 }
 
+/**
+ * A file the student actually sent with a message — not a composer entry.
+ * Same shape whether it was just sent (built from the upload's own result) or
+ * restored from the thread endpoint, so one chip renders both.
+ */
+interface SentAttachment {
+    id: string;
+    name: string;
+    mime: string | null;
+    size: number | null;
+    /** The authorized route that streams the bytes back; never a public URL. */
+    url: string;
+}
+
 interface ChatMessage {
     id: number;
     role: 'user' | 'assistant';
     /** The student's own text; an assistant turn renders from `segments` instead. */
     content: string;
     citations: Citation[];
+    /** The files sent with this message; absent on a message that carried none. */
+    attachments?: SentAttachment[];
     /** The turn in arrival order — mutated in place by `timeline`. */
     segments: Segment[];
     timeline: Timeline;
@@ -119,6 +136,8 @@ interface PendingAttachment {
     clientId: number;
     attachmentId: string | null;
     name: string;
+    mime: string;
+    size: number;
     progress: number;
     status: AttachmentStatus;
     error?: string;
@@ -251,7 +270,7 @@ const rehydrateConversation = async (): Promise<void> => {
         }
 
         const payload = (await response.json()) as {
-            messages: { role: string; content: string; citations: Citation[] }[];
+            messages: { role: string; content: string; citations: Citation[]; attachments?: SentAttachment[] }[];
         };
 
         conversationId.value = storedId;
@@ -263,6 +282,10 @@ const rehydrateConversation = async (): Promise<void> => {
             .map((message) => {
                 const restored = newMessage(message.role as 'user' | 'assistant', message.content);
                 restored.citations = message.citations ?? [];
+
+                if (message.attachments !== undefined && message.attachments.length > 0) {
+                    restored.attachments = message.attachments;
+                }
 
                 if (restored.role === 'assistant') {
                     restored.timeline.push('delta', { text: message.content });
@@ -507,11 +530,27 @@ const sendMessage = async (): Promise<void> => {
 
     errorBanner.value = null;
 
-    const attachmentIds = attachments.value
-        .filter((attachment) => attachment.status === 'ready' && attachment.attachmentId)
-        .map((attachment) => attachment.attachmentId as string);
+    const sent = attachments.value.filter((attachment) => attachment.status === 'ready' && attachment.attachmentId);
+    const attachmentIds = sent.map((attachment) => attachment.attachmentId as string);
 
-    messages.value.push(newMessage('user', message));
+    const question = newMessage('user', message);
+
+    // The composer is cleared below, so the bubble takes its own copy of what
+    // was sent — otherwise the files vanish the moment they are sent, which is
+    // the defect this closes. The URL comes from the same named route the
+    // rehydrated payload carries, so a live chip and a restored one open the
+    // identical door.
+    if (sent.length > 0) {
+        question.attachments = sent.map((attachment) => ({
+            id: attachment.attachmentId as string,
+            name: attachment.name,
+            mime: attachment.mime === '' ? null : attachment.mime,
+            size: attachment.size,
+            url: attachmentFile.url(attachment.attachmentId as string),
+        }));
+    }
+
+    messages.value.push(question);
 
     const reply = newMessage('assistant');
     reply.streaming = true;
@@ -707,6 +746,8 @@ const onFilesSelected = (event: Event): void => {
             clientId: nextClientId++,
             attachmentId: null,
             name: file.name,
+            mime: file.type,
+            size: file.size,
             progress: 0,
             status: 'uploading',
         };
@@ -817,10 +858,33 @@ onBeforeUnmount(() => abortController?.abort());
 
                 <template v-for="message in messages" :key="message.id">
                     <!-- User bubble -->
-                    <div v-if="message.role === 'user'" class="flex justify-end">
+                    <div v-if="message.role === 'user'" class="flex flex-col items-end gap-1.5">
                         <div class="max-w-[85%] rounded-2xl rounded-se-sm bg-primary px-4 py-2.5 text-sm whitespace-pre-wrap text-primary-foreground">
                             {{ message.content }}
                         </div>
+
+                        <!-- The files sent with this message, openable only by
+                             the session that sent them. `dir="auto"` per name so
+                             a Latin filename inside an Arabic thread stays
+                             readable, and the size is LTR-isolated so it cannot
+                             reorder against the surrounding RTL text. -->
+                        <ul v-if="message.attachments?.length" class="flex max-w-[85%] flex-wrap justify-end gap-1.5">
+                            <li v-for="attachment in message.attachments" :key="attachment.id">
+                                <a
+                                    :href="attachment.url"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    class="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted px-2.5 py-1 text-xs text-muted-foreground transition hover:bg-foreground/10 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                                    :aria-label="`فتح المرفق ${attachment.name}`"
+                                >
+                                    <Paperclip class="size-3 shrink-0" />
+                                    <bdi dir="auto" class="max-w-40 truncate">{{ attachment.name }}</bdi>
+                                    <span v-if="attachment.size" dir="ltr" class="shrink-0 text-[10px] opacity-70">{{
+                                        formatFileSize(attachment.size)
+                                    }}</span>
+                                </a>
+                            </li>
+                        </ul>
                     </div>
 
                     <!-- Assistant bubble -->
