@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Ai\ChatAttachmentController;
+use App\Http\Controllers\Ai\ChatAttachmentFileController;
 use App\Http\Controllers\Ai\ChatController;
 use App\Http\Controllers\OgImageController;
 use App\Http\Controllers\PageController;
@@ -85,6 +86,17 @@ Route::middleware('throttle:ai-chat')->group(function () {
 // matching.
 Route::get('/ai/chat/turns/{turn}/stream', [ChatController::class, 'stream'])->name('ai.chat.stream');
 Route::post('/ai/chat/turns/{turn}/cancel', [ChatController::class, 'cancel'])->name('ai.chat.cancel');
+
+// Opening a file the visitor themselves attached to a sent message. OUTSIDE the
+// burst limiter for the same reason as the pair above, and more sharply: one
+// rehydrated thread can offer several chips, so tapping through the files of a
+// single conversation would 429 against a 5-per-minute budget meant for model
+// turns. It spends nothing — no model call, no daily quota slot, no budget —
+// reads back bytes this session itself uploaded, and 404s anything the
+// session does not own. The two-segment `/ai/chat/attachments/…` path is what
+// keeps the single-segment `{conversation}` route above from swallowing it.
+Route::get('/ai/chat/attachments/{attachment}', ChatAttachmentFileController::class)
+    ->name('ai.chat.attachments.show');
 
 // AI assistant chat page (must come before catch-all route) - with response caching.
 // Always renders; the chat endpoints report the disabled state at runtime.

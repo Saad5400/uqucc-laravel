@@ -5,6 +5,7 @@ namespace App\Models\Ai;
 use App\Support\Disk;
 use App\Support\LocalFile;
 use Database\Factories\Ai\ChatAttachmentFactory;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -24,6 +25,7 @@ use Illuminate\Support\Facades\Storage;
  * @property string $id
  * @property string $session_id
  * @property string|null $conversation_id
+ * @property string|null $message_id
  * @property string $original_filename
  * @property string $disk
  * @property string $path
@@ -57,6 +59,7 @@ class ChatAttachment extends Model
     protected $fillable = [
         'session_id',
         'conversation_id',
+        'message_id',
         'original_filename',
         'disk',
         'path',
@@ -86,6 +89,56 @@ class ChatAttachment extends Model
         static::deleted(function (self $attachment): void {
             Storage::disk($attachment->disk)->delete($attachment->path);
         });
+    }
+
+    /**
+     * The uploads this session owns. The ONE ownership predicate, so the
+     * thread read and the download route ask the identical question — a
+     * foreign id is simply not found rather than found-then-refused.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeOwnedBySession(Builder $query, string $sessionId): Builder
+    {
+        return $query->where('session_id', $sessionId);
+    }
+
+    /**
+     * The attachments anchored to one stored thread, oldest first — the
+     * thread endpoint's single query, grouped by message in PHP.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeAnchoredToConversation(Builder $query, string $conversationId): Builder
+    {
+        return $query->where('conversation_id', $conversationId)
+            ->whereNotNull('message_id')
+            ->orderBy('id');
+    }
+
+    /**
+     * Whether these bytes may be served INLINE rather than forced to
+     * download.
+     *
+     * The recorded mime comes from the upload itself, and the file is served
+     * from our own origin, so a file with an innocent name but HTML or SVG
+     * bytes could otherwise render as an active document there. Only the small
+     * raster + PDF set gets inline; anything else downloads. The upload
+     * validator accepts exactly this set today, so the list is a second lock
+     * on the same door rather than a new policy — and it stays correct if the
+     * validator ever widens.
+     */
+    public function isInlineSafe(): bool
+    {
+        return in_array(strtolower((string) $this->mime), [
+            'application/pdf',
+            'image/jpeg',
+            'image/png',
+            'image/webp',
+            'image/gif',
+        ], true);
     }
 
     /**

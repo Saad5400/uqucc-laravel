@@ -30,25 +30,6 @@ beforeEach(function () {
 });
 
 /**
- * Pin the visitor's session id: the framework encrypts default cookies for
- * the request, so StartSession adopts this id exactly — which is what keys
- * conversation ownership and the rate limiters.
- */
-function withChatSession(string $sessionId)
-{
-    // withCredentials(): json helpers (getJson/postJson) only forward default
-    // cookies when credentials are enabled.
-    return test()
-        ->withCredentials()
-        ->withCookie((string) config('session.cookie'), $sessionId);
-}
-
-function chatSessionId(): string
-{
-    return Str::random(40);
-}
-
-/**
  * Parse one named SSE event's data payload out of a streamed chat response.
  *
  * @return array<string, mixed>|null
@@ -311,12 +292,16 @@ it('returns the stored thread to its owning session with the contract shape', fu
         ->assertJsonStructure(['messages' => [['role', 'content', 'citations', 'created_at']]]);
 });
 
-it('hides the original typed message behind attachment wrapping when rehydrating', function () {
+it('rehydrates the typed message without its evidence wrapper, but with the files themselves', function () {
     StudentAssistant::fake(['رد.']);
 
     $sessionId = chatSessionId();
 
-    $attachment = ChatAttachment::factory()->ready()->create(['session_id' => $sessionId]);
+    $attachment = ChatAttachment::factory()->ready()->create([
+        'session_id' => $sessionId,
+        'original_filename' => 'transcript.pdf',
+        'extracted_markdown' => 'المعدل التراكمي: 3.5',
+    ]);
 
     $content = withChatSession($sessionId)
         ->post(route('ai.chat.send'), [
@@ -327,10 +312,94 @@ it('hides the original typed message behind attachment wrapping when rehydrating
 
     $conversationId = sseEventData($content, 'done')['conversation_id'];
 
-    withChatSession($sessionId)
+    $response = withChatSession($sessionId)
         ->getJson(route('ai.chat.show', $conversationId))
         ->assertOk()
-        ->assertJsonPath('messages.0.content', 'كم معدلي؟');
+        // The EXTRACTED TEXT stays stripped: it is evidence the model read, and
+        // 20k characters of PDF is not something the visitor typed.
+        ->assertJsonPath('messages.0.content', 'كم معدلي؟')
+        // The FILE comes back beside it, which is what the bubble draws.
+        ->assertJsonPath('messages.0.attachments.0.id', $attachment->id)
+        ->assertJsonPath('messages.0.attachments.0.name', 'transcript.pdf')
+        ->assertJsonPath('messages.0.attachments.0.mime', 'application/pdf')
+        ->assertJsonPath('messages.0.attachments.0.url', route('ai.chat.attachments.show', $attachment->id));
+
+    // Never the stored path, and never the extraction, on the wire.
+    expect($response->json('messages.0.attachments.0'))->not->toHaveKeys(['path', 'disk', 'extracted_markdown'])
+        ->and($response->json('messages.0'))->not->toHaveKey('attachments.0.path');
+});
+
+it('anchors a sent attachment to the user message it rode in on, not merely to the thread', function () {
+    StudentAssistant::fake(['رد.']);
+
+    $sessionId = chatSessionId();
+    $first = ChatAttachment::factory()->ready()->create(['session_id' => $sessionId]);
+
+    $content = withChatSession($sessionId)
+        ->post(route('ai.chat.send'), ['message' => 'الرسالة الأولى', 'attachment_ids' => [$first->id]])
+        ->streamedContent();
+
+    $conversationId = sseEventData($content, 'done')['conversation_id'];
+
+    // A SECOND turn in the same thread, with its own file. Anchoring by
+    // conversation alone would put both files on both bubbles.
+    $second = ChatAttachment::factory()->ready()->create(['session_id' => $sessionId]);
+
+    withChatSession($sessionId)
+        ->post(route('ai.chat.send'), [
+            'message' => 'الرسالة الثانية',
+            'conversation_id' => $conversationId,
+            'attachment_ids' => [$second->id],
+        ])
+        ->streamedContent();
+
+    $userMessages = ConversationMessage::query()
+        ->where('conversation_id', $conversationId)
+        ->where('role', 'user')
+        ->orderBy('id')
+        ->pluck('id');
+
+    expect($first->refresh()->message_id)->toBe($userMessages[0])
+        ->and($second->refresh()->message_id)->toBe($userMessages[1]);
+
+    $thread = withChatSession($sessionId)->getJson(route('ai.chat.show', $conversationId))->assertOk();
+
+    expect($thread->json('messages.0.attachments'))->toHaveCount(1)
+        ->and($thread->json('messages.0.attachments.0.id'))->toBe($first->id)
+        ->and($thread->json('messages.2.attachments'))->toHaveCount(1)
+        ->and($thread->json('messages.2.attachments.0.id'))->toBe($second->id);
+});
+
+it('omits the attachments key entirely on a message that carried no files', function () {
+    $sessionId = chatSessionId();
+    $conversationId = createStoredConversation($sessionId);
+
+    $response = withChatSession($sessionId)
+        ->getJson(route('ai.chat.show', $conversationId))
+        ->assertOk();
+
+    // A text-only thread stays byte-identical to what it sent before.
+    expect($response->json('messages.0'))->not->toHaveKey('attachments')
+        ->and($response->json('messages.1'))->not->toHaveKey('attachments');
+});
+
+it('leaves an unanchored upload off every bubble', function () {
+    $sessionId = chatSessionId();
+    $conversationId = createStoredConversation($sessionId);
+
+    // A turn that died before the store wrote its message: bound to the thread
+    // but never to a message. No bubble may claim it.
+    ChatAttachment::factory()->ready()->create([
+        'session_id' => $sessionId,
+        'conversation_id' => $conversationId,
+        'message_id' => null,
+    ]);
+
+    $response = withChatSession($sessionId)
+        ->getJson(route('ai.chat.show', $conversationId))
+        ->assertOk();
+
+    expect($response->json('messages.0'))->not->toHaveKey('attachments');
 });
 
 it('answers 404 when another session requests the thread', function () {

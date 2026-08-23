@@ -177,8 +177,17 @@ class GenerateChatReply implements ShouldQueue
     }
 
     /**
-     * Hand the turn's attachments to the conversation it resolved, so a
-     * rehydrated thread can still find the files the visitor sent.
+     * Anchor the turn's attachments to the conversation it resolved AND to the
+     * user message they were sent with, so a rehydrated thread puts the files
+     * back on the right bubble instead of on every bubble.
+     *
+     * The message id is read back rather than handed down because nothing on
+     * the streaming path surfaces it — the store writes the user message while
+     * the turn is running. The read is safe because this job is the
+     * conversation's only writer while it holds the turn, so the newest user
+     * row IS this turn's. A turn that never got that far leaves its rows
+     * unanchored, which renders as no chip: correct, because no stored message
+     * ever carried them.
      */
     private function bindAttachments(?string $conversationId): void
     {
@@ -188,8 +197,20 @@ class GenerateChatReply implements ShouldQueue
 
         ChatAttachment::query()
             ->whereKey($this->attachmentIds)
-            ->where('session_id', $this->sessionId)
-            ->update(['conversation_id' => $conversationId]);
+            ->ownedBySession($this->sessionId)
+            ->update([
+                'conversation_id' => $conversationId,
+                'message_id' => $this->latestUserMessageId($conversationId),
+            ]);
+    }
+
+    private function latestUserMessageId(string $conversationId): ?string
+    {
+        return ConversationMessage::query()
+            ->where('conversation_id', $conversationId)
+            ->where('role', 'user')
+            ->orderByDesc('id')
+            ->value('id');
     }
 
     private function latestAssistantMessageId(?string $conversationId): ?string
