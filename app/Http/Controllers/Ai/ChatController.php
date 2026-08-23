@@ -189,22 +189,59 @@ class ChatController extends Controller
             404,
         );
 
+        // One query for the whole thread's attachments, grouped by the message
+        // they were sent with — never one query per bubble. Only the columns the
+        // chip needs: `extracted_markdown` is a longText that can run to 20k
+        // characters per file, and pulling it for every attachment in a thread
+        // to render a filename would be pure waste.
+        $attachments = ChatAttachment::query()
+            ->anchoredToConversation($conversation)
+            ->select(['id', 'message_id', 'original_filename', 'mime', 'size'])
+            ->get()
+            ->groupBy('message_id');
+
         $messages = ConversationMessage::query()
             ->where('conversation_id', $conversation)
             ->orderBy('id')
             ->get()
-            ->map(fn (ConversationMessage $message): array => [
-                'role' => (string) $message->getAttribute('role'),
-                // Wrappers unwind outside-in: the category block wraps the
-                // attachment block wraps what the visitor actually typed.
-                'content' => $message->getAttribute('role') === 'user'
-                    ? $attachmentContext->unwrap($categoryContext->unwrap((string) ConversationContent::reveal($message->getAttribute('content'))))
-                    : $linkGuard->sanitize((string) ConversationContent::reveal($message->getAttribute('content'))),
-                'citations' => $message->getAttribute('role') === 'assistant'
-                    ? $citations->extractFromStored((array) $message->getAttribute('tool_results'))
-                    : [],
-                'created_at' => $message->getAttribute('created_at')?->toIso8601String(),
-            ])
+            ->map(function (ConversationMessage $message) use (
+                $attachmentContext,
+                $categoryContext,
+                $citations,
+                $linkGuard,
+                $attachments,
+            ): array {
+                $isUser = $message->getAttribute('role') === 'user';
+
+                $payload = [
+                    'role' => (string) $message->getAttribute('role'),
+                    // Wrappers unwind outside-in: the category block wraps the
+                    // attachment block wraps what the visitor actually typed.
+                    // The extracted TEXT stays stripped — it is evidence the
+                    // model read, never something the visitor wrote — and the
+                    // files themselves come back as `attachments` below.
+                    'content' => $isUser
+                        ? $attachmentContext->unwrap($categoryContext->unwrap((string) ConversationContent::reveal($message->getAttribute('content'))))
+                        : $linkGuard->sanitize((string) ConversationContent::reveal($message->getAttribute('content'))),
+                    'citations' => $message->getAttribute('role') === 'assistant'
+                        ? $citations->extractFromStored((array) $message->getAttribute('tool_results'))
+                        : [],
+                    'created_at' => $message->getAttribute('created_at')?->toIso8601String(),
+                ];
+
+                $sent = $attachments->get((string) $message->getAttribute('id'));
+
+                // Omitted entirely when a message carried no files, so a
+                // text-only thread is byte-identical to what it sent before.
+                if ($isUser && $sent !== null && $sent->isNotEmpty()) {
+                    $payload['attachments'] = $sent
+                        ->map(fn (ChatAttachment $attachment): array => $this->attachmentPayload($attachment))
+                        ->values()
+                        ->all();
+                }
+
+                return $payload;
+            })
             ->values();
 
         return response()->json(['messages' => $messages]);
@@ -286,6 +323,25 @@ class ChatController extends Controller
         return $ownership->owns($conversationId, $sessionId, SessionOwner::class)
             ? $conversationId
             : null;
+    }
+
+    /**
+     * One attachment as the chat client renders it: enough to draw the chip
+     * (name, type, size) and the authorized URL to open it. The stored PATH and
+     * the extracted TEXT never leave the server — the path is disk-internal and
+     * the extraction is model evidence, not something the visitor wrote.
+     *
+     * @return array<string, mixed>
+     */
+    private function attachmentPayload(ChatAttachment $attachment): array
+    {
+        return [
+            'id' => (string) $attachment->id,
+            'name' => (string) $attachment->original_filename,
+            'mime' => $attachment->mime,
+            'size' => $attachment->size,
+            'url' => route('ai.chat.attachments.show', ['attachment' => $attachment->id]),
+        ];
     }
 
     /**
