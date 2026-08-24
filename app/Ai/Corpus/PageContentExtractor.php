@@ -13,13 +13,16 @@ use App\Models\Page;
  * prepended as an H1 so title terms are always searchable and every chunk of
  * a short page inherits it as heading context.
  *
- * Images surface as clearly-marked blocks at their position in the page:
- * their alt text always, plus the vision-model transcription supplied by
- * {@see PageImageExtractor} when one is available. extract() only reads the
- * extraction cache; extractForIngestion() may trigger new (paid) OCR, so it
- * is reserved for the ingestion pipeline. The collaborator is resolved
- * lazily so plain `new PageContentExtractor` (the admin copilot's usage)
- * keeps working unchanged.
+ * How images surface is chosen by the caller via {@see ImageRendering}. For
+ * the corpus they become clearly-marked transcription blocks at their
+ * position in the page — alt text always, plus the vision-model reading
+ * supplied by {@see PageImageExtractor} when one is available; extract()
+ * only reads the extraction cache, extractForIngestion() may trigger new
+ * (paid) OCR. Callers that will WRITE the markdown back to the page must
+ * ask for {@see ImageRendering::MarkdownImage} instead — a transcription
+ * cannot be turned back into an image. The collaborator is resolved lazily
+ * so plain `new PageContentExtractor` (the admin copilot's usage) keeps
+ * working unchanged.
  */
 class PageContentExtractor
 {
@@ -42,7 +45,7 @@ class PageContentExtractor
      */
     public function extractForIngestion(Page $page): string
     {
-        return trim('# '.trim($page->title)."\n\n".$this->markdownFromContent($page->html_content, ocrImages: true));
+        return trim('# '.trim($page->title)."\n\n".$this->markdownFromContent($page->html_content, ImageRendering::FreshTranscription));
     }
 
     /**
@@ -53,10 +56,12 @@ class PageContentExtractor
      *
      * @param  array<string, mixed>|string|null  $content
      */
-    public function markdownFromContent(array|string|null $content, bool $ocrImages = false): string
-    {
+    public function markdownFromContent(
+        array|string|null $content,
+        ImageRendering $images = ImageRendering::CachedTranscription,
+    ): string {
         return is_array($content)
-            ? $this->tipTapToMarkdown($content['content'] ?? [], $ocrImages)
+            ? $this->tipTapToMarkdown($content['content'] ?? [], $images)
             : trim((string) $content);
     }
 
@@ -70,7 +75,7 @@ class PageContentExtractor
      *
      * @param  list<array<string, mixed>>  $nodes
      */
-    private function tipTapToMarkdown(array $nodes, bool $ocrImages = false): string
+    private function tipTapToMarkdown(array $nodes, ImageRendering $rendering): string
     {
         $blocks = [];
 
@@ -157,8 +162,8 @@ class PageContentExtractor
                     break;
             }
 
-            foreach ($this->imagesIn([$node]) as $image) {
-                $block = $this->imageBlock($image['src'], $image['alt'], $ocrImages);
+            foreach ($this->imagesIn([$node], $rendering) as $image) {
+                $block = $this->imageBlock($image['src'], $image['alt'], $rendering);
 
                 if ($block !== '') {
                     $blocks[] = $block;
@@ -170,13 +175,19 @@ class PageContentExtractor
     }
 
     /**
-     * The markdown block one image contributes: its transcription under a
-     * position marker when text is available, its alt text alone otherwise,
-     * nothing when it carries neither.
+     * The markdown block one image contributes. Under
+     * {@see ImageRendering::MarkdownImage} that is the markdown image itself,
+     * so a write-back rebuilds the same node; otherwise it is the image's
+     * transcription under a position marker when text is available, its alt
+     * text alone when it is not, and nothing when it carries neither.
      */
-    private function imageBlock(string $src, string $alt, bool $ocrImages): string
+    private function imageBlock(string $src, string $alt, ImageRendering $rendering): string
     {
-        $text = $src === '' ? null : $this->imageExtractor()->extractedTextFor($src, $ocrImages);
+        if ($rendering === ImageRendering::MarkdownImage) {
+            return $src === '' ? '' : '!['.$this->escapeMarkdownText($alt).']('.$this->escapeMarkdownUrl($src).')';
+        }
+
+        $text = $src === '' ? null : $this->imageExtractor()->extractedTextFor($src, $rendering->mayOcr());
 
         if ($text !== null && $text !== '') {
             $label = $alt !== '' ? $alt : basename((string) (parse_url($src, PHP_URL_PATH) ?: $src));
@@ -188,15 +199,39 @@ class PageContentExtractor
     }
 
     /**
+     * Alt text, safe to sit inside the `[...]` of a markdown image.
+     */
+    private function escapeMarkdownText(string $text): string
+    {
+        return str_replace(['\\', '[', ']'], ['\\\\', '\[', '\]'], $text);
+    }
+
+    /**
+     * A src, safe to sit inside the `(...)` of a markdown image. Parentheses
+     * and whitespace are the only characters that break the destination, and
+     * angle brackets neutralise both.
+     */
+    private function escapeMarkdownUrl(string $src): string
+    {
+        return preg_match('/[\s()<>]/u', $src) === 1
+            ? '<'.str_replace(['<', '>'], ['%3C', '%3E'], $src).'>'
+            : $src;
+    }
+
+    /**
      * Every image in a node subtree, in document order: TipTap `image` nodes
      * (stored inline inside paragraphs) plus <img> tags embedded in the HTML
      * strings of customBlock/alert attrs — the FROZEN custom-block contract
      * stores HTML inside attrs.config.
      *
+     * Under {@see ImageRendering::MarkdownImage} the custom-block HTML is
+     * skipped: those nodes are carried over verbatim by the write path, so
+     * re-emitting their images as markdown would duplicate them.
+     *
      * @param  list<array<string, mixed>>  $nodes
      * @return list<array{src: string, alt: string}>
      */
-    private function imagesIn(array $nodes): array
+    private function imagesIn(array $nodes, ImageRendering $rendering): array
     {
         $images = [];
 
@@ -214,12 +249,12 @@ class PageContentExtractor
                 ];
             }
 
-            if ($type === 'customBlock' || $type === 'alert') {
+            if (($type === 'customBlock' || $type === 'alert') && $rendering !== ImageRendering::MarkdownImage) {
                 array_push($images, ...$this->imagesInHtml($node['attrs'] ?? []));
             }
 
             if (is_array($node['content'] ?? null)) {
-                array_push($images, ...$this->imagesIn($node['content']));
+                array_push($images, ...$this->imagesIn($node['content'], $rendering));
             }
         }
 
