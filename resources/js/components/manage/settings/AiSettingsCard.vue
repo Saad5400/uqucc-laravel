@@ -6,10 +6,12 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useForm } from '@inertiajs/vue3';
 import { Loader2 } from 'lucide-vue-next';
-import type { AiSettingsValues } from './types';
+import { computed } from 'vue';
+import type { AiModelsInEffect, AiSettingsValues } from './types';
 
 const props = defineProps<{
     ai: AiSettingsValues;
+    models: AiModelsInEffect;
 }>();
 
 interface FeatureToggle {
@@ -39,16 +41,18 @@ const featureToggles: FeatureToggle[] = [
     },
 ];
 
-interface ModelField {
-    field: 'chat_model' | 'vision_model' | 'embedding_model';
-    label: string;
-}
-
-const modelFields: ModelField[] = [
-    { field: 'chat_model', label: 'نموذج المحادثة' },
-    { field: 'vision_model', label: 'نموذج الرؤية' },
-    { field: 'embedding_model', label: 'نموذج التضمين (Embeddings)' },
-];
+/**
+ * Models are configuration, not operator state (ai-kit docs/DECISIONS.md #26):
+ * they used to be editable rows that silently beat config, so a deploy could
+ * change the model and change nothing. They are shown read-only rather than
+ * hidden — an operator still needs to see what is answering students.
+ */
+const modelRows = computed(() => [
+    { label: 'نموذج المحادثة', value: props.models.chat },
+    { label: 'مستوى التفكير', value: props.models.chat_reasoning_effort },
+    { label: 'نموذج الرؤية', value: props.models.vision },
+    { label: 'نموذج التضمين (Embeddings)', value: props.models.embedding },
+]);
 
 const form = useForm({
     ai_enabled: props.ai.ai_enabled,
@@ -57,9 +61,6 @@ const form = useForm({
     telegram_ai_enabled: props.ai.telegram_ai_enabled,
     admin_copilot_enabled: props.ai.admin_copilot_enabled,
     admin_assistant_enabled: props.ai.admin_assistant_enabled,
-    chat_model: props.ai.chat_model,
-    vision_model: props.ai.vision_model,
-    embedding_model: props.ai.embedding_model,
     daily_budget_usd: props.ai.daily_budget_usd,
     per_session_rate_limit: props.ai.per_session_rate_limit,
     per_conversation_rate_limit: props.ai.per_conversation_rate_limit,
@@ -99,22 +100,18 @@ function submit(): void {
                 <section class="space-y-4">
                     <div>
                         <h3 class="font-medium">النماذج</h3>
-                        <p class="text-xs text-muted-foreground">معرّفات النماذج المستخدمة عبر OpenRouter</p>
+                        <p class="text-xs text-muted-foreground">
+                            النماذج المستخدمة حالياً عبر OpenRouter. تُضبط من إعدادات المشروع وليس من هنا — سابقاً كان تعديلها من اللوحة يتجاوز
+                            الإعدادات بصمت.
+                        </p>
                     </div>
 
-                    <div v-for="model in modelFields" :key="model.field" class="space-y-2">
-                        <Label :for="`ai-${model.field}`">{{ model.label }}</Label>
-                        <Input
-                            :id="`ai-${model.field}`"
-                            v-model="form[model.field]"
-                            type="text"
-                            dir="ltr"
-                            class="text-start"
-                            required
-                            :aria-invalid="form.errors[model.field] ? true : undefined"
-                        />
-                        <p v-if="form.errors[model.field]" class="text-sm text-destructive-foreground">{{ form.errors[model.field] }}</p>
-                    </div>
+                    <dl class="divide-y divide-border rounded-md border">
+                        <div v-for="model in modelRows" :key="model.label" class="flex items-center justify-between gap-4 px-3 py-2">
+                            <dt class="text-sm text-muted-foreground">{{ model.label }}</dt>
+                            <dd dir="ltr" class="text-start font-mono text-xs tabular-nums">{{ model.value || '—' }}</dd>
+                        </div>
+                    </dl>
                 </section>
 
                 <section class="space-y-4">

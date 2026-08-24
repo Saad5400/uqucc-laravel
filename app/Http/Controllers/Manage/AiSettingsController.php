@@ -21,9 +21,6 @@ class AiSettingsController extends Controller
         $settings->telegram_ai_enabled = $request->boolean('telegram_ai_enabled');
         $settings->admin_copilot_enabled = $request->boolean('admin_copilot_enabled');
         $settings->admin_assistant_enabled = $request->boolean('admin_assistant_enabled');
-        $settings->chat_model = $request->validated('chat_model');
-        $settings->vision_model = $request->validated('vision_model');
-        $settings->embedding_model = $request->validated('embedding_model');
         $settings->daily_budget_usd = (float) $request->validated('daily_budget_usd');
         $settings->per_session_rate_limit = (int) $request->validated('per_session_rate_limit');
         $settings->per_conversation_rate_limit = (int) $request->validated('per_conversation_rate_limit');

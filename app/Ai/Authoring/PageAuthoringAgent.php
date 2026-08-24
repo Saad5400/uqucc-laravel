@@ -2,6 +2,7 @@
 
 namespace App\Ai\Authoring;
 
+use App\Ai\ModelRegistry;
 use Laravel\Ai\Contracts\Agent;
 use Laravel\Ai\Contracts\HasProviderOptions;
 use Laravel\Ai\Enums\Lab;
@@ -41,7 +42,7 @@ class PageAuthoringAgent implements Agent, HasProviderOptions
     public function provider(): array
     {
         return [
-            (string) config('ai.default', 'openrouter') => (string) config('ai.authoring.model', 'deepseek/deepseek-v4-pro'),
+            (string) config('ai.default', 'openrouter') => app(ModelRegistry::class)->authoring(),
         ];
     }
 

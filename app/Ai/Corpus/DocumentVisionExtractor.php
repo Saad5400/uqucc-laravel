@@ -2,6 +2,7 @@
 
 namespace App\Ai\Corpus;
 
+use App\Ai\ModelRegistry;
 use App\Models\Corpus\CorpusDocument;
 use App\Settings\AiSettings;
 use App\Support\LocalFile;
@@ -19,15 +20,18 @@ use RuntimeException;
  * (base64 data URLs), which OpenRouter fans out to the model's native PDF
  * input — no page-to-image conversion needed. Images go as image_url parts.
  *
- * The model comes from the operator-editable AiSettings->vision_model,
- * falling back to config('ai.vision.model'). Guarded by the master AI kill
+ * The model comes from {@see \App\Ai\ModelRegistry::vision()} — the one
+ * place this app resolves a model. Guarded by the master AI kill
  * switch and the OpenRouter key so a queued extraction never silently calls
  * out against operator intent — it throws, and the job records the message
  * on the document row.
  */
 class DocumentVisionExtractor
 {
-    public function __construct(private readonly AiSettings $settings) {}
+    public function __construct(
+        private readonly AiSettings $settings,
+        private readonly ModelRegistry $models,
+    ) {}
 
     public function extract(CorpusDocument $document): string
     {
@@ -45,7 +49,7 @@ class DocumentVisionExtractor
             $this->prompt($document),
             [$this->attachment($document, $file->path)],
             provider: (string) config('ai.default', 'openrouter'),
-            model: $this->model(),
+            model: $this->models->vision(),
             timeout: (int) config('ai.vision.document_timeout', 180),
         );
 
@@ -67,15 +71,5 @@ class DocumentVisionExtractor
 
         return Document::fromPath($absolutePath)
             ->as($document->original_filename);
-    }
-
-    /**
-     * The operator-configured vision model, falling back to config.
-     */
-    private function model(): string
-    {
-        $model = trim($this->settings->vision_model);
-
-        return $model !== '' ? $model : (string) config('ai.vision.model', 'google/gemini-3.1-flash-lite');
     }
 }

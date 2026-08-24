@@ -20,19 +20,24 @@ it('defaults the ai provider config to openrouter', function () {
 });
 
 it('exposes per-task model config keys', function () {
-    expect(config('ai.vision.model'))->toBeString()
+    // Vision is null here on purpose — the slug is inherited from the kit
+    // (#26b), not pinned again by this app. Embeddings stay app-level.
+    expect(config('ai.vision.model'))->toBeNull()
         ->and(config('ai.embeddings.model'))->toBe('openai/text-embedding-3-small')
         ->and(config('ai.embeddings.dimensions'))->toBe(1536)
         ->and(config('ai.embeddings.driver'))->toBeIn(['fake', 'openrouter']);
 });
 
-it('inherits the chat model from the kit instead of pinning its own', function () {
-    // `ai.chat.model` is an override hook (AI_CHAT_MODEL) and nothing more —
-    // the fleet's shared default lives in the kit (ai-kit DECISIONS.md #21),
-    // so uqucc carries no second copy of the slug to drift.
+it('inherits the chat and vision models from the kit instead of pinning its own', function () {
+    // `ai.chat.model` / `ai.vision.model` are override hooks (AI_CHAT_MODEL,
+    // AI_VISION_MODEL) and nothing more — the fleet's shared defaults live in
+    // the kit (ai-kit DECISIONS.md #26), so uqucc carries no second copy of a
+    // slug to drift.
     expect(config('ai.chat.model'))->toBeNull()
-        ->and(config('ai-kit.chat.model'))->toBe('google/gemini-3.5-flash-lite')
-        ->and(app(Catalog::class)->chatModel())->toBe('google/gemini-3.5-flash-lite');
+        ->and(config('ai.vision.model'))->toBeNull()
+        ->and(config('ai-kit.chat.model'))->toBe('deepseek/deepseek-v4-flash')
+        ->and(app(Catalog::class)->chatModel())->toBe('deepseek/deepseek-v4-flash')
+        ->and(app(Catalog::class)->visionModel())->toBe('google/gemini-2.5-flash-lite');
 });
 
 it('turns an empty or invalid OpenRouter body into a clean AiException, not a TypeError', function () {

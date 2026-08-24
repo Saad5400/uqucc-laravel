@@ -2,6 +2,7 @@
 
 namespace App\Ai\Corpus;
 
+use App\Ai\ModelRegistry;
 use App\Models\Corpus\CorpusImageExtraction;
 use App\Settings\AiSettings;
 use App\Support\Disk;
@@ -57,6 +58,7 @@ class PageImageExtractor
     public function __construct(
         private readonly AiSettings $settings,
         private readonly BudgetGuard $budget,
+        private readonly ModelRegistry $models,
     ) {}
 
     /**
@@ -292,7 +294,7 @@ class PageImageExtractor
                     .'Attached image: '.basename($absolutePath),
                 [Image::fromPath($absolutePath, $this->mimeFor($absolutePath))->as(basename($absolutePath))],
                 provider: (string) config('ai.default', 'openrouter'),
-                model: $this->visionModel(),
+                model: $this->models->vision(),
                 timeout: (int) config('ai.vision.timeout', 45),
             );
 
@@ -303,7 +305,7 @@ class PageImageExtractor
                 [
                     'source_url' => $src,
                     'extracted_text' => $text,
-                    'model' => $this->visionModel(),
+                    'model' => $this->models->vision(),
                     'status' => CorpusImageExtraction::STATUS_EXTRACTED,
                 ],
             );
@@ -378,15 +380,5 @@ class PageImageExtractor
         } catch (Throwable) {
             return null;
         }
-    }
-
-    /**
-     * The operator-configured vision model, falling back to config.
-     */
-    private function visionModel(): string
-    {
-        $model = trim($this->settings->vision_model);
-
-        return $model !== '' ? $model : (string) config('ai.vision.model', 'google/gemini-3.1-flash-lite');
     }
 }

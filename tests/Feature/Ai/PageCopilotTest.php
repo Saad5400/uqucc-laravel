@@ -42,12 +42,10 @@ describe('improveText', function () {
         PageCopilotAgent::assertPrompted(fn (AgentPrompt $prompt): bool => ! $prompt->contains('تعليمات إضافية'));
     });
 
-    it('uses the chat model from settings', function () {
+    it('uses the chat model from config', function () {
         configureAdminCopilot();
 
-        $settings = app(AiSettings::class);
-        $settings->chat_model = 'openai/gpt-test';
-        $settings->save();
+        config()->set('ai.chat.model', 'openai/gpt-test');
 
         PageCopilotAgent::fake(['نص محسّن']);
 

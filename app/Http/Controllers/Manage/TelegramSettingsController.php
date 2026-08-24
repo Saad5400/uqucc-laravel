@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Ai\ModelRegistry;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Manage\UpdateTelegramSettingsRequest;
 use App\Settings\AiSettings;
@@ -16,7 +17,7 @@ class TelegramSettingsController extends Controller
      * Show the settings page (a Telegram card and an AI card, each saved
      * explicitly through its own endpoint).
      */
-    public function edit(TelegramSettings $settings, AiSettings $aiSettings): Response
+    public function edit(TelegramSettings $settings, AiSettings $aiSettings, ModelRegistry $models): Response
     {
         return Inertia::render('manage/settings/Index', [
             'telegram' => [
@@ -30,12 +31,19 @@ class TelegramSettingsController extends Controller
                 'telegram_ai_enabled' => $aiSettings->telegram_ai_enabled,
                 'admin_copilot_enabled' => $aiSettings->admin_copilot_enabled,
                 'admin_assistant_enabled' => $aiSettings->admin_assistant_enabled,
-                'chat_model' => $aiSettings->chat_model,
-                'vision_model' => $aiSettings->vision_model,
-                'embedding_model' => $aiSettings->embedding_model,
                 'daily_budget_usd' => $aiSettings->daily_budget_usd,
                 'per_session_rate_limit' => $aiSettings->per_session_rate_limit,
                 'per_conversation_rate_limit' => $aiSettings->per_conversation_rate_limit,
+            ],
+            // Read-only: models are config, not operator state (ai-kit
+            // docs/DECISIONS.md #26). Shown rather than hidden so an operator
+            // can still see what is answering students without an editable
+            // field that used to override config invisibly.
+            'models' => [
+                'chat' => $models->chat(),
+                'chat_reasoning_effort' => $models->chatReasoningEffort(),
+                'vision' => $models->vision(),
+                'embedding' => (string) config('ai.embeddings.model', ''),
             ],
         ]);
     }

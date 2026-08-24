@@ -4,6 +4,7 @@ namespace App\Ai\Chat;
 
 use App\Ai\Corpus\DocumentExtractionAgent;
 use App\Ai\Corpus\UploadedTextExtractor;
+use App\Ai\ModelRegistry;
 use App\Models\Ai\ChatAttachment;
 use App\Settings\AiSettings;
 use Illuminate\Support\Facades\Context;
@@ -45,6 +46,7 @@ class ChatAttachmentTextExtractor
     public function __construct(
         private readonly AiSettings $settings,
         private readonly BudgetGuard $budget,
+        private readonly ModelRegistry $models,
     ) {}
 
     public function extract(ChatAttachment $attachment): string
@@ -135,7 +137,7 @@ class ChatAttachmentTextExtractor
                 .'Attached file: '.$attachment->original_filename.' ('.$attachment->mime.')',
             [$this->attachmentFile($attachment, $file->path)],
             provider: (string) config('ai.default', 'openrouter'),
-            model: $this->visionModel(),
+            model: $this->models->vision(),
             timeout: (int) config('ai.vision.timeout', 45),
         );
 
@@ -151,15 +153,5 @@ class ChatAttachmentTextExtractor
 
         return Document::fromPath($absolutePath)
             ->as($attachment->original_filename);
-    }
-
-    /**
-     * The operator-configured vision model, falling back to config.
-     */
-    private function visionModel(): string
-    {
-        $model = trim($this->settings->vision_model);
-
-        return $model !== '' ? $model : (string) config('ai.vision.model', 'google/gemini-3.1-flash-lite');
     }
 }

@@ -2,7 +2,7 @@
 import ManageLayout from '@/components/manage/ManageLayout.vue';
 import PageHeader from '@/components/manage/PageHeader.vue';
 import AiSettingsCard from '@/components/manage/settings/AiSettingsCard.vue';
-import type { AiSettingsValues, TelegramSettingsValues } from '@/components/manage/settings/types';
+import type { AiModelsInEffect, AiSettingsValues, TelegramSettingsValues } from '@/components/manage/settings/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
@@ -17,6 +17,7 @@ defineOptions({ layout: ManageLayout });
 const props = defineProps<{
     telegram: TelegramSettingsValues;
     ai: AiSettingsValues;
+    models: AiModelsInEffect;
 }>();
 
 const form = useForm({
@@ -88,6 +89,6 @@ function submit(): void {
             </CardContent>
         </Card>
 
-        <AiSettingsCard :ai="ai" />
+        <AiSettingsCard :ai="ai" :models="models" />
     </div>
 </template>

@@ -24,7 +24,7 @@
         "league/flysystem-aws-s3-v3": "^3.0",
         "pgvector/pgvector": "^0.2.2",
         "predis/predis": "^2.0",
-        "saad/ai-kit": "^0.9.0",
+        "saad/ai-kit": "^0.10.0",
         "smalot/pdfparser": "^2.12",
         "spatie/browsershot": "^5.2",
         "spatie/eloquent-sortable": "^4.5",

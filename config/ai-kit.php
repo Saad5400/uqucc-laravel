@@ -192,78 +192,28 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Catalog
+    | Catalog, chat and vision — INHERITED, deliberately absent
     |--------------------------------------------------------------------------
     |
-    | The models the app routes turns to, keyed by provider-facing model id —
-    | OpenRouter's `id` (the stable alias), never its `canonical_slug` (the
-    | dated pin), which entries record separately so ops can see which build
-    | the alias resolved to. Prices are USD per million tokens (optional —
-    | metering prefers the provider-reported cost). `fallbacks` declares the
-    | failover chain for a model: the gateway sends it as OpenRouter's
-    | `models` request array, so the failover happens upstream — on downtime,
-    | rate limits, moderation AND context-length overflow — and the turn is
-    | priced by whichever model actually answered.
-    | `cheapest`/`smartest` feed the SDK's UseCheapestModel /
-    | UseSmartestModel attributes.
+    | This app pins NO model here. The catalog, the chat default and the vision
+    | default are the fleet's, shipped in the kit's own config (ai-kit
+    | docs/DECISIONS.md #26) and deep-merged in at register time, so a model
+    | decision is made once for every app instead of once per repo. Changing a
+    | model means changing the kit and bumping the version, not editing three
+    | configs and discovering later that two of them drifted.
     |
-    | `source` picks where models() reads from: 'config' serves this file
-    | live; 'database' serves the `table` rows that `ai-kit:sync-models`
-    | materializes from this same file (the reviewed config stays the source
-    | of truth — the table adds enable/disable ops control and app metadata).
-    | Entries may also declare `tasks` (routing labels like chat/mcq),
-    | `tags` (of which `recommended` is enforced: exactly one recommended
-    | model per declared task), `provider_max_price` ({prompt, completion}
-    | caps, sent as OpenRouter's `provider.max_price` so the ceiling binds
-    | the model that answers rather than the one we asked for),
-    | `canonical_slug`, `provider`/`provider_model_id`, `enabled`,
-    | `sort_order` and a `meta` bag the kit never reads.
+    | To override for THIS app only, set AI_KIT_CHAT_MODEL / AI_KIT_VISION_MODEL
+    | or re-declare the key here. Adding one model to the menu means declaring
+    | just that entry under `catalog.models` — the merge is by model key, so
+    | the fleet's entries survive; set `catalog.replace_shipped_models` to own
+    | the whole menu instead.
+    |
+    | What is NOT available any more is an `AiSettings` database row that beats
+    | config. It existed until 2026-08-24 and it is why a chat-model change
+    | could deploy cleanly and change nothing at all, leaving students on the
+    | weaker model. Resolution now lives in {@see \App\Ai\ModelRegistry}.
     |
     */
-
-    'catalog' => [
-        'provider' => 'openrouter',
-        'source' => 'config',
-        'table' => 'ai_models',
-        'cheapest' => null,
-        'smartest' => null,
-        'models' => [
-            // 'google/gemini-3.5-flash' => [
-            //     'canonical_slug' => 'google/gemini-3.5-flash-0714',
-            //     'label' => 'Gemini 3.5 Flash',
-            //     'input_usd_per_million' => 0.30,
-            //     'output_usd_per_million' => 2.50,
-            //     'context_length' => 1048576,
-            //     'capabilities' => ['tools', 'vision', 'reasoning'],
-            //     'fallbacks' => ['deepseek/deepseek-v4-flash'],
-            // ],
-        ],
-    ],
-
-    /*
-    |--------------------------------------------------------------------------
-    | Chat
-    |--------------------------------------------------------------------------
-    |
-    | The shared DEFAULT chat model for the fleet (DECISIONS.md #21). Every
-    | app inherits this slug unless it overrides it — through
-    | AI_KIT_CHAT_MODEL, through its own published config, or through an
-    | app-level setting that wins over config (uqucc's `AiSettings->chat_model`
-    | row does, and has to be migrated at adoption).
-    |
-    | The slug is PINNED by owner ruling, not chosen here: Google Gemini
-    | Flash Lite, the latest lite generation at ruling time (tools +
-    | reasoning + structured outputs + multimodal, 1M context). Cheaper prior
-    | generations (`google/gemini-3.1-flash-lite`,
-    | `google/gemini-2.5-flash-lite`) are the fallback candidates if cost or
-    | behaviour disappoints. Read it through `Catalog::chatModel()`; a model
-    | the catalog also declares picks up that entry's fallbacks and price cap.
-    |
-    */
-
-    'chat' => [
-        'model' => env('AI_KIT_CHAT_MODEL', 'deepseek/deepseek-v4-pro-0813'),
-    ],
 
     /*
     |--------------------------------------------------------------------------
