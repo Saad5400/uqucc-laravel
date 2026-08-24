@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Http\Middleware\CacheResponse;
 use App\Services\OgImageService;
+use App\Support\CacheFlusher;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -56,33 +57,12 @@ class Page extends Model implements Sortable
      */
     protected static function clearPageCaches(): void
     {
-        $patterns = [
+        CacheFlusher::forgetMatching(
             config('app-cache.keys.page', 'page').':*',
             config('app-cache.keys.page_breadcrumbs', 'page_breadcrumbs').':*',
             config('app-cache.keys.catalog_pages', 'catalog_pages').':*',
-            config('app-cache.keys.response_cache', 'response_cache').':*',
-        ];
+        );
 
-        // Get the cache prefix
-        $prefix = config('cache.prefix', '');
-
-        // For Redis, use pattern-based deletion
-        if (config('cache.default') === 'redis') {
-            $redis = Cache::getRedis();
-            foreach ($patterns as $pattern) {
-                $fullPattern = $prefix ? $prefix.':'.$pattern : $pattern;
-                $keys = $redis->keys($fullPattern);
-                if (! empty($keys)) {
-                    // Remove prefix from keys before forgetting
-                    foreach ($keys as $key) {
-                        $cacheKey = $prefix ? str_replace($prefix.':', '', $key) : $key;
-                        Cache::forget($cacheKey);
-                    }
-                }
-            }
-        }
-
-        // Also clear response cache using the middleware helper (works for non-Redis too)
         CacheResponse::clearAll();
     }
 

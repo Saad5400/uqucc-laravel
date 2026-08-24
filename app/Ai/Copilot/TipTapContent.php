@@ -2,20 +2,25 @@
 
 namespace App\Ai\Copilot;
 
+use App\Ai\Corpus\ImageRendering;
 use App\Ai\Corpus\PageContentExtractor;
 use Illuminate\Support\Str;
 use Tiptap\Editor;
 use Tiptap\Extensions\StarterKit;
 use Tiptap\Marks\Link;
+use Tiptap\Nodes\Image;
 
 /**
  * Converts between the Page editor's TipTap JSON document and the markdown
  * the copilot's language model reads and writes.
  *
- * Reading (toMarkdown) reuses {@see PageContentExtractor} — the exact same
- * flattening the AI corpus ingests, so the model sees pages the way search
- * already does. Writing (toDocument/append) goes markdown → HTML (CommonMark
- * via Str::markdown) → TipTap JSON (via ueberdosis/tiptap-php).
+ * Reading (toMarkdown) reuses {@see PageContentExtractor}'s flattening, but
+ * asks it for {@see ImageRendering::MarkdownImage}: this pair is a ROUND
+ * TRIP — whatever toMarkdown drops, a later toDocument deletes from the page
+ * — so images have to come back as `![alt](src)`, not as the corpus's
+ * one-way OCR transcriptions. Writing (toDocument/append) goes markdown →
+ * HTML (CommonMark via Str::markdown) → TipTap JSON (via
+ * ueberdosis/tiptap-php).
  */
 class TipTapContent
 {
@@ -26,7 +31,7 @@ class TipTapContent
      */
     public static function toMarkdown(array|string|null $content): string
     {
-        return (new PageContentExtractor)->markdownFromContent($content);
+        return (new PageContentExtractor)->markdownFromContent($content, ImageRendering::MarkdownImage);
     }
 
     /**
@@ -86,13 +91,15 @@ class TipTapContent
     }
 
     /**
-     * The default tiptap-php StarterKit has no Link mark, which silently
-     * strips every anchor on markdown → document conversion.
+     * The default tiptap-php StarterKit has neither the Link mark nor the
+     * Image node, and silently drops every anchor and every <img> on the
+     * markdown → document conversion — which, on the read-edit-write round
+     * trip, means deleting them from the page.
      */
     private static function editor(): Editor
     {
         return new Editor([
-            'extensions' => [new StarterKit, new Link],
+            'extensions' => [new StarterKit, new Link, new Image],
         ]);
     }
 

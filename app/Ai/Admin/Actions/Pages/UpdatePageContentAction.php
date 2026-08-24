@@ -45,7 +45,9 @@ class UpdatePageContentAction extends AdminAction
     {
         return 'Replace a page\'s text content, given as markdown. '
             .'Provide page_id (from list_pages) and the full new content as markdown — it replaces the current body. '
-            .'Read the current content first with get_page_content. Custom alert/block components on the page are kept automatically. '
+            .'Read the current content first with get_page_content, and carry every line you are not deliberately changing over verbatim — '
+            .'whatever you leave out is deleted from the page. That includes images, which read back as markdown ![alt](src). '
+            .'Custom alert/block components on the page are kept automatically. '
             .'Do not include a top-level H1 title; use ## and below.';
     }
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\CacheFlusher;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -193,21 +194,7 @@ class CacheResponse
      */
     public static function clearAll(): void
     {
-        $prefix = config('app-cache.keys.response_cache', 'response_cache');
-
-        if (config('cache.default') === 'redis') {
-            $cachePrefix = config('cache.prefix', '');
-            $redis = Cache::getRedis();
-            $pattern = $cachePrefix ? $cachePrefix.':'.$prefix.':*' : $prefix.':*';
-
-            $keys = $redis->keys($pattern);
-            if (! empty($keys)) {
-                foreach ($keys as $key) {
-                    $cacheKey = $cachePrefix ? str_replace($cachePrefix.':', '', $key) : $key;
-                    Cache::forget($cacheKey);
-                }
-            }
-        }
+        CacheFlusher::forgetMatching(config('app-cache.keys.response_cache', 'response_cache').':*');
     }
 
     /**

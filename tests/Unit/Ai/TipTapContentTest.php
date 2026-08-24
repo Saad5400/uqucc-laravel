@@ -84,3 +84,59 @@ it('preserves links inside blockquotes', function () {
     expect($document['content'][0]['type'])->toBe('blockquote')
         ->and(json_encode($document))->toContain('https:\/\/example.com\/a');
 });
+
+it('flattens images to markdown images, not to their corpus transcription', function () {
+    $markdown = TipTapContent::toMarkdown([
+        'type' => 'doc',
+        'content' => [
+            ['type' => 'paragraph', 'content' => [
+                ['type' => 'image', 'attrs' => ['src' => 'https://cdn.test/fig.png', 'alt' => 'نافذة التثبيت']],
+            ]],
+        ],
+    ]);
+
+    expect($markdown)->toBe('![نافذة التثبيت](https://cdn.test/fig.png)')
+        ->and($markdown)->not->toContain('محتوى صورة');
+});
+
+it('rebuilds image nodes from the markdown it produced', function () {
+    $document = [
+        'type' => 'doc',
+        'content' => [
+            ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'قبل الصورة.']]],
+            ['type' => 'paragraph', 'attrs' => ['textAlign' => 'start'], 'content' => [
+                ['type' => 'image', 'attrs' => ['src' => 'https://cdn.test/fig(1).png', 'alt' => 'خطوة [أولى]', 'title' => null]],
+            ]],
+        ],
+    ];
+
+    $roundTripped = TipTapContent::toDocument(TipTapContent::toMarkdown($document));
+
+    $image = $roundTripped['content'][1]['content'][0];
+
+    expect($image['type'])->toBe('image')
+        ->and($image['attrs']['src'])->toBe('https://cdn.test/fig(1).png')
+        ->and($image['attrs']['alt'])->toBe('خطوة [أولى]');
+});
+
+it('keeps an image with no alt text across the round trip', function () {
+    $document = TipTapContent::toDocument(TipTapContent::toMarkdown([
+        'type' => 'doc',
+        'content' => [
+            ['type' => 'paragraph', 'content' => [['type' => 'image', 'attrs' => ['src' => 'https://cdn.test/x.svg', 'alt' => '']]]],
+        ],
+    ]));
+
+    expect(json_encode($document))->toContain('https:\/\/cdn.test\/x.svg');
+});
+
+it('does not re-emit images that live inside preserved custom blocks', function () {
+    $markdown = TipTapContent::toMarkdown([
+        'type' => 'doc',
+        'content' => [
+            ['type' => 'customBlock', 'attrs' => ['config' => ['content' => '<p><img src="https://cdn.test/inside.png" alt="داخل المكوّن"></p>']]],
+        ],
+    ]);
+
+    expect($markdown)->not->toContain('https://cdn.test/inside.png');
+});
