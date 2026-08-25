@@ -148,12 +148,13 @@ it('teases the topic the question came from', function () {
         ->and($this->fake->sentMessages[0]['text'])->toBe('سؤال اليوم من «أساسيات الشبكات» — تحسب نفسك قوي فيه؟');
 });
 
-it('stays silent on the topic phase when the quiz carries no topic', function () {
+it('falls back to a plain line on the topic phase when the quiz carries no topic', function () {
     liveQuizWith(answers: 3, quizAttributes: ['quiz_topic_id' => null]);
 
     $this->artisan('quiz:remind topic')->assertExitCode(0);
 
-    expect($this->fake->sentMessages)->toBeEmpty();
+    expect($this->fake->sentMessages)->toHaveCount(1)
+        ->and($this->fake->sentMessages[0]['text'])->toBe('سؤال اليوم فوق ☝️ جرّب حظك فيه');
 });
 
 it('quotes the answers that landed in the last hour', function () {
@@ -167,13 +168,14 @@ it('quotes the answers that landed in the last hour', function () {
         ->and($this->fake->sentMessages[0]['text'])->toBe('وصلتنا 4 إجابات في آخر ساعة 🔥 لا تتأخر');
 });
 
-it('stays silent on the momentum phase after a quiet hour', function () {
+it('names the quiet on the momentum phase after an hour with no answers', function () {
     $quiz = liveQuizWith();
     QuizAnswer::factory()->count(6)->create(['daily_quiz_id' => $quiz->id, 'answered_at' => now()->subHours(3)]);
 
     $this->artisan('quiz:remind momentum')->assertExitCode(0);
 
-    expect($this->fake->sentMessages)->toBeEmpty();
+    expect($this->fake->sentMessages)->toHaveCount(1)
+        ->and($this->fake->sentMessages[0]['text'])->toBe('الشات هادي 😴 وسؤال اليوم لسه مفتوح');
 });
 
 it('sends the late-night nudge without needing any turnout', function () {
@@ -197,12 +199,50 @@ it('warns off the wrong option the crowd is falling for', function () {
         ->and($this->fake->sentMessages[0]['text'])->toBe('أكثر إجابة غلط في سؤال اليوم اختارها 50% — لا تقع فيها');
 });
 
-it('stays silent on the trap phase while every answer is correct', function () {
+it('praises the clean board on the trap phase while every answer is correct', function () {
     liveQuizWith(answers: 4);
 
     $this->artisan('quiz:remind trap')->assertExitCode(0);
 
+    expect($this->fake->sentMessages)->toHaveCount(1)
+        ->and($this->fake->sentMessages[0]['text'])->toBe('كل الإجابات صح لين الآن ✅ تحافظ على النسبة؟');
+});
+
+it('opens the trap phase on the empty board when nobody has answered', function () {
+    liveQuizWith(answers: 0);
+
+    $this->artisan('quiz:remind trap')->assertExitCode(0);
+
+    expect($this->fake->sentMessages)->toHaveCount(1)
+        ->and($this->fake->sentMessages[0]['text'])->toBe('ما جاوب أحد على سؤال اليوم لين الآن — افتحها أنت');
+});
+
+it('sends every phase something, on a quiz with nothing to quote', function (string $phase) {
+    liveQuizWith(answers: 0, quizAttributes: ['hint' => null, 'obvious_hint' => null, 'quiz_topic_id' => null]);
+
+    $this->artisan("quiz:remind {$phase}")->assertExitCode(0);
+
+    expect($this->fake->sentMessages)->toHaveCount(1)
+        ->and($this->fake->sentMessages[0]['text'])->not->toBeEmpty();
+})->with(QuizReminder::PHASES);
+
+it('drops the reminder while the group is closed to its members', function () {
+    liveQuizWith(answers: 3);
+    $this->fake->membersCanPost = [-100200300 => false];
+
+    $this->artisan('quiz:remind opener')->assertExitCode(0);
+
     expect($this->fake->sentMessages)->toBeEmpty();
+});
+
+it('reminds the groups that are open and skips the closed ones', function () {
+    $quiz = liveQuizWith(answers: 3);
+    QuizPost::factory()->create(['daily_quiz_id' => $quiz->id, 'chat_id' => -100400500]);
+    $this->fake->membersCanPost = [-100400500 => false];
+
+    $this->artisan('quiz:remind opener')->assertExitCode(0);
+
+    expect(collect($this->fake->sentMessages)->pluck('chat_id')->all())->toBe([-100200300]);
 });
 
 it('always sends the closing buzzer', function () {
@@ -214,20 +254,26 @@ it('always sends the closing buzzer', function () {
         ->and($this->fake->sentMessages[0]['text'])->toBe('آخر فرصة ⏳ سؤال اليوم يقفل بعد شوي');
 });
 
-it('stays silent on a turnout phase while nobody has answered yet', function (string $phase) {
+it('falls back to a plain line on a turnout phase while nobody has answered yet', function (string $phase, string $text) {
     liveQuizWith(answers: 0);
 
     $this->artisan("quiz:remind {$phase}")->assertExitCode(0);
 
-    expect($this->fake->sentMessages)->toBeEmpty();
-})->with(['opener', 'refloat', 'morning']);
+    expect($this->fake->sentMessages)->toHaveCount(1)
+        ->and($this->fake->sentMessages[0]['text'])->toBe($text);
+})->with([
+    ['opener', 'سؤال اليوم نازل ولسه ما جاوب عليه أحد — كن أول واحد'],
+    ['refloat', 'سؤال اليوم لسه بلا إجابات، بتقدر عليه؟'],
+    ['morning', 'صباح الخير ☕ سؤال اليوم لسه ينتظر أول إجابة'],
+]);
 
-it('stays silent on the hint phase when the quiz has no hint', function () {
+it('falls back to a plain line on the hint phase when the quiz has no hint', function () {
     liveQuizWith(answers: 5, quizAttributes: ['hint' => null]);
 
     $this->artisan('quiz:remind hint')->assertExitCode(0);
 
-    expect($this->fake->sentMessages)->toBeEmpty();
+    expect($this->fake->sentMessages)->toHaveCount(1)
+        ->and($this->fake->sentMessages[0]['text'])->toBe('ما فيه تلميح لسؤال اليوم 😄 جاوب باللي تعرفه');
 });
 
 it('reminds every group the quiz is live in', function () {

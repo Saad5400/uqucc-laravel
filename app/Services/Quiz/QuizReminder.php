@@ -18,7 +18,7 @@ use Telegram\Bot\Api;
  * Twelve phases spread across the quiz's 24-hour window (see the schedule in
  * routes/console.php), each with its own voice so the day does not read as the
  * same nudge twelve times:
- *   - {@see self::KICKOFF}: the poll just went up, before anyone has voted.
+ *   - {@see self::KICKOFF}: the poll just went up.
  *   - {@see self::OPENER}: quotes how many have answered so far.
  *   - {@see self::TOPIC}: teases the subject the question came from.
  *   - {@see self::REFLOAT}: taunts with the share of answers that were wrong.
@@ -31,9 +31,13 @@ use Telegram\Bot\Api;
  *   - {@see self::LASTCALL}: "closes soon", carrying the blunter second hint.
  *   - {@see self::CLOSING}: the buzzer, minutes before the poll stops.
  *
- * A phase whose line has nothing to say is skipped rather than softened: the
- * turnout phases need at least one answer to quote, the hint phase needs a
- * stored hint, and the topic phase needs the quiz to carry a topic.
+ * Every phase always has something to send: a phase whose data is missing —
+ * no answers yet, a quiet hour, no stored hint, no topic — falls back to a
+ * plain line in the same voice rather than staying silent.
+ *
+ * The one thing that does hold a nudge back is the group itself: while members
+ * are muted (a closed group — the bot is an admin and could still post, but
+ * nobody could reply), the reminder is dropped for that chat.
  */
 class QuizReminder
 {
@@ -79,6 +83,13 @@ class QuizReminder
 
     private ?Api $telegram;
 
+    /**
+     * Whether members may post, per chat id — one getChat per chat per run.
+     *
+     * @var array<int, bool>
+     */
+    private array $membersCanPost = [];
+
     public function __construct(
         private readonly QuizSettings $settings,
         ?Api $telegram = null,
@@ -103,17 +114,45 @@ class QuizReminder
             ->filter(fn (QuizPost $post): bool => $post->quiz !== null);
 
         foreach ($openPosts->groupBy('daily_quiz_id') as $posts) {
-            $quiz = $posts->first()->quiz;
-            $text = $this->text($phase, $quiz);
-
-            if ($text === null) {
-                continue;
-            }
+            $text = $this->text($phase, $posts->first()->quiz);
 
             foreach ($posts as $post) {
+                if (! $this->membersCanPost($post->chat_id)) {
+                    continue;
+                }
+
                 $this->replyToPoll($post, $text);
             }
         }
+    }
+
+    /**
+     * Whether the group's members are currently allowed to post. A closed
+     * group gets no nudges: the bot is an admin and its reply would go
+     * through, but nobody there could answer it.
+     *
+     * Fails open — a chat whose permissions cannot be read (a Telegram
+     * hiccup, the bot removed) is treated as open, so one failed lookup does
+     * not silence the day.
+     */
+    private function membersCanPost(int $chatId): bool
+    {
+        if (array_key_exists($chatId, $this->membersCanPost)) {
+            return $this->membersCanPost[$chatId];
+        }
+
+        try {
+            $permission = data_get($this->telegram()->getChat(['chat_id' => $chatId])->toArray(), 'permissions.can_send_messages');
+        } catch (\Throwable $exception) {
+            Log::warning('Failed to read quiz chat permissions', [
+                'chat_id' => $chatId,
+                'message' => $exception->getMessage(),
+            ]);
+
+            $permission = null;
+        }
+
+        return $this->membersCanPost[$chatId] = $permission === null || (bool) $permission;
     }
 
     /**
@@ -144,40 +183,54 @@ class QuizReminder
         }
     }
 
-    /**
-     * This phase's reminder body, or null when the phase has nothing to say
-     * for this quiz yet — no answers to quote, no hint, or no topic.
-     */
-    private function text(string $phase, DailyQuiz $quiz): ?string
+    /** This phase's reminder body. */
+    private function text(string $phase, DailyQuiz $quiz): string
     {
         return match ($phase) {
             self::KICKOFF => 'سؤال اليوم مفتوح 🎯 خذ لك دقيقة وجاوب',
-            self::OPENER => $this->withParticipants($quiz, fn (int $participants): string => 'سؤال اليوم نازل، وجاوب عليه '.ArabicPlural::people($participants).' — وأنت؟'),
+            self::OPENER => $this->opener($quiz),
             self::TOPIC => $this->topic($quiz),
-            self::REFLOAT => $this->withParticipants($quiz, fn (int $participants): string => 'سؤال اليوم غلطوا فيه '.$this->percentOf($quiz, false, $participants).'%، بتقدر عليه؟'),
+            self::REFLOAT => $this->refloat($quiz),
             self::MOMENTUM => $this->momentum($quiz),
             self::NIGHT => 'قبل ما تنام 🌙 سؤال اليوم لسه مفتوح',
             self::LATENIGHT => 'ساهر؟ 🌜 سؤال اليوم لسه ينتظر إجابتك',
-            self::MORNING => $this->withParticipants($quiz, fn (int $participants): string => 'صباح الخير ☕ نسبة الإجابات الصحيحة في سؤال اليوم '.$this->percentOf($quiz, true, $participants).'% — تقدر ترفعها؟'),
+            self::MORNING => $this->morning($quiz),
             self::TRAP => $this->trap($quiz),
-            self::HINT => filled($quiz->hint) ? 'تلميح لسؤال اليوم: '.$this->escape($quiz->hint) : null,
+            self::HINT => $this->hint($quiz),
             self::LASTCALL => $this->lastCall($quiz),
             self::CLOSING => 'آخر فرصة ⏳ سؤال اليوم يقفل بعد شوي',
-            default => null,
+            default => 'سؤال اليوم لسه مفتوح — جاوب قبل ما يقفل',
         };
     }
 
-    /**
-     * Build a turnout-quoting line, or null while nobody has answered — with
-     * no participants there is no share to quote.
-     *
-     * @param  callable(int): string  $line
-     */
-    private function withParticipants(DailyQuiz $quiz, callable $line): ?string
+    /** Open the day on the turnout so far, or on the empty board. */
+    private function opener(DailyQuiz $quiz): string
     {
         $participants = $quiz->answers()->count();
 
-        return $participants === 0 ? null : $line($participants);
+        return $participants === 0
+            ? 'سؤال اليوم نازل ولسه ما جاوب عليه أحد — كن أول واحد'
+            : 'سؤال اليوم نازل، وجاوب عليه '.ArabicPlural::people($participants).' — وأنت؟';
+    }
+
+    /** Taunt with the share that got it wrong, or with the empty board. */
+    private function refloat(DailyQuiz $quiz): string
+    {
+        $participants = $quiz->answers()->count();
+
+        return $participants === 0
+            ? 'سؤال اليوم لسه بلا إجابات، بتقدر عليه؟'
+            : 'سؤال اليوم غلطوا فيه '.$this->percentOf($quiz, false, $participants).'%، بتقدر عليه؟';
+    }
+
+    /** Re-float in the morning on accuracy so far, or on the empty board. */
+    private function morning(DailyQuiz $quiz): string
+    {
+        $participants = $quiz->answers()->count();
+
+        return $participants === 0
+            ? 'صباح الخير ☕ سؤال اليوم لسه ينتظر أول إجابة'
+            : 'صباح الخير ☕ نسبة الإجابات الصحيحة في سؤال اليوم '.$this->percentOf($quiz, true, $participants).'% — تقدر ترفعها؟';
     }
 
     /**
@@ -191,32 +244,34 @@ class QuizReminder
     }
 
     /**
-     * Tease the subject the question was generated from, or null for a quiz
-     * with no topic (hand-written questions, or a deleted topic).
+     * Tease the subject the question was generated from. A quiz with no topic
+     * (hand-written, or a deleted topic) gets the plain nudge.
      */
-    private function topic(DailyQuiz $quiz): ?string
+    private function topic(DailyQuiz $quiz): string
     {
         $name = $quiz->topic?->name;
 
-        return filled($name) ? 'سؤال اليوم من «'.$this->escape($name).'» — تحسب نفسك قوي فيه؟' : null;
+        return filled($name)
+            ? 'سؤال اليوم من «'.$this->escape($name).'» — تحسب نفسك قوي فيه؟'
+            : 'سؤال اليوم فوق ☝️ جرّب حظك فيه';
     }
 
-    /**
-     * Quote the answers that landed in the last hour, or null on a quiet hour —
-     * "nobody answered recently" is not a nudge worth sending.
-     */
-    private function momentum(DailyQuiz $quiz): ?string
+    /** Quote the answers that landed in the last hour, or name the quiet. */
+    private function momentum(DailyQuiz $quiz): string
     {
         $recent = $quiz->answers()->where('answered_at', '>=', now()->subHour())->count();
 
-        return $recent === 0 ? null : 'وصلتنا '.ArabicPlural::answers($recent).' في آخر ساعة 🔥 لا تتأخر';
+        return $recent === 0
+            ? 'الشات هادي 😴 وسؤال اليوم لسه مفتوح'
+            : 'وصلتنا '.ArabicPlural::answers($recent).' في آخر ساعة 🔥 لا تتأخر';
     }
 
     /**
      * Warn off the wrong option the crowd is falling for hardest, as a share
-     * of everyone who answered. Null until at least one answer is wrong.
+     * of everyone who answered — or, with nothing wrong to warn about, praise
+     * the clean board instead.
      */
-    private function trap(DailyQuiz $quiz): ?string
+    private function trap(DailyQuiz $quiz): string
     {
         $participants = $quiz->answers()->count();
 
@@ -227,13 +282,23 @@ class QuizReminder
             ->orderByDesc('votes')
             ->first();
 
-        if ($participants === 0 || $mostPicked === null) {
-            return null;
+        if ($participants === 0) {
+            return 'ما جاوب أحد على سؤال اليوم لين الآن — افتحها أنت';
         }
 
-        $percent = (int) round($mostPicked->votes / $participants * 100);
+        if ($mostPicked === null) {
+            return 'كل الإجابات صح لين الآن ✅ تحافظ على النسبة؟';
+        }
 
-        return 'أكثر إجابة غلط في سؤال اليوم اختارها '.$percent.'% — لا تقع فيها';
+        return 'أكثر إجابة غلط في سؤال اليوم اختارها '.(int) round($mostPicked->votes / $participants * 100).'% — لا تقع فيها';
+    }
+
+    /** The stored non-spoiler hint, or the plain "no hint today" line. */
+    private function hint(DailyQuiz $quiz): string
+    {
+        return filled($quiz->hint)
+            ? 'تلميح لسؤال اليوم: '.$this->escape($quiz->hint)
+            : 'ما فيه تلميح لسؤال اليوم 😄 جاوب باللي تعرفه';
     }
 
     /**
