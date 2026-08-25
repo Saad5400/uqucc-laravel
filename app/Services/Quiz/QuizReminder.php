@@ -15,42 +15,66 @@ use Telegram\Bot\Api;
  * the poll) rather than posting a fresh block — the least-annoying way to fight
  * the message getting buried in an active group.
  *
- * Six phases spread across the quiz's 24-hour window (see the schedule in
+ * Twelve phases spread across the quiz's 24-hour window (see the schedule in
  * routes/console.php), each with its own voice so the day does not read as the
- * same nudge six times:
- *   - {@see self::OPENER}: the question just went up.
+ * same nudge twelve times:
+ *   - {@see self::KICKOFF}: the poll just went up, before anyone has voted.
+ *   - {@see self::OPENER}: quotes how many have answered so far.
+ *   - {@see self::TOPIC}: teases the subject the question came from.
  *   - {@see self::REFLOAT}: taunts with the share of answers that were wrong.
+ *   - {@see self::MOMENTUM}: quotes the answers that landed in the last hour.
  *   - {@see self::NIGHT}: a last pass before the group goes to sleep.
+ *   - {@see self::LATENIGHT}: the small-hours pass, for whoever is still up.
  *   - {@see self::MORNING}: the morning re-float, carrying accuracy so far.
+ *   - {@see self::TRAP}: warns off the wrong option the crowd is falling for.
  *   - {@see self::HINT}: the question's stored non-spoiler hint.
  *   - {@see self::LASTCALL}: "closes soon", carrying the blunter second hint.
+ *   - {@see self::CLOSING}: the buzzer, minutes before the poll stops.
  *
  * A phase whose line has nothing to say is skipped rather than softened: the
- * three turnout phases need at least one answer to quote, and the two hint
- * phases need a stored hint.
+ * turnout phases need at least one answer to quote, the hint phase needs a
+ * stored hint, and the topic phase needs the quiz to carry a topic.
  */
 class QuizReminder
 {
+    public const KICKOFF = 'kickoff';
+
     public const OPENER = 'opener';
+
+    public const TOPIC = 'topic';
 
     public const REFLOAT = 'refloat';
 
+    public const MOMENTUM = 'momentum';
+
     public const NIGHT = 'night';
 
+    public const LATENIGHT = 'latenight';
+
     public const MORNING = 'morning';
+
+    public const TRAP = 'trap';
 
     public const HINT = 'hint';
 
     public const LASTCALL = 'lastcall';
 
+    public const CLOSING = 'closing';
+
     /** Every phase `quiz:remind` accepts, in the order they fire. */
     public const PHASES = [
+        self::KICKOFF,
         self::OPENER,
+        self::TOPIC,
         self::REFLOAT,
+        self::MOMENTUM,
         self::NIGHT,
+        self::LATENIGHT,
         self::MORNING,
+        self::TRAP,
         self::HINT,
         self::LASTCALL,
+        self::CLOSING,
     ];
 
     private ?Api $telegram;
@@ -74,7 +98,7 @@ class QuizReminder
 
         $openPosts = QuizPost::query()
             ->open()
-            ->with('quiz')
+            ->with('quiz.topic')
             ->get()
             ->filter(fn (QuizPost $post): bool => $post->quiz !== null);
 
@@ -122,17 +146,23 @@ class QuizReminder
 
     /**
      * This phase's reminder body, or null when the phase has nothing to say
-     * for this quiz yet — no answers to quote, or no hint stored.
+     * for this quiz yet — no answers to quote, no hint, or no topic.
      */
     private function text(string $phase, DailyQuiz $quiz): ?string
     {
         return match ($phase) {
+            self::KICKOFF => 'سؤال اليوم مفتوح 🎯 خذ لك دقيقة وجاوب',
             self::OPENER => $this->withParticipants($quiz, fn (int $participants): string => 'سؤال اليوم نازل، وجاوب عليه '.ArabicPlural::people($participants).' — وأنت؟'),
+            self::TOPIC => $this->topic($quiz),
             self::REFLOAT => $this->withParticipants($quiz, fn (int $participants): string => 'سؤال اليوم غلطوا فيه '.$this->percentOf($quiz, false, $participants).'%، بتقدر عليه؟'),
+            self::MOMENTUM => $this->momentum($quiz),
             self::NIGHT => 'قبل ما تنام 🌙 سؤال اليوم لسه مفتوح',
+            self::LATENIGHT => 'ساهر؟ 🌜 سؤال اليوم لسه ينتظر إجابتك',
             self::MORNING => $this->withParticipants($quiz, fn (int $participants): string => 'صباح الخير ☕ نسبة الإجابات الصحيحة في سؤال اليوم '.$this->percentOf($quiz, true, $participants).'% — تقدر ترفعها؟'),
+            self::TRAP => $this->trap($quiz),
             self::HINT => filled($quiz->hint) ? 'تلميح لسؤال اليوم: '.$this->escape($quiz->hint) : null,
             self::LASTCALL => $this->lastCall($quiz),
+            self::CLOSING => 'آخر فرصة ⏳ سؤال اليوم يقفل بعد شوي',
             default => null,
         };
     }
@@ -161,13 +191,59 @@ class QuizReminder
     }
 
     /**
-     * The final nudge, carrying the blunter second hint. Questions authored
-     * before the second hint existed fall back to the subtle one, and a quiz
-     * with neither gets the bare "last chance" line.
+     * Tease the subject the question was generated from, or null for a quiz
+     * with no topic (hand-written questions, or a deleted topic).
+     */
+    private function topic(DailyQuiz $quiz): ?string
+    {
+        $name = $quiz->topic?->name;
+
+        return filled($name) ? 'سؤال اليوم من «'.$this->escape($name).'» — تحسب نفسك قوي فيه؟' : null;
+    }
+
+    /**
+     * Quote the answers that landed in the last hour, or null on a quiet hour —
+     * "nobody answered recently" is not a nudge worth sending.
+     */
+    private function momentum(DailyQuiz $quiz): ?string
+    {
+        $recent = $quiz->answers()->where('answered_at', '>=', now()->subHour())->count();
+
+        return $recent === 0 ? null : 'وصلتنا '.ArabicPlural::answers($recent).' في آخر ساعة 🔥 لا تتأخر';
+    }
+
+    /**
+     * Warn off the wrong option the crowd is falling for hardest, as a share
+     * of everyone who answered. Null until at least one answer is wrong.
+     */
+    private function trap(DailyQuiz $quiz): ?string
+    {
+        $participants = $quiz->answers()->count();
+
+        $mostPicked = $quiz->answers()
+            ->where('is_correct', false)
+            ->selectRaw('selected_option, count(*) as votes')
+            ->groupBy('selected_option')
+            ->orderByDesc('votes')
+            ->first();
+
+        if ($participants === 0 || $mostPicked === null) {
+            return null;
+        }
+
+        $percent = (int) round($mostPicked->votes / $participants * 100);
+
+        return 'أكثر إجابة غلط في سؤال اليوم اختارها '.$percent.'% — لا تقع فيها';
+    }
+
+    /**
+     * The "closes soon" nudge, carrying the blunter second hint. Questions
+     * authored before the second hint existed fall back to the subtle one, and
+     * a quiz with neither gets the bare line.
      */
     private function lastCall(DailyQuiz $quiz): string
     {
-        $line = 'آخر فرصة في سؤال اليوم';
+        $line = 'قرب يقفل سؤال اليوم';
         $hint = filled($quiz->obvious_hint) ? $quiz->obvious_hint : $quiz->hint;
 
         if (filled($hint)) {

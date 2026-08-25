@@ -51,12 +51,22 @@ Schedule::command('quiz:announce-weekly')
     ->withoutOverlapping()
     ->runInBackground();
 
-// The six nudges spread across the quiz's 16:00 → 16:00 window, in order.
+// The twelve nudges spread across the quiz's 16:00 → 16:00 window, in order.
 // Each phase has its own voice (see App\Services\Quiz\QuizReminder) and skips
 // itself when it has nothing to say; the whole family is behind the
 // «reminders_enabled» switch.
+Schedule::command('quiz:remind kickoff')
+    ->dailyAt('17:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 Schedule::command('quiz:remind opener')
     ->dailyAt('18:30')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('quiz:remind topic')
+    ->dailyAt('20:00')
     ->withoutOverlapping()
     ->runInBackground();
 
@@ -68,8 +78,18 @@ Schedule::command('quiz:remind refloat')
     ->withoutOverlapping()
     ->runInBackground();
 
+Schedule::command('quiz:remind momentum')
+    ->dailyAt('22:15')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 Schedule::command('quiz:remind night')
     ->dailyAt('23:30')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+Schedule::command('quiz:remind latenight')
+    ->dailyAt('01:30')
     ->withoutOverlapping()
     ->runInBackground();
 
@@ -78,13 +98,23 @@ Schedule::command('quiz:remind morning')
     ->withoutOverlapping()
     ->runInBackground();
 
+Schedule::command('quiz:remind trap')
+    ->dailyAt('11:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 Schedule::command('quiz:remind hint')
     ->dailyAt('12:30')
     ->withoutOverlapping()
     ->runInBackground();
 
-// Last call before the live quiz closes at 16:00.
 Schedule::command('quiz:remind lastcall')
     ->dailyAt('14:30')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// The buzzer, minutes before the live quiz closes at 16:00.
+Schedule::command('quiz:remind closing')
+    ->dailyAt('15:40')
     ->withoutOverlapping()
     ->runInBackground();

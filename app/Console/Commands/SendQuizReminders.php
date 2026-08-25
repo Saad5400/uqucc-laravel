@@ -12,7 +12,7 @@ use Illuminate\Console\Command;
  */
 class SendQuizReminders extends Command
 {
-    protected $signature = 'quiz:remind {phase : The reminder phase — one of opener, refloat, night, morning, hint, lastcall}';
+    protected $signature = 'quiz:remind {phase : The reminder phase — one of kickoff, opener, topic, refloat, momentum, night, latenight, morning, trap, hint, lastcall, closing}';
 
     protected $description = 'Send a reminder to answer the live daily quiz';
 
