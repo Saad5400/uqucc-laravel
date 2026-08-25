@@ -1,6 +1,7 @@
 <?php
 
 use App\Jobs\GenerateDailyQuizJob;
+use App\Services\Quiz\QuizLeaderboard;
 use App\Models\DailyQuiz;
 use App\Models\QuizAnswer;
 use App\Models\QuizTopic;
@@ -76,7 +77,8 @@ it('renders the quiz page with settings, topics, the current question and leader
             ->where('today', today()->toDateString())
             ->where('todayQuizStatus', 'ready')
             ->has('weeklyTop')
-            ->has('allTimeTop')
+            ->has('windowTop')
+            ->where('windowDays', QuizLeaderboard::WINDOW_DAYS)
             ->has('groupChats'));
 });
 

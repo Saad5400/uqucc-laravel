@@ -126,7 +126,31 @@ it('caps the streak bonus', function () {
         ->and($player->total_points)->toBe(QuizAnswerRecorder::POINTS_CORRECT + QuizAnswerRecorder::STREAK_BONUS_CAP);
 });
 
-it('resets the streak when the previous quiz was missed', function () {
+it('resets the streak when the previous quiz was missed and the freeze is spent', function () {
+    DailyQuiz::factory()->closed()->create(['quiz_date' => today()->subDays(2)]);
+    DailyQuiz::factory()->closed()->create(['quiz_date' => today()->subDay()]);
+    $quiz = DailyQuiz::factory()->posted()->create(['quiz_date' => today(), 'correct_option' => 1]);
+
+    QuizPlayer::factory()->create([
+        'telegram_user_id' => 111,
+        'current_streak' => 6,
+        'best_streak' => 6,
+        'last_answered_on' => today()->subDays(2),
+        'streak_frozen_on' => today()->subDays(3),
+    ]);
+
+    runPollAnswer(pollIdOf($quiz), optionIds: [1]);
+
+    $player = QuizPlayer::query()->where('telegram_user_id', 111)->first();
+
+    expect($player->current_streak)->toBe(1)
+        ->and($player->best_streak)->toBe(6)
+        ->and($player->total_points)->toBe(QuizAnswerRecorder::POINTS_CORRECT)
+        ->and($player->streak_frozen_on->isSameDay(today()->subDays(3)))->toBeTrue();
+});
+
+it('forgives a single missed quiz with the streak freeze', function () {
+    DailyQuiz::factory()->closed()->create(['quiz_date' => today()->subDays(2)]);
     DailyQuiz::factory()->closed()->create(['quiz_date' => today()->subDay()]);
     $quiz = DailyQuiz::factory()->posted()->create(['quiz_date' => today(), 'correct_option' => 1]);
 
@@ -141,9 +165,53 @@ it('resets the streak when the previous quiz was missed', function () {
 
     $player = QuizPlayer::query()->where('telegram_user_id', 111)->first();
 
+    // The streak survives the gap: 10 base + min(7 - 1, 7) = 16.
+    expect($player->current_streak)->toBe(7)
+        ->and($player->best_streak)->toBe(7)
+        ->and($player->total_points)->toBe(16)
+        ->and($player->streak_frozen_on->isSameDay(today()))->toBeTrue();
+});
+
+it('breaks the streak when two quizzes in a row are missed', function () {
+    DailyQuiz::factory()->closed()->create(['quiz_date' => today()->subDays(3)]);
+    DailyQuiz::factory()->closed()->create(['quiz_date' => today()->subDays(2)]);
+    DailyQuiz::factory()->closed()->create(['quiz_date' => today()->subDay()]);
+    $quiz = DailyQuiz::factory()->posted()->create(['quiz_date' => today(), 'correct_option' => 1]);
+
+    QuizPlayer::factory()->create([
+        'telegram_user_id' => 111,
+        'current_streak' => 6,
+        'best_streak' => 6,
+        'last_answered_on' => today()->subDays(3),
+    ]);
+
+    runPollAnswer(pollIdOf($quiz), optionIds: [1]);
+
+    $player = QuizPlayer::query()->where('telegram_user_id', 111)->first();
+
     expect($player->current_streak)->toBe(1)
-        ->and($player->best_streak)->toBe(6)
-        ->and($player->total_points)->toBe(QuizAnswerRecorder::POINTS_CORRECT);
+        ->and($player->streak_frozen_on)->toBeNull();
+});
+
+it('offers the streak freeze again once the cooldown has passed', function () {
+    DailyQuiz::factory()->closed()->create(['quiz_date' => today()->subDays(2)]);
+    DailyQuiz::factory()->closed()->create(['quiz_date' => today()->subDay()]);
+    $quiz = DailyQuiz::factory()->posted()->create(['quiz_date' => today(), 'correct_option' => 1]);
+
+    QuizPlayer::factory()->create([
+        'telegram_user_id' => 111,
+        'current_streak' => 6,
+        'best_streak' => 6,
+        'last_answered_on' => today()->subDays(2),
+        'streak_frozen_on' => today()->subDays(QuizAnswerRecorder::FREEZE_COOLDOWN_DAYS),
+    ]);
+
+    runPollAnswer(pollIdOf($quiz), optionIds: [1]);
+
+    $player = QuizPlayer::query()->where('telegram_user_id', 111)->first();
+
+    expect($player->current_streak)->toBe(7)
+        ->and($player->streak_frozen_on->isSameDay(today()))->toBeTrue();
 });
 
 it('keeps the streak across a day where no quiz was posted', function () {

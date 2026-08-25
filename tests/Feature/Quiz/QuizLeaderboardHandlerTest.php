@@ -1,6 +1,8 @@
 <?php
 
+use App\Models\QuizAnswer;
 use App\Models\QuizPlayer;
+use App\Services\Quiz\QuizLeaderboard;
 use App\Services\Telegram\Handlers\QuizLeaderboardHandler;
 use Illuminate\Support\Facades\Cache;
 use Telegram\Bot\Objects\Message;
@@ -18,15 +20,15 @@ function leaderboardMessage(string $text, int $userId = 111, int $chatId = -1002
     ]);
 }
 
-it('shows the weekly and all-time leaderboards with the asking player\'s standing', function (string $trigger) {
-    QuizPlayer::factory()->create([
+it('shows the weekly and rolling leaderboards with the asking player\'s standing', function (string $trigger) {
+    $ahmed = QuizPlayer::factory()->create([
         'first_name' => 'أحمد',
         'weekly_points' => 40,
         'total_points' => 200,
         'current_streak' => 4,
         'answers_count' => 20,
     ]);
-    QuizPlayer::factory()->create([
+    $saad = QuizPlayer::factory()->create([
         'telegram_user_id' => 111,
         'first_name' => 'سعد',
         'weekly_points' => 25,
@@ -36,6 +38,9 @@ it('shows the weekly and all-time leaderboards with the asking player\'s standin
         'answers_count' => 9,
     ]);
 
+    QuizAnswer::factory()->for($ahmed, 'player')->create(['points' => 40, 'answered_at' => now()->subDays(3)]);
+    QuizAnswer::factory()->for($saad, 'player')->create(['points' => 25, 'answered_at' => now()->subDay()]);
+
     $api = new FakeTelegramApi;
     (new QuizLeaderboardHandler($api))->handle(leaderboardMessage($trigger));
 
@@ -44,12 +49,41 @@ it('shows the weekly and all-time leaderboards with the asking player\'s standin
     $text = $api->sentMessages[0]['text'];
 
     expect($text)->toContain('هذا الأسبوع')
-        ->toContain('كل الأوقات')
-        ->toContain('أحمد')
+        ->toContain('آخر 30 يوماً')
+        ->not->toContain('كل الأوقات')
+        ->and($text)->toContain('أحمد')
         ->toContain('🥇')
         ->toContain('نتيجتك')
-        ->toContain('ترتيبك هذا الأسبوع: 2');
+        ->toContain('هذا الأسبوع: 25 نقطة (ترتيبك 2)')
+        ->toContain('آخر 30 يوماً: 25 نقطة (ترتيبك 2)');
 })->with(['المتصدرين', '/leaderboard', '/leaderboard@UquccTestBot']);
+
+it('ranks the rolling board on the window only, so an old lead ages out', function () {
+    $veteran = QuizPlayer::factory()->create([
+        'first_name' => 'قديم',
+        'total_points' => 5000,
+        'answers_count' => 300,
+    ]);
+    $newcomer = QuizPlayer::factory()->create([
+        'first_name' => 'جديد',
+        'total_points' => 60,
+        'answers_count' => 5,
+    ]);
+
+    QuizAnswer::factory()->for($veteran, 'player')->create([
+        'points' => 5000,
+        'answered_at' => now()->subDays(QuizLeaderboard::WINDOW_DAYS + 1),
+    ]);
+    QuizAnswer::factory()->for($newcomer, 'player')->create(['points' => 60, 'answered_at' => now()]);
+
+    $api = new FakeTelegramApi;
+    (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين', userId: 999));
+
+    $text = $api->sentMessages[0]['text'];
+
+    expect($text)->toContain('🥇 جديد')
+        ->not->toContain('قديم');
+});
 
 it('shows a teaching empty state when nobody has played yet', function () {
     $api = new FakeTelegramApi;
