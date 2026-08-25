@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\DailyQuiz;
 use App\Models\QuizAnswer;
 use App\Models\QuizPlayer;
 use App\Services\Quiz\QuizLeaderboard;
@@ -38,8 +39,17 @@ it('shows the weekly and rolling leaderboards with the asking player\'s standing
         'answers_count' => 9,
     ]);
 
-    QuizAnswer::factory()->for($ahmed, 'player')->create(['points' => 40, 'answered_at' => now()->subDays(3)]);
-    QuizAnswer::factory()->for($saad, 'player')->create(['points' => 25, 'answered_at' => now()->subDay()]);
+    $earlier = DailyQuiz::factory()->closed()->create(['quiz_date' => today()->subDays(3)]);
+    $later = DailyQuiz::factory()->closed()->create(['quiz_date' => today()->subDay()]);
+
+    QuizAnswer::factory()->for($ahmed, 'player')->for($earlier, 'quiz')->create([
+        'points' => 40,
+        'answered_at' => now()->subDays(3),
+    ]);
+    QuizAnswer::factory()->for($saad, 'player')->for($later, 'quiz')->create([
+        'points' => 25,
+        'answered_at' => now()->subDay(),
+    ]);
 
     $api = new FakeTelegramApi;
     (new QuizLeaderboardHandler($api))->handle(leaderboardMessage($trigger));
@@ -70,11 +80,19 @@ it('ranks the rolling board on the window only, so an old lead ages out', functi
         'answers_count' => 5,
     ]);
 
-    QuizAnswer::factory()->for($veteran, 'player')->create([
+    $old = DailyQuiz::factory()->closed()->create([
+        'quiz_date' => today()->subDays(QuizLeaderboard::WINDOW_DAYS + 1),
+    ]);
+    $fresh = DailyQuiz::factory()->posted()->create(['quiz_date' => today()]);
+
+    QuizAnswer::factory()->for($veteran, 'player')->for($old, 'quiz')->create([
         'points' => 5000,
         'answered_at' => now()->subDays(QuizLeaderboard::WINDOW_DAYS + 1),
     ]);
-    QuizAnswer::factory()->for($newcomer, 'player')->create(['points' => 60, 'answered_at' => now()]);
+    QuizAnswer::factory()->for($newcomer, 'player')->for($fresh, 'quiz')->create([
+        'points' => 60,
+        'answered_at' => now(),
+    ]);
 
     $api = new FakeTelegramApi;
     (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين', userId: 999));

@@ -1,12 +1,12 @@
 <?php
 
 use App\Jobs\GenerateDailyQuizJob;
-use App\Services\Quiz\QuizLeaderboard;
 use App\Models\DailyQuiz;
 use App\Models\QuizAnswer;
 use App\Models\QuizTopic;
 use App\Models\User;
 use App\Services\Quiz\QuizImageRenderer;
+use App\Services\Quiz\QuizLeaderboard;
 use App\Services\Quiz\QuizPoster;
 use App\Services\Quiz\QuizSchedule;
 use App\Settings\QuizSettings;

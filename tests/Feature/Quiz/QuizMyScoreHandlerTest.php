@@ -1,6 +1,7 @@
 <?php
 
 use App\Jobs\DeleteTelegramMessages;
+use App\Models\DailyQuiz;
 use App\Models\QuizAnswer;
 use App\Models\QuizPlayer;
 use App\Services\Quiz\QuizAnswerRecorder;
@@ -34,8 +35,17 @@ it('replies with the player\'s own standing and schedules deletion', function (s
         'answers_count' => 9,
     ]);
 
-    QuizAnswer::factory()->for($player, 'player')->create(['points' => 25, 'answered_at' => now()->subDay()]);
-    QuizAnswer::factory()->for($player, 'player')->create(['points' => 40, 'answered_at' => now()->subDays(60)]);
+    $recent = DailyQuiz::factory()->closed()->create(['quiz_date' => today()->subDay()]);
+    $ancient = DailyQuiz::factory()->closed()->create(['quiz_date' => today()->subDays(60)]);
+
+    QuizAnswer::factory()->for($player, 'player')->for($recent, 'quiz')->create([
+        'points' => 25,
+        'answered_at' => now()->subDay(),
+    ]);
+    QuizAnswer::factory()->for($player, 'player')->for($ancient, 'quiz')->create([
+        'points' => 40,
+        'answered_at' => now()->subDays(60),
+    ]);
 
     $api = new FakeTelegramApi;
     (new QuizMyScoreHandler($api))->handle(myScoreMessage($trigger));
