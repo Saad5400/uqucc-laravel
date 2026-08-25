@@ -4,6 +4,7 @@ namespace Tests\Fakes;
 
 use Telegram\Bot\Api;
 use Telegram\Bot\Objects\BaseObject;
+use Telegram\Bot\Objects\Chat;
 use Telegram\Bot\Objects\ChatMember;
 use Telegram\Bot\Objects\File;
 use Telegram\Bot\Objects\Message;
@@ -64,6 +65,14 @@ class FakeTelegramApi extends Api
      * @var array<int, array<int, int>>
      */
     public array $pollResults = [];
+
+    /**
+     * Whether members may post, per chat id — the «can_send_messages» chat
+     * permission getChat() reports. A chat not listed here reads as open.
+     *
+     * @var array<int|string, bool>
+     */
+    public array $membersCanPost = [];
 
     /** Chat-member status per telegram user id (default 'member'). */
     /** @var array<int|string, string> */
@@ -185,6 +194,15 @@ class FakeTelegramApi extends Api
         if (in_array((int) ($params['message_id'] ?? 0), $this->missingMessageIds, true)) {
             throw new \RuntimeException($error);
         }
+    }
+
+    public function getChat(array $params): Chat
+    {
+        return new Chat([
+            'id' => (int) $params['chat_id'],
+            'type' => 'supergroup',
+            'permissions' => ['can_send_messages' => $this->membersCanPost[$params['chat_id']] ?? true],
+        ]);
     }
 
     public function getChatMember(array $params): ChatMember
