@@ -20,6 +20,7 @@ class QuizPlayerFactory extends Factory
             'weekly_points' => 0,
             'current_streak' => 0,
             'best_streak' => 0,
+            'streak_frozen_on' => null,
             'correct_count' => 0,
             'answers_count' => 0,
             'last_answered_on' => null,

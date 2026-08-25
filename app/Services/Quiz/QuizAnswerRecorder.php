@@ -19,6 +19,12 @@ use Telegram\Bot\Objects\PollAnswer;
  * streak counts consecutive *quizzes* answered, anchored to the previous
  * posted quiz's date rather than the calendar — a day where no quiz went out
  * (generation outage) breaks nobody's streak.
+ *
+ * A single missed quiz is forgiven by the streak freeze: it costs that day's
+ * points but keeps the streak alive, once every
+ * {@see self::FREEZE_COOLDOWN_DAYS} days. Without it one busy day wiped out
+ * weeks of play and, because the streak bonus compounds, cost far more than
+ * the day itself — the thing that made the standings feel unrecoverable.
  */
 class QuizAnswerRecorder
 {
@@ -27,6 +33,9 @@ class QuizAnswerRecorder
     public const POINTS_WRONG = 2;
 
     public const STREAK_BONUS_CAP = 7;
+
+    /** Minimum days between two streak freezes — one missed quiz a week. */
+    public const FREEZE_COOLDOWN_DAYS = 7;
 
     public function record(PollAnswer $pollAnswer): void
     {
@@ -71,7 +80,7 @@ class QuizAnswerRecorder
                     return;
                 }
 
-                $streak = $this->streakFor($player, $quiz);
+                ['streak' => $streak, 'frozen' => $frozen] = $this->streakFor($player, $quiz);
                 $selected = (int) $optionIds->first();
                 $isCorrect = $selected === $quiz->correct_option;
                 $points = ($isCorrect ? self::POINTS_CORRECT : self::POINTS_WRONG)
@@ -92,6 +101,7 @@ class QuizAnswerRecorder
                     'weekly_points' => $player->weekly_points + $points,
                     'current_streak' => $streak,
                     'best_streak' => max($player->best_streak, $streak),
+                    'streak_frozen_on' => $frozen ? $quiz->quiz_date : $player->streak_frozen_on,
                     'correct_count' => $player->correct_count + ($isCorrect ? 1 : 0),
                     'answers_count' => $player->answers_count + 1,
                     'last_answered_on' => $quiz->quiz_date,
@@ -103,21 +113,51 @@ class QuizAnswerRecorder
     }
 
     /**
-     * The player's streak as of this answer: continues only when they also
-     * answered the quiz that came right before this one.
+     * The player's streak as of this answer: it continues when they answered
+     * the quiz right before this one, and — at the cost of a streak freeze —
+     * when they answered the one before that and missed exactly one.
+     *
+     * @return array{streak: int, frozen: bool}
      */
-    private function streakFor(QuizPlayer $player, DailyQuiz $quiz): int
+    private function streakFor(QuizPlayer $player, DailyQuiz $quiz): array
     {
         if ($player->last_answered_on === null) {
-            return 1;
+            return ['streak' => 1, 'frozen' => false];
         }
 
         $previous = DailyQuiz::lastPostedBefore($quiz->quiz_date);
 
-        if ($previous === null || ! $player->last_answered_on->isSameDay($previous->quiz_date)) {
-            return 1;
+        if ($previous === null) {
+            return ['streak' => 1, 'frozen' => false];
         }
 
-        return $player->current_streak + 1;
+        if ($player->last_answered_on->isSameDay($previous->quiz_date)) {
+            return ['streak' => $player->current_streak + 1, 'frozen' => false];
+        }
+
+        if ($this->missedOnlyTheLastQuiz($player, $previous) && $this->freezeAvailable($player, $quiz)) {
+            return ['streak' => $player->current_streak + 1, 'frozen' => true];
+        }
+
+        return ['streak' => 1, 'frozen' => false];
+    }
+
+    /**
+     * True when the one quiz the player skipped is the one right before this
+     * answer — they were here for the quiz before it. Two missed quizzes in a
+     * row are a broken streak, freeze or not.
+     */
+    private function missedOnlyTheLastQuiz(QuizPlayer $player, DailyQuiz $previous): bool
+    {
+        $beforePrevious = DailyQuiz::lastPostedBefore($previous->quiz_date);
+
+        return $beforePrevious !== null
+            && $player->last_answered_on->isSameDay($beforePrevious->quiz_date);
+    }
+
+    private function freezeAvailable(QuizPlayer $player, DailyQuiz $quiz): bool
+    {
+        return $player->streak_frozen_on === null
+            || $player->streak_frozen_on->lte($quiz->quiz_date->copy()->subDays(self::FREEZE_COOLDOWN_DAYS));
     }
 }

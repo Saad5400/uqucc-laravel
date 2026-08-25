@@ -4,21 +4,25 @@ namespace App\Services\Telegram\Handlers;
 
 use App\Helpers\ArabicPlural;
 use App\Models\QuizPlayer;
+use App\Services\Quiz\QuizLeaderboard;
 use Illuminate\Support\Facades\Cache;
 use Telegram\Bot\Objects\Message;
 
 /**
  * «المتصدرين» / /leaderboard — the daily quiz leaderboard: this week's top
- * ten, the all-time top five, and the asking player's own numbers.
+ * ten, the top five of the last thirty days, and the asking player's own
+ * numbers.
  */
 class QuizLeaderboardHandler extends BaseHandler
 {
     private const WEEKLY_LIMIT = 10;
 
-    private const ALL_TIME_LIMIT = 5;
+    private const WINDOW_LIMIT = 5;
 
     /** Minimum seconds between leaderboard posts in the same chat. */
     private const COOLDOWN_SECONDS = 60;
+
+    private ?QuizLeaderboard $leaderboard = null;
 
     public function handle(Message $message): void
     {
@@ -32,7 +36,7 @@ class QuizLeaderboardHandler extends BaseHandler
 
         $this->trackCommand($message, 'quiz_leaderboard');
 
-        if (! QuizPlayer::query()->where('answers_count', '>', 0)->exists()) {
+        if (! $this->leaderboard()->hasPlayers()) {
             $this->reply($message, 'لا يوجد متصدرون بعد — شارك في سؤال اليوم عندما يُنشر في المجموعة لتكون أول المتصدرين! 🏁');
 
             return;
@@ -40,7 +44,7 @@ class QuizLeaderboardHandler extends BaseHandler
 
         $sections = [
             $this->weeklySection(),
-            $this->allTimeSection(),
+            $this->windowSection(),
             $this->playerSection($message),
         ];
 
@@ -66,13 +70,7 @@ class QuizLeaderboardHandler extends BaseHandler
 
     private function weeklySection(): ?string
     {
-        $players = QuizPlayer::query()
-            ->where('weekly_points', '>', 0)
-            ->orderByDesc('weekly_points')
-            ->orderByDesc('current_streak')
-            ->orderBy('id')
-            ->limit(self::WEEKLY_LIMIT)
-            ->get();
+        $players = $this->leaderboard()->weekly(self::WEEKLY_LIMIT);
 
         if ($players->isEmpty()) {
             return "📅 <b>هذا الأسبوع</b>\nلم يسجّل أحد نقاطاً بعد هذا الأسبوع.";
@@ -84,23 +82,29 @@ class QuizLeaderboardHandler extends BaseHandler
         );
     }
 
-    private function allTimeSection(): ?string
+    /**
+     * The rolling board. It replaced the all-time one so that a lead ages
+     * out instead of compounding forever — the closing line says so, because
+     * "why did the totals disappear?" is the first thing the group will ask.
+     */
+    private function windowSection(): ?string
     {
-        $players = QuizPlayer::query()
-            ->where('total_points', '>', 0)
-            ->orderByDesc('total_points')
-            ->orderByDesc('best_streak')
-            ->orderBy('id')
-            ->limit(self::ALL_TIME_LIMIT)
-            ->get();
+        $players = $this->leaderboard()->window(self::WINDOW_LIMIT);
 
         if ($players->isEmpty()) {
             return null;
         }
 
-        return "🏆 <b>كل الأوقات</b>\n".$this->rankedLines(
+        $lines = $this->rankedLines(
             $players,
-            fn (QuizPlayer $player): int => $player->total_points,
+            fn (QuizPlayer $player): int => (int) $player->window_points,
+        );
+
+        return sprintf(
+            "🏆 <b>آخر %d يوماً</b>\n%s\n<i>تُحتسب نقاط آخر %d يوماً فقط — الصدارة تُكتسب من جديد كل شهر.</i>",
+            QuizLeaderboard::WINDOW_DAYS,
+            $lines,
+            QuizLeaderboard::WINDOW_DAYS,
         );
     }
 
@@ -121,15 +125,15 @@ class QuizLeaderboardHandler extends BaseHandler
             return null;
         }
 
-        $weeklyRank = QuizPlayer::query()->where('weekly_points', '>', $player->weekly_points)->count() + 1;
-
         return sprintf(
-            "👤 <b>نتيجتك</b>\nترتيبك هذا الأسبوع: %d — نقاطك: %d (الكلية: %d)\nسلسلة الأيام الحالية: %d 🔥 (أفضل سلسلة: %d)",
-            $weeklyRank,
-            $player->weekly_points,
-            $player->total_points,
-            $player->current_streak,
-            $player->best_streak,
+            "👤 <b>نتيجتك</b>\nهذا الأسبوع: %s (ترتيبك %d)\nآخر %d يوماً: %s (ترتيبك %d)\nالسلسلة الحالية: %s 🔥 (أفضل سلسلة: %s)",
+            ArabicPlural::points($player->weekly_points),
+            $this->leaderboard()->weeklyRankFor($player),
+            QuizLeaderboard::WINDOW_DAYS,
+            ArabicPlural::points($this->leaderboard()->windowPointsFor($player)),
+            $this->leaderboard()->windowRankFor($player),
+            ArabicPlural::days($player->current_streak),
+            ArabicPlural::days($player->best_streak),
         );
     }
 
@@ -150,5 +154,10 @@ class QuizLeaderboardHandler extends BaseHandler
                 ArabicPlural::points($points($player)),
             ))
             ->implode("\n");
+    }
+
+    private function leaderboard(): QuizLeaderboard
+    {
+        return $this->leaderboard ??= new QuizLeaderboard;
     }
 }

@@ -61,7 +61,8 @@ const props = defineProps<{
     nextFreeDate: string;
     todayQuizStatus: Quiz['status'] | null;
     weeklyTop: Player[];
-    allTimeTop: Player[];
+    windowTop: Player[];
+    windowDays: number;
 }>();
 
 /* ------------------------------------------------------------------ */
@@ -561,7 +562,7 @@ const chatIdsError = computed(() => {
             <Card
                 v-for="board in [
                     { key: 'weekly', title: 'متصدرو الأسبوع', players: weeklyTop },
-                    { key: 'allTime', title: 'متصدرو كل الأوقات', players: allTimeTop },
+                    { key: 'window', title: `متصدرو آخر ${windowDays} يوماً`, players: windowTop },
                 ]"
                 :key="board.key"
             >

@@ -13,6 +13,7 @@ use App\Ai\Admin\Actions\Quiz\UpdateQuizTopicAction;
 use App\Ai\Quiz\QuizAuthor;
 use App\Ai\Quiz\QuizAuthoringAgent;
 use App\Models\DailyQuiz;
+use App\Models\QuizAnswer;
 use App\Models\QuizPlayer;
 use App\Models\QuizTopic;
 use App\Models\User;
@@ -197,10 +198,18 @@ it('refuses to regenerate a posted quiz', function () {
 })->throws(AdminActionException::class);
 
 it('renders the leaderboard', function () {
-    QuizPlayer::factory()->create(['first_name' => 'أحمد', 'weekly_points' => 40, 'total_points' => 120, 'current_streak' => 3]);
+    $player = QuizPlayer::factory()->create([
+        'first_name' => 'أحمد',
+        'weekly_points' => 40,
+        'total_points' => 120,
+        'current_streak' => 3,
+    ]);
+
+    QuizAnswer::factory()->for($player, 'player')->create(['points' => 40, 'answered_at' => now()->subDay()]);
 
     $result = app(GetQuizLeaderboardAction::class)->handle([], $this->user);
 
     expect($result->message)->toContain('أحمد')
-        ->toContain('هذا الأسبوع');
+        ->toContain('هذا الأسبوع')
+        ->toContain('آخر 30 يوماً');
 });

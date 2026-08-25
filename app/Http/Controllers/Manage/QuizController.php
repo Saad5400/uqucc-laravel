@@ -12,9 +12,11 @@ use App\Models\DailyQuiz;
 use App\Models\QuizPlayer;
 use App\Models\QuizTopic;
 use App\Models\TelegramChatSetting;
+use App\Services\Quiz\QuizLeaderboard;
 use App\Services\Quiz\QuizPoster;
 use App\Services\Quiz\QuizSchedule;
 use App\Settings\QuizSettings;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -41,7 +43,7 @@ class QuizController extends Controller
     /** How far ahead the generate dialog looks for a free day before giving up. */
     private const MAX_SCHEDULING_HORIZON_DAYS = 365;
 
-    public function index(QuizSettings $settings, QuizSchedule $schedule): Response
+    public function index(QuizSettings $settings, QuizSchedule $schedule, QuizLeaderboard $leaderboard): Response
     {
         $current = $this->currentQuiz();
         $today = DailyQuiz::forDate(today());
@@ -73,8 +75,15 @@ class QuizController extends Controller
             'today' => today()->toDateString(),
             'nextFreeDate' => $this->nextFreeDate(),
             'todayQuizStatus' => $today?->status,
-            'weeklyTop' => $this->leaderboard('weekly_points'),
-            'allTimeTop' => $this->leaderboard('total_points'),
+            'weeklyTop' => $this->leaderboard(
+                $leaderboard->weekly(self::LEADERBOARD_LIMIT),
+                fn (QuizPlayer $player): int => $player->weekly_points,
+            ),
+            'windowTop' => $this->leaderboard(
+                $leaderboard->window(self::LEADERBOARD_LIMIT),
+                fn (QuizPlayer $player): int => (int) $player->window_points,
+            ),
+            'windowDays' => QuizLeaderboard::WINDOW_DAYS,
         ]);
     }
 
@@ -362,22 +371,18 @@ class QuizController extends Controller
     }
 
     /**
+     * @param  EloquentCollection<int, QuizPlayer>  $players
+     * @param  callable(QuizPlayer): int  $points
      * @return Collection<int, array<string, mixed>>
      */
-    private function leaderboard(string $column): Collection
+    private function leaderboard(EloquentCollection $players, callable $points): Collection
     {
-        return QuizPlayer::query()
-            ->where($column, '>', 0)
-            ->orderByDesc($column)
-            ->orderByDesc('best_streak')
-            ->orderBy('id')
-            ->limit(self::LEADERBOARD_LIMIT)
-            ->get()
+        return $players
             ->map(fn (QuizPlayer $player): array => [
                 'id' => $player->id,
                 'name' => $player->displayName(),
                 'username' => $player->username,
-                'points' => $player->{$column},
+                'points' => $points($player),
                 'current_streak' => $player->current_streak,
                 'answers_count' => $player->answers_count,
             ])

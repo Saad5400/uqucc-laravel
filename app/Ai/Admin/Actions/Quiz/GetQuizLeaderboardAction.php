@@ -7,16 +7,20 @@ use App\Ai\Admin\Actions\AdminAction;
 use App\Helpers\ArabicPlural;
 use App\Models\QuizPlayer;
 use App\Models\User;
+use App\Services\Quiz\QuizLeaderboard;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\Database\Eloquent\Collection;
 
 /**
  * The daily-quiz leaderboards the bot shows in the group: this week's top
- * players and the all-time top players, with points and current streaks.
- * Read-only.
+ * players and the top players of the last {@see QuizLeaderboard::WINDOW_DAYS}
+ * days, with points and current streaks. Read-only.
  */
 class GetQuizLeaderboardAction extends AdminAction
 {
     private const LIMIT = 10;
+
+    public function __construct(private readonly QuizLeaderboard $leaderboard) {}
 
     public function name(): string
     {
@@ -35,8 +39,8 @@ class GetQuizLeaderboardAction extends AdminAction
 
     public function description(): string
     {
-        return 'Get the daily-quiz leaderboards — this week\'s top players and the all-time top players '
-            .'with points and streaks. Read-only.';
+        return 'Get the daily-quiz leaderboards — this week\'s top players and the top players of the last '
+            .QuizLeaderboard::WINDOW_DAYS.' days, with points and streaks. Read-only.';
     }
 
     /**
@@ -52,29 +56,32 @@ class GetQuizLeaderboardAction extends AdminAction
      */
     protected function run(array $normalized, User $user): ActionResult
     {
-        $weekly = $this->board('weekly_points');
-        $allTime = $this->board('total_points');
+        $weekly = $this->board(
+            $this->leaderboard->weekly(self::LIMIT),
+            fn (QuizPlayer $player): int => $player->weekly_points,
+        );
 
-        if ($weekly === null && $allTime === null) {
+        $window = $this->board(
+            $this->leaderboard->window(self::LIMIT),
+            fn (QuizPlayer $player): int => (int) $player->window_points,
+        );
+
+        if ($weekly === null && $window === null) {
             return ActionResult::text('لا يوجد متصدرون بعد — لم يشارك أحد في سؤال اليوم.');
         }
 
         return ActionResult::text(implode("\n\n", array_filter([
             $weekly === null ? null : "📅 هذا الأسبوع:\n".$weekly,
-            $allTime === null ? null : "🏆 كل الأوقات:\n".$allTime,
+            $window === null ? null : sprintf("🏆 آخر %d يوماً:\n", QuizLeaderboard::WINDOW_DAYS).$window,
         ])));
     }
 
-    private function board(string $column): ?string
+    /**
+     * @param  Collection<int, QuizPlayer>  $players
+     * @param  callable(QuizPlayer): int  $points
+     */
+    private function board(Collection $players, callable $points): ?string
     {
-        $players = QuizPlayer::query()
-            ->where($column, '>', 0)
-            ->orderByDesc($column)
-            ->orderByDesc('best_streak')
-            ->orderBy('id')
-            ->limit(self::LIMIT)
-            ->get();
-
         if ($players->isEmpty()) {
             return null;
         }
@@ -85,7 +92,7 @@ class GetQuizLeaderboardAction extends AdminAction
                 '%d. %s — %s (سلسلة: %s)',
                 $index + 1,
                 $player->displayName(),
-                ArabicPlural::points($player->{$column}),
+                ArabicPlural::points($points($player)),
                 ArabicPlural::days($player->current_streak),
             ))
             ->implode("\n");
