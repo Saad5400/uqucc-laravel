@@ -32,9 +32,25 @@ Schedule::command('ai:ingest-pages')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Both entries carry an explicit one-hour mutex expiry rather than the 24-hour
+// default: they share one mutex (it is keyed by the command, not the time), a
+// generation runs for minutes at most, and a run killed mid-flight must not
+// leave a lock that silently swallows the 11:00 safety net below — or
+// tomorrow's 05:00 run.
 Schedule::command('quiz:generate')
     ->dailyAt('05:00')
-    ->withoutOverlapping()
+    ->withoutOverlapping(60)
+    ->runInBackground();
+
+// Safety net for the 05:00 run, which is one command invocation and can still
+// exhaust its attempts on a bad night — the authoring tier grazes its 180s
+// timeout. Without this, a question-less day is discovered only by `quiz:post`
+// at posting time, and the group gets its question late. A no-op on every
+// normal day: `quiz:generate` skips a date that already has a question, and
+// this still lands hours before posting so admins keep their review window.
+Schedule::command('quiz:generate')
+    ->dailyAt('11:00')
+    ->withoutOverlapping(60)
     ->runInBackground();
 
 // Runs every minute and posts only when the configured moment arrives — the
