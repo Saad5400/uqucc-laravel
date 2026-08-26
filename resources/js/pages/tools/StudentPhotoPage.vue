@@ -18,16 +18,15 @@ import { decodePhotoFile, PhotoDecodeError, type DecodedPhoto } from '@/lib/stud
 import { clampView, cropFromView, defaultView, maxZoom, rotateView, type CropView, type Size } from '@/lib/studentPhoto/geometry';
 import { buildWorkingImage, measureCrop, renderCroppedJpeg, type RenderedPhoto, type WorkingImage } from '@/lib/studentPhoto/render';
 import {
+    chooseOutputSize,
     DEFAULT_OUTPUT_SIZE,
     MANUAL_REQUIREMENTS,
     OUTPUT_FILE_NAME,
-    OUTPUT_SIZE_PRESETS,
     RESPONSIBILITY_LABELS,
     UNIVERSITY_RULES,
     UPLOAD_STEPS,
-    type OutputSizePreset,
 } from '@/lib/studentPhoto/requirements';
-import { Check, Download, RotateCcw, RotateCw, Undo2 } from 'lucide-vue-next';
+import { Check, Download, RotateCcw, RotateCw, TriangleAlert, Undo2 } from 'lucide-vue-next';
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue';
 import { toast } from 'vue-sonner';
 
@@ -57,8 +56,8 @@ const rendered = shallowRef<RenderedPhoto | null>(null);
 const metrics = shallowRef<PhotoMetrics | null>(null);
 const view = ref<CropView | null>(null);
 const quarterTurns = ref(0);
-const outputSize = ref<OutputSizePreset>(DEFAULT_OUTPUT_SIZE);
 const previewUrl = ref<string | null>(null);
+/** Width of the cropped region in original photo pixels — what the output can really carry. */
 const cropWidth = ref(0);
 const confirmed = ref<Record<string, boolean>>({});
 const showGuides = ref(true);
@@ -71,6 +70,12 @@ let renderToken = 0;
 let renderTimer: ReturnType<typeof setTimeout> | null = null;
 
 const workingSize = computed<Size>(() => ({ width: working.value?.width ?? 0, height: working.value?.height ?? 0 }));
+
+/**
+ * The output size is decided for the student, not by them: the largest size the
+ * university allows that this crop can fill with real pixels.
+ */
+const outputSize = computed(() => (cropWidth.value > 0 ? chooseOutputSize(cropWidth.value) : DEFAULT_OUTPUT_SIZE));
 
 const checks = computed<PhotoCheck[]>(() => {
     if (!rendered.value) {
@@ -93,18 +98,19 @@ const summaryStatus = computed(() => worstStatus(checks.value));
 const failedChecks = computed(() => checks.value.filter((check) => check.status === 'fail'));
 const missingConfirmations = computed(() => MANUAL_REQUIREMENTS.filter((requirement) => confirmed.value[requirement.id] !== true));
 
-/** Null when the file is ready to download; otherwise the reason it is not. */
-const downloadBlockedReason = computed<string | null>(() => {
-    if (!rendered.value || !previewUrl.value) {
-        return 'اختر صورة أولًا.';
-    }
-
+/**
+ * The download is never gated: the student's own photo is theirs to take, and a
+ * checklist they have not ticked is not evidence the photo is wrong. What the
+ * tool owes them instead is a clear warning about what the university is likely
+ * to reject.
+ */
+const downloadWarning = computed<string | null>(() => {
     if (failedChecks.value.length > 0) {
-        return `لا تصلح للرفع بعد: ${failedChecks.value.map((check) => check.label).join('، ')}.`;
+        return `قد تُرفض الصورة بسبب: ${failedChecks.value.map((check) => check.label).join('، ')}.`;
     }
 
     if (missingConfirmations.value.length > 0) {
-        return `أكّد الشروط المتبقية (${missingConfirmations.value.length}) قبل التنزيل.`;
+        return `تبقّى ${missingConfirmations.value.length} من الشروط التي عليك التأكد منها بنفسك — راجعها قبل الرفع.`;
     }
 
     return null;
@@ -210,13 +216,15 @@ async function refreshOutput(): Promise<void> {
 
     const token = ++renderToken;
     const crop = cropFromView(view.value, workingSize.value);
+    const scale = working.value.scale > 0 ? working.value.scale : 1;
 
-    cropWidth.value = crop.width;
+    cropWidth.value = crop.width / scale;
     isRendering.value = true;
 
     try {
         const measured = measureCrop(working.value, crop);
-        const result = await renderCroppedJpeg(working.value, crop, { width: outputSize.value.width, height: outputSize.value.height });
+        const size = chooseOutputSize(cropWidth.value);
+        const result = await renderCroppedJpeg(working.value, crop, { width: size.width, height: size.height });
 
         if (token !== renderToken) {
             return;
@@ -272,7 +280,7 @@ function resetFraming(): void {
 }
 
 function download(): void {
-    if (!previewUrl.value || downloadBlockedReason.value) {
+    if (!previewUrl.value) {
         return;
     }
 
@@ -285,11 +293,6 @@ function download(): void {
     link.remove();
 
     toast.success('نُزِّلت الصورة — ارفعها الآن من البوابة الأكاديمية');
-}
-
-function chooseSize(preset: OutputSizePreset): void {
-    outputSize.value = preset;
-    scheduleRefresh();
 }
 
 watch(view, scheduleRefresh);
@@ -341,7 +344,7 @@ onBeforeUnmount(resetPhotoState);
             </template>
 
             <!-- Editing state -->
-            <div v-else class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+            <div v-else class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_24rem]">
                 <div class="space-y-3">
                     <PhotoCropCanvas
                         v-if="view"
@@ -407,57 +410,51 @@ onBeforeUnmount(resetPhotoState);
                     <div class="space-y-2 rounded-xl border p-4">
                         <h3 class="!my-0 text-base font-semibold">الناتج</h3>
 
-                        <div class="flex items-start gap-4">
+                        <!-- Shown at its true pixel size, so the preview is the file. -->
+                        <div class="flex flex-col items-center gap-2">
                             <img
                                 v-if="previewUrl"
                                 :src="previewUrl"
                                 alt="معاينة الصورة الناتجة"
-                                class="!my-0 rounded-md border bg-card"
-                                :width="Math.min(outputSize.width, 120)"
+                                class="!my-0 h-auto max-w-full rounded-md border bg-card"
+                                :width="outputSize.width"
+                                :height="outputSize.height"
                             />
 
-                            <div v-if="rendered" class="space-y-1 text-xs text-muted-foreground">
-                                <p class="!my-0">
+                            <div v-if="rendered" class="flex flex-wrap items-center justify-center gap-x-3 text-xs text-muted-foreground">
+                                <span>
                                     <span dir="ltr" class="inline-block tabular-nums">{{ rendered.width }} × {{ rendered.height }}</span>
                                     بكسل
-                                </p>
-                                <p class="!my-0">
+                                </span>
+                                <span>
                                     <span dir="ltr" class="inline-block tabular-nums">{{ formatFileSize(rendered.bytes) }}</span>
                                     بصيغة JPG
-                                </p>
-                                <p v-if="isRendering" class="!my-0">جارٍ التحديث…</p>
+                                </span>
+                                <span v-if="isRendering">جارٍ التحديث…</span>
                             </div>
                         </div>
 
-                        <div class="space-y-1">
-                            <Label class="text-xs text-muted-foreground">مقاس الملف الناتج</Label>
-                            <div class="flex flex-wrap gap-2">
-                                <Button
-                                    v-for="preset in OUTPUT_SIZE_PRESETS"
-                                    :key="preset.label"
-                                    type="button"
-                                    size="sm"
-                                    :variant="preset.width === outputSize.width ? 'default' : 'outline'"
-                                    :title="preset.hint"
-                                    @click="chooseSize(preset)"
-                                >
-                                    <span dir="ltr" class="tabular-nums">{{ preset.label }}</span>
-                                </Button>
-                            </div>
-                        </div>
+                        <p class="!my-0 text-xs text-muted-foreground">
+                            اخترنا لك أكبر مقاس تقبله الجامعة وتستطيع صورتك ملأه بتفاصيل حقيقية، وبأعلى جودة تحت حد
+                            <span dir="ltr" class="inline-block tabular-nums">300 KB</span>.
+                        </p>
 
                         <Button
                             type="button"
                             class="w-full"
-                            :disabled="downloadBlockedReason !== null"
-                            :title="downloadBlockedReason ?? 'تنزيل الصورة بصيغة JPG'"
+                            :disabled="!previewUrl"
+                            :title="previewUrl ? 'تنزيل الصورة بصيغة JPG' : 'جارٍ تجهيز الصورة…'"
                             @click="download"
                         >
                             <Download class="size-4" />
                             تنزيل الصورة
                         </Button>
 
-                        <p v-if="downloadBlockedReason" class="!my-0 text-xs text-muted-foreground">{{ downloadBlockedReason }}</p>
+                        <p v-if="failedChecks.length > 0" class="!my-0 flex items-start gap-1 text-xs text-destructive">
+                            <TriangleAlert class="mt-0.5 size-3.5 shrink-0" />
+                            {{ downloadWarning }}
+                        </p>
+                        <p v-else-if="downloadWarning" class="!my-0 text-xs text-muted-foreground">{{ downloadWarning }}</p>
                         <p v-else class="!my-0 flex items-center gap-1 text-xs text-primary">
                             <Check class="size-3.5" />
                             جاهزة للرفع

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { PhotoMetrics } from './analysis';
+import { chooseOutputSize } from './requirements';
 import { BLANK_CONTRAST_THRESHOLD, buildPhotoChecks, SHARPNESS_WARN_THRESHOLD, worstStatus, type CheckInput, type PhotoCheck } from './checks';
 
 const healthyMetrics: PhotoMetrics = {
@@ -165,5 +166,32 @@ describe('worstStatus', () => {
                 { id: 'b', label: '', status: 'fail', detail: '' },
             ]),
         ).toBe('fail');
+    });
+});
+
+describe('chooseOutputSize', () => {
+    it('gives a large photo the full size the university allows', () => {
+        expect(chooseOutputSize(4000)).toMatchObject({ width: 360, height: 480 });
+        expect(chooseOutputSize(360)).toMatchObject({ width: 360, height: 480 });
+    });
+
+    it('steps down instead of stretching a smaller crop', () => {
+        expect(chooseOutputSize(359)).toMatchObject({ width: 300, height: 400 });
+        expect(chooseOutputSize(299)).toMatchObject({ width: 240, height: 320 });
+        expect(chooseOutputSize(239)).toMatchObject({ width: 120, height: 160 });
+    });
+
+    it('falls back to the smallest accepted size for a tiny crop', () => {
+        expect(chooseOutputSize(80)).toMatchObject({ width: 120, height: 160 });
+        expect(chooseOutputSize(0)).toMatchObject({ width: 120, height: 160 });
+    });
+
+    it('only ever returns a size the dimension rule accepts', () => {
+        for (const width of [10, 119, 120, 250, 359, 360, 5000]) {
+            const size = chooseOutputSize(width);
+            const checks = buildPhotoChecks(input({ outputWidth: size.width, outputHeight: size.height }));
+
+            expect(checks.find((check) => check.id === 'dimensions')?.status).toBe('pass');
+        }
     });
 });

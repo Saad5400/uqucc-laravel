@@ -37,22 +37,36 @@ export interface OutputSizePreset {
     width: number;
     height: number;
     label: string;
-    hint: string;
 }
 
 /**
- * Every preset is exactly 3:4 and sits inside the accepted envelope. The first
- * one is the university's own worked example (العرض 360 / الطول 480) and the
- * default: the largest allowed size, so quality is the best the rules permit.
+ * The size ladder, largest first. Every rung is exactly 3:4 and inside the
+ * accepted envelope, so any of them is acceptable to the portal; the top rung
+ * is the university's own worked example (العرض 360 / الطول 480).
+ *
+ * The student never picks from these. Asking someone to choose a pixel size to
+ * satisfy a rule they have not read is a question the tool should answer
+ * itself — see `chooseOutputSize`.
  */
 export const OUTPUT_SIZE_PRESETS: OutputSizePreset[] = [
-    { width: 360, height: 480, label: '360 × 480', hint: 'الحد الأعلى المسموح — الأوضح، وهو المقاس الذي توصي به الجامعة' },
-    { width: 300, height: 400, label: '300 × 400', hint: 'مقاس متوسط بحجم ملف أصغر' },
-    { width: 240, height: 320, label: '240 × 320', hint: 'مناسب إذا كانت صورتك الأصلية صغيرة' },
-    { width: 120, height: 160, label: '120 × 160', hint: 'الحد الأدنى المسموح — لا تستخدمه إلا للضرورة' },
+    { width: 360, height: 480, label: '360 × 480' },
+    { width: 300, height: 400, label: '300 × 400' },
+    { width: 240, height: 320, label: '240 × 320' },
+    { width: 120, height: 160, label: '120 × 160' },
 ];
 
 export const DEFAULT_OUTPUT_SIZE = OUTPUT_SIZE_PRESETS[0];
+
+/**
+ * The largest allowed size the cropped region can fill with real pixels.
+ * Choosing by available width is what keeps the output from being stretched:
+ * a 4000 px phone photo gets the full 360 × 480, and a small crop steps down
+ * instead of inventing detail. A crop below the smallest rung still gets that
+ * rung — it is the minimum the portal accepts — and the clarity check says so.
+ */
+export function chooseOutputSize(availableWidth: number): OutputSizePreset {
+    return OUTPUT_SIZE_PRESETS.find((preset) => availableWidth >= preset.width) ?? OUTPUT_SIZE_PRESETS[OUTPUT_SIZE_PRESETS.length - 1];
+}
 
 /**
  * Rules no software can verify from pixels alone: the student confirms them.
