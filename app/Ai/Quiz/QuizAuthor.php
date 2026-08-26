@@ -9,11 +9,14 @@ use App\Settings\AiSettings;
 use App\Support\QuizContentHtml;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Context;
 use Illuminate\Support\Str;
+use Laravel\Ai\Exceptions\AiException;
 use RuntimeException;
 use Saad\AiKit\Safety\BudgetGuard;
+use Saad\AiKit\Safety\Exceptions\AiUnavailableException;
 
 /**
  * Generates the daily multiple-choice question: one authoring-tier agent call
@@ -280,9 +283,18 @@ class QuizAuthor
     }
 
     /**
-     * Author one question, retrying the whole agent run only if the model
+     * Author one question, retrying the whole agent run when the model
      * finishes without ever submitting a valid question through the tool
-     * (in-conversation correction handles ordinary validation failures).
+     * (in-conversation correction handles ordinary validation failures), or
+     * when the call never reached a verdict at all.
+     *
+     * That second family is why the catch is wider than RuntimeException: the
+     * authoring tier reasons for a minute or two per question and regularly
+     * grazes its 180s HTTP timeout, and an upstream timeout arrives as a
+     * ConnectionException — an ordinary Exception. Letting it escape the loop
+     * meant one flaky night call burned the whole day's generation, and the
+     * day was rescued only by the poster's inline fallback at posting time, so
+     * the group got its question late.
      *
      * @return array{question: string, options: array<int, string>, correct_option: int, explanation: string|null, hint: string|null, obvious_hint: string|null}
      */
@@ -294,7 +306,11 @@ class QuizAuthor
         for ($attempt = 1; $attempt <= self::MAX_ATTEMPTS; $attempt++) {
             try {
                 return $this->generate($prompt);
-            } catch (RuntimeException $exception) {
+            } catch (AiUnavailableException $exception) {
+                // The turn was refused before it cost anything — the budget is
+                // spent or the kit is off. Another attempt refuses identically.
+                throw $exception;
+            } catch (AiException|ConnectionException|RuntimeException $exception) {
                 $lastError = $exception;
             }
         }

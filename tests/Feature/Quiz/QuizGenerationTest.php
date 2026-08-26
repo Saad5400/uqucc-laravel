@@ -8,7 +8,10 @@ use App\Models\QuizTopic;
 use App\Settings\AiSettings;
 use App\Settings\QuizSettings;
 use Carbon\CarbonInterface;
+use Illuminate\Http\Client\ConnectionException;
+use Laravel\Ai\Exceptions\AiException;
 use Laravel\Ai\Responses\Data\ToolCall;
+use Saad\AiKit\Safety\Exceptions\BudgetExceededException;
 
 beforeEach(function () {
     config()->set('ai.providers.openrouter.key', 'test-key');
@@ -259,6 +262,67 @@ it('retries when the model finishes without submitting, then succeeds', function
     $this->artisan('quiz:generate')->assertExitCode(0);
 
     expect(DailyQuiz::query()->count())->toBe(1);
+});
+
+/**
+ * A faked run whose first turn dies with the given transport/provider failure
+ * and whose retry submits a question normally.
+ */
+function quizFailingFirstTurn(Throwable $failure): Closure
+{
+    $turn = 0;
+
+    return function () use (&$turn, $failure): ToolCall|string {
+        return match (++$turn) {
+            1 => throw $failure,
+            2 => quizToolCall(),
+            default => 'تم، اعتمدت السؤال.',
+        };
+    };
+}
+
+it('retries when the authoring call times out upstream, then succeeds', function () {
+    QuizTopic::factory()->create();
+    QuizAuthoringAgent::fake(quizFailingFirstTurn(
+        new ConnectionException('cURL error 28: Operation timed out after 180000 milliseconds')
+    ));
+
+    $this->artisan('quiz:generate')->assertExitCode(0);
+
+    expect(DailyQuiz::query()->count())->toBe(1);
+});
+
+it('retries when the provider errors, then succeeds', function () {
+    QuizTopic::factory()->create();
+    QuizAuthoringAgent::fake(quizFailingFirstTurn(new AiException('The provider is overloaded.')));
+
+    $this->artisan('quiz:generate')->assertExitCode(0);
+
+    expect(DailyQuiz::query()->count())->toBe(1);
+});
+
+it('gives up when every authoring call times out upstream', function () {
+    QuizTopic::factory()->create();
+    QuizAuthoringAgent::fake(fn () => throw new ConnectionException('cURL error 28'));
+
+    $this->artisan('quiz:generate')->assertExitCode(1);
+
+    expect(DailyQuiz::query()->count())->toBe(0);
+});
+
+it('does not retry once the daily AI budget is spent', function () {
+    QuizTopic::factory()->create();
+    $turns = 0;
+    QuizAuthoringAgent::fake(function () use (&$turns) {
+        $turns++;
+
+        throw new BudgetExceededException(9.0, 5.0, 3600);
+    });
+
+    $this->artisan('quiz:generate')->assertExitCode(1);
+
+    expect($turns)->toBe(1)
+        ->and(DailyQuiz::query()->count())->toBe(0);
 });
 
 it('gives up when the model never submits a question', function () {

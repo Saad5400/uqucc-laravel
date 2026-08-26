@@ -33,8 +33,15 @@ class PostDailyQuiz extends Command
      * How long to wait before retrying the inline fallback generation. The
      * command runs every minute; a failing authoring model must not be asked
      * that often.
+     *
+     * Kept short because this window opens at posting time and every minute
+     * of it is a minute the group is waiting: an attempt already occupies
+     * several of these minutes on its own (the authoring tier reasons for one
+     * to two minutes, twice), so this is the pause *after* a failure, not the
+     * spacing between calls. It closes for the day the moment a question
+     * exists.
      */
-    private const FALLBACK_RETRY_MINUTES = 15;
+    private const FALLBACK_RETRY_MINUTES = 5;
 
     public function handle(QuizSettings $settings, QuizSchedule $schedule, QuizAuthor $author, QuizPoster $poster): int
     {
