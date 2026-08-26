@@ -87,3 +87,10 @@ const dateTimeFormatter = new Intl.DateTimeFormat('ar', { dateStyle: 'medium', t
 export function formatDateTime(iso: string): string {
     return dateTimeFormatter.format(new Date(iso));
 }
+
+const fullDateFormatter = new Intl.DateTimeFormat('ar', { year: 'numeric', month: 'long', day: 'numeric' });
+
+/** A Date → a full Arabic date ("١٤ فبراير ٢٠٢٦"), for values that are not ISO strings. */
+export function formatFullDate(date: Date): string {
+    return fullDateFormatter.format(date);
+}

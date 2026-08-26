@@ -85,6 +85,25 @@ class ToolController extends Controller
     }
 
     /**
+     * Display the student card photo tool.
+     */
+    public function studentPhoto(): Response
+    {
+        $page = Page::where('slug', '/adwat/sorh-albtaqa')
+            ->where('hidden', false)
+            ->first();
+
+        return Inertia::render('tools/StudentPhotoPage', [
+            'page' => $page ? [
+                'html_content' => $page->html_content,
+                'title' => $page->title,
+            ] : null,
+            'hasContent' => $page && ! empty($page->html_content),
+            'seo' => $this->toolSeo($page, 'صورة البطاقة الجامعية', 'اضبط صورتك على شروط صورة البطاقة الجامعية في جامعة أم القرى: قص ٣ × ٤، صيغة JPG، وحجم أقل من ٣٠٠ كيلوبايت — كل المعالجة داخل متصفحك بدون رفع الصورة.'),
+        ]);
+    }
+
+    /**
      * Display the truth table generator tool.
      */
     public function truthTable(): Response

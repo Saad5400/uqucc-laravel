@@ -104,6 +104,7 @@ it('renders each tool route with its backing page', function (string $uri, strin
     'transfer calculator' => ['/adwat/hasbh-altahwel', '/adwat/hasbh-altahwel', 'tools/TransferCalculatorPage'],
     'next reward' => ['/adwat/almkafa', '/adwat/almkafa', 'tools/NextRewardPage'],
     'truth table' => ['/adwat/jdwal-alsawab', '/adwat/jdwal-alsawab', 'tools/TruthTablePage'],
+    'student photo' => ['/adwat/sorh-albtaqa', '/adwat/sorh-albtaqa', 'tools/StudentPhotoPage'],
 ]);
 
 it('renders each tool route without a backing page using fallback seo', function (string $uri, string $component) {
@@ -122,6 +123,7 @@ it('renders each tool route without a backing page using fallback seo', function
     'transfer calculator' => ['/adwat/hasbh-altahwel', 'tools/TransferCalculatorPage'],
     'next reward' => ['/adwat/almkafa', 'tools/NextRewardPage'],
     'truth table' => ['/adwat/jdwal-alsawab', 'tools/TruthTablePage'],
+    'student photo' => ['/adwat/sorh-albtaqa', 'tools/StudentPhotoPage'],
 ]);
 
 it('renders the private tutors tool route', function () {
