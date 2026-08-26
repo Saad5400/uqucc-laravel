@@ -190,3 +190,32 @@ export function rotateView(view: CropView, size: Size, quarters: number, ratio: 
 
     return clampView(current, currentSize, ratio);
 }
+
+/** Apply `first`, then `second` — the matrix product used to fuse orientation with rotation. */
+export function composeTransforms(first: AffineTransform, second: AffineTransform): AffineTransform {
+    return {
+        a: second.a * first.a + second.c * first.b,
+        b: second.b * first.a + second.d * first.b,
+        c: second.a * first.c + second.c * first.d,
+        d: second.b * first.c + second.d * first.d,
+        e: second.a * first.e + second.c * first.f + second.e,
+        f: second.b * first.e + second.d * first.f + second.f,
+    };
+}
+
+/** Shift the output of a transform, e.g. to bring a crop's corner to the origin. */
+export function translateTransform(transform: AffineTransform, deltaX: number, deltaY: number): AffineTransform {
+    return { ...transform, e: transform.e + deltaX, f: transform.f + deltaY };
+}
+
+/** Scale the output of a transform uniformly. */
+export function scaleTransform(transform: AffineTransform, factor: number): AffineTransform {
+    return {
+        a: transform.a * factor,
+        b: transform.b * factor,
+        c: transform.c * factor,
+        d: transform.d * factor,
+        e: transform.e * factor,
+        f: transform.f * factor,
+    };
+}

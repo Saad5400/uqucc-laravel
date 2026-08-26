@@ -114,6 +114,14 @@
         @apply my-2 ms-6;
     }
 
+    /* `.typography *` gives every descendant a prose margin, which deforms UI
+       controls embedded in a prose page: a checkbox's tick lands below its box,
+       a switch's thumb sits off its track. Controls own their internal spacing,
+       so the blanket margin stops at their boundary. */
+    .typography :is([data-slot='checkbox'], [data-slot='switch'], [data-slot='button'], [data-slot='badge']) * {
+        @apply my-0;
+    }
+
     .typography p.lead {
         @apply text-xl text-muted-foreground;
     }

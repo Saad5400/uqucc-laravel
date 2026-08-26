@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     clampView,
+    composeTransforms,
     cropFromView,
     defaultView,
     isTransposedOrientation,
@@ -12,6 +13,8 @@ import {
     orientedSize,
     panView,
     rotateView,
+    scaleTransform,
+    translateTransform,
     upscaleFactor,
     zoomView,
     type Size,
@@ -207,5 +210,61 @@ describe('upscaleFactor', () => {
 
     it('is infinite for an empty crop', () => {
         expect(upscaleFactor(0, 360)).toBe(Number.POSITIVE_INFINITY);
+    });
+});
+
+describe('transform composition', () => {
+    const size: Size = { width: 100, height: 50 };
+
+    it('fuses two quarter turns into a half turn', () => {
+        const quarter = orientationTransform(6, size);
+        const swapped: Size = { width: size.height, height: size.width };
+        const fused = composeTransforms(quarter, orientationTransform(6, swapped));
+
+        // Source (0,0) through two 90° turns lands at the far corner.
+        expect(mapPoint(fused, 0, 0)).toEqual(mapPoint(orientationTransform(3, size), 0, 0));
+        expect(mapPoint(fused, size.width, size.height)).toEqual(mapPoint(orientationTransform(3, size), size.width, size.height));
+    });
+
+    it('composes EXIF orientation with a user rotation for every combination', () => {
+        for (const orientation of [1, 2, 3, 4, 5, 6, 7, 8]) {
+            const first = orientationTransform(orientation, size);
+            const upright = orientedSize(size, orientation);
+            const code = orientationForQuarterTurns(1);
+            const fused = composeTransforms(first, orientationTransform(code, upright));
+            const finalSize = orientedSize(upright, code);
+
+            for (const [x, y] of [
+                [0, 0],
+                [size.width, 0],
+                [0, size.height],
+                [size.width, size.height],
+            ]) {
+                const [mappedX, mappedY] = mapPoint(fused, x, y);
+
+                expect(mappedX).toBeGreaterThanOrEqual(-1e-9);
+                expect(mappedY).toBeGreaterThanOrEqual(-1e-9);
+                expect(mappedX).toBeLessThanOrEqual(finalSize.width + 1e-9);
+                expect(mappedY).toBeLessThanOrEqual(finalSize.height + 1e-9);
+            }
+        }
+    });
+
+    it('brings a crop corner to the origin', () => {
+        const shifted = translateTransform(orientationTransform(1, size), -20, -8);
+
+        expect(mapPoint(shifted, 20, 8)).toEqual([0, 0]);
+    });
+
+    it('scales the mapped output uniformly', () => {
+        const scaled = scaleTransform(translateTransform(orientationTransform(1, size), -20, -8), 0.5);
+
+        expect(mapPoint(scaled, 40, 28)).toEqual([10, 10]);
+    });
+
+    it('leaves a point untouched under an identity composition', () => {
+        const identity = orientationTransform(1, size);
+
+        expect(composeTransforms(identity, identity)).toEqual(identity);
     });
 });
