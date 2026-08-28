@@ -1,11 +1,19 @@
 <?php
 
+use App\Models\QuizAnswer;
 use App\Models\QuizPlayer;
 use App\Services\Quiz\QuizPoster;
 use App\Settings\QuizSettings;
 use Tests\Fakes\FakeTelegramApi;
 
+/**
+ * The announcement runs Thursday evening: the outgoing week's last question
+ * (Wednesday's) stopped taking votes when Thursday's went out at 16:00, so
+ * the week it crowns — Thursday through Wednesday — is settled.
+ */
 beforeEach(function () {
+    $this->travelTo('2026-08-27 21:00:00');
+
     $settings = app(QuizSettings::class);
     $settings->enabled = true;
     $settings->chat_ids = ['-100200300'];
@@ -15,11 +23,26 @@ beforeEach(function () {
     $this->app->bind(QuizPoster::class, fn (): QuizPoster => new QuizPoster(app(QuizSettings::class), $this->fake));
 });
 
-it('announces the weekly top players and resets weekly points only', function () {
-    $first = QuizPlayer::factory()->create(['first_name' => 'أحمد', 'weekly_points' => 50, 'total_points' => 300]);
-    $second = QuizPlayer::factory()->create(['first_name' => 'نورة', 'weekly_points' => 40, 'total_points' => 60]);
-    $third = QuizPlayer::factory()->create(['first_name' => 'خالد', 'weekly_points' => 30, 'total_points' => 30]);
-    $fourth = QuizPlayer::factory()->create(['first_name' => 'فهد', 'weekly_points' => 10, 'total_points' => 10]);
+/** Points scored on the question of a given day. */
+function scoredOn(QuizPlayer $player, string $quizDate, int $points): void
+{
+    QuizAnswer::factory()
+        ->for($player, 'player')
+        ->onQuizDate(Carbon\CarbonImmutable::parse($quizDate))
+        ->create(['points' => $points]);
+}
+
+it('announces the top players of the week that just ended', function () {
+    $first = QuizPlayer::factory()->create(['first_name' => 'أحمد', 'total_points' => 300]);
+    $second = QuizPlayer::factory()->create(['first_name' => 'نورة', 'total_points' => 60]);
+    $third = QuizPlayer::factory()->create(['first_name' => 'خالد', 'total_points' => 30]);
+    $fourth = QuizPlayer::factory()->create(['first_name' => 'فهد', 'total_points' => 10]);
+
+    scoredOn($first, '2026-08-20', 20);
+    scoredOn($first, '2026-08-26', 30);
+    scoredOn($second, '2026-08-24', 40);
+    scoredOn($third, '2026-08-25', 30);
+    scoredOn($fourth, '2026-08-26', 10);
 
     $this->artisan('quiz:announce-weekly')->assertExitCode(0);
 
@@ -33,18 +56,38 @@ it('announces the weekly top players and resets weekly points only', function ()
         ->toContain('🥉 خالد — 30 نقطة')
         ->toContain('4. فهد — 10 نقاط');
 
-    expect($first->refresh()->weekly_points)->toBe(0)
-        ->and($first->total_points)->toBe(300)
-        ->and($second->refresh()->weekly_points)->toBe(0)
-        ->and($third->refresh()->weekly_points)->toBe(0)
-        ->and($fourth->refresh()->weekly_points)->toBe(0);
+    expect($first->refresh()->total_points)->toBe(300);
+});
+
+it('leaves the new week\'s points out of the announcement, and keeps them', function () {
+    $player = QuizPlayer::factory()->create(['first_name' => 'أحمد']);
+
+    scoredOn($player, '2026-08-26', 30);
+    // Today's question — the new week's first — was answered five hours ago.
+    scoredOn($player, '2026-08-27', 12);
+
+    $this->artisan('quiz:announce-weekly')->assertExitCode(0);
+
+    expect($this->fake->sentMessages[0]['text'])->toContain('أحمد — 30 نقطة');
+
+    // Nothing is reset, so today's points still stand on the new week's board.
+    expect(app(App\Services\Quiz\QuizLeaderboard::class)->weeklyPointsFor($player))->toBe(12);
+});
+
+it('ignores points older than the week it crowns', function () {
+    $player = QuizPlayer::factory()->create(['first_name' => 'أحمد']);
+
+    scoredOn($player, '2026-08-19', 90);
+
+    $this->artisan('quiz:announce-weekly')->assertExitCode(0);
+
+    expect($this->fake->sentMessages)->toBeEmpty();
 });
 
 it('caps the announcement at twenty players', function () {
     QuizPlayer::factory()->count(25)->sequence(fn ($sequence) => [
         'first_name' => 'لاعب'.($sequence->index + 1),
-        'weekly_points' => 100 - $sequence->index,
-    ])->create();
+    ])->create()->each(fn (QuizPlayer $player, int $index) => scoredOn($player, '2026-08-26', 100 - $index));
 
     $this->artisan('quiz:announce-weekly')->assertExitCode(0);
 
@@ -59,7 +102,7 @@ it('announces in every configured group', function () {
     $settings->chat_ids = ['-100200300', '-100400500'];
     $settings->save();
 
-    QuizPlayer::factory()->create(['first_name' => 'أحمد', 'weekly_points' => 50]);
+    scoredOn(QuizPlayer::factory()->create(['first_name' => 'أحمد']), '2026-08-26', 50);
 
     $this->artisan('quiz:announce-weekly')->assertExitCode(0);
 
@@ -68,7 +111,7 @@ it('announces in every configured group', function () {
 });
 
 it('stays silent when nobody scored this week', function () {
-    QuizPlayer::factory()->create(['weekly_points' => 0, 'total_points' => 100]);
+    QuizPlayer::factory()->create(['total_points' => 100]);
 
     $this->artisan('quiz:announce-weekly')->assertExitCode(0);
 
@@ -80,16 +123,15 @@ it('stays silent while the feature is disabled', function () {
     $settings->enabled = false;
     $settings->save();
 
-    QuizPlayer::factory()->create(['weekly_points' => 50]);
+    scoredOn(QuizPlayer::factory()->create(['first_name' => 'أحمد']), '2026-08-26', 50);
 
     $this->artisan('quiz:announce-weekly')->assertExitCode(0);
 
-    expect($this->fake->sentMessages)->toBeEmpty()
-        ->and(QuizPlayer::query()->first()->weekly_points)->toBe(50);
+    expect($this->fake->sentMessages)->toBeEmpty();
 });
 
 it('escapes player names in the HTML announcement', function () {
-    QuizPlayer::factory()->create(['first_name' => '<b>خبيث</b>', 'weekly_points' => 50]);
+    scoredOn(QuizPlayer::factory()->create(['first_name' => '<b>خبيث</b>']), '2026-08-26', 50);
 
     $this->artisan('quiz:announce-weekly')->assertExitCode(0);
 

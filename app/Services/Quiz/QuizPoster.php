@@ -44,6 +44,8 @@ class QuizPoster
 
     private ?QuizTopicVote $topicVote = null;
 
+    private ?QuizLeaderboard $leaderboard = null;
+
     public function __construct(
         private readonly QuizSettings $settings,
         ?Api $telegram = null,
@@ -339,9 +341,16 @@ class QuizPoster
     }
 
     /**
-     * Announce this week's top players in every configured group, then start
-     * the new week by resetting every player's weekly points. Quietly does
-     * nothing when nobody scored — an empty podium is worse than no message.
+     * Announce the top players of the week that just ended in every
+     * configured group. Quietly does nothing when nobody scored — an empty
+     * podium is worse than no message.
+     *
+     * Purely a message: the board is summed from the answer trail per quiz
+     * day ({@see QuizLeaderboard}), so there is nothing to zero here. The
+     * reset this used to do was the bug — it landed in the middle of the
+     * night the current question was still taking votes, wiping the points of
+     * everyone who had answered early while the stragglers' identical answers
+     * opened the new week on top.
      */
     public function announceWeeklyWinners(): void
     {
@@ -349,13 +358,7 @@ class QuizPoster
             return;
         }
 
-        $winners = QuizPlayer::query()
-            ->where('weekly_points', '>', 0)
-            ->orderByDesc('weekly_points')
-            ->orderByDesc('current_streak')
-            ->orderBy('id')
-            ->limit(self::WEEKLY_WINNERS)
-            ->get();
+        $winners = $this->leaderboard()->lastWeek(self::WEEKLY_WINNERS);
 
         if ($winners->isEmpty()) {
             return;
@@ -369,11 +372,11 @@ class QuizPoster
                 '%s %s — %s',
                 $medals[$index] ?? ($index + 1).'.',
                 htmlspecialchars($player->displayName(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
-                ArabicPlural::points($player->weekly_points),
+                ArabicPlural::points((int) $player->weekly_points),
             ))
             ->implode("\n");
 
-        $text = "🏆 <b>متصدرو سؤال اليوم هذا الأسبوع</b>\n\n{$lines}\n\nبدأ أسبوع جديد — عدّادات الأسبوع صُفّرت، والفرصة مفتوحة للجميع. لا تفوّتوا سؤال الغد! 👀";
+        $text = "🏆 <b>متصدرو سؤال اليوم في الأسبوع المنصرم</b>\n\n{$lines}\n\nبدأ أسبوع جديد — لوحة الأسبوع تبدأ من الصفر للجميع. لا تفوّتوا سؤال الغد! 👀";
 
         foreach ($this->settings->targets() as $target) {
             try {
@@ -388,8 +391,11 @@ class QuizPoster
                 ]);
             }
         }
+    }
 
-        QuizPlayer::query()->where('weekly_points', '>', 0)->update(['weekly_points' => 0]);
+    private function leaderboard(): QuizLeaderboard
+    {
+        return $this->leaderboard ??= app(QuizLeaderboard::class);
     }
 
     private function telegram(): Api

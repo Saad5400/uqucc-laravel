@@ -77,7 +77,7 @@ class QuizController extends Controller
             'todayQuizStatus' => $today?->status,
             'weeklyTop' => $this->leaderboard(
                 $leaderboard->weekly(self::LEADERBOARD_LIMIT),
-                fn (QuizPlayer $player): int => $player->weekly_points,
+                fn (QuizPlayer $player): int => (int) $player->weekly_points,
             ),
             'windowTop' => $this->leaderboard(
                 $leaderboard->window(self::LEADERBOARD_LIMIT),

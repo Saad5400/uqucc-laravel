@@ -23,7 +23,6 @@ function leaderboardMessage(string $text, int $userId = 111, int $chatId = -1002
 it('shows the weekly and rolling leaderboards with the asking player\'s standing', function (string $trigger) {
     $ahmed = QuizPlayer::factory()->create([
         'first_name' => 'أحمد',
-        'weekly_points' => 40,
         'total_points' => 200,
         'current_streak' => 4,
         'answers_count' => 20,
@@ -31,15 +30,14 @@ it('shows the weekly and rolling leaderboards with the asking player\'s standing
     $saad = QuizPlayer::factory()->create([
         'telegram_user_id' => 111,
         'first_name' => 'سعد',
-        'weekly_points' => 25,
         'total_points' => 90,
         'current_streak' => 2,
         'best_streak' => 6,
         'answers_count' => 9,
     ]);
 
-    QuizAnswer::factory()->for($ahmed, 'player')->create(['points' => 40, 'answered_at' => now()->subDays(3)]);
-    QuizAnswer::factory()->for($saad, 'player')->create(['points' => 25, 'answered_at' => now()->subDay()]);
+    QuizAnswer::factory()->for($ahmed, 'player')->onQuizDate(today()->subDay())->create(['points' => 40]);
+    QuizAnswer::factory()->for($saad, 'player')->onQuizDate(today())->create(['points' => 25]);
 
     $api = new FakeTelegramApi;
     (new QuizLeaderboardHandler($api))->handle(leaderboardMessage($trigger));
@@ -70,11 +68,11 @@ it('ranks the rolling board on the window only, so an old lead ages out', functi
         'answers_count' => 5,
     ]);
 
-    QuizAnswer::factory()->for($veteran, 'player')->create([
-        'points' => 5000,
-        'answered_at' => now()->subDays(QuizLeaderboard::WINDOW_DAYS + 1),
-    ]);
-    QuizAnswer::factory()->for($newcomer, 'player')->create(['points' => 60, 'answered_at' => now()]);
+    QuizAnswer::factory()
+        ->for($veteran, 'player')
+        ->onQuizDate(today()->subDays(QuizLeaderboard::WINDOW_DAYS))
+        ->create(['points' => 5000]);
+    QuizAnswer::factory()->for($newcomer, 'player')->onQuizDate(today())->create(['points' => 60]);
 
     $api = new FakeTelegramApi;
     (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين', userId: 999));
@@ -94,7 +92,7 @@ it('shows a teaching empty state when nobody has played yet', function () {
 });
 
 it('omits the personal section for someone who never played', function () {
-    QuizPlayer::factory()->create(['weekly_points' => 40, 'total_points' => 200, 'answers_count' => 20]);
+    QuizPlayer::factory()->create(['total_points' => 200, 'answers_count' => 20]);
 
     $api = new FakeTelegramApi;
     (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين', userId: 999));
@@ -103,7 +101,7 @@ it('omits the personal section for someone who never played', function () {
 });
 
 it('rate-limits repeated leaderboard requests in the same chat', function () {
-    QuizPlayer::factory()->create(['weekly_points' => 40, 'total_points' => 200, 'answers_count' => 20]);
+    QuizPlayer::factory()->create(['total_points' => 200, 'answers_count' => 20]);
 
     $api = new FakeTelegramApi;
     $handler = new QuizLeaderboardHandler($api);
@@ -120,7 +118,7 @@ it('rate-limits repeated leaderboard requests in the same chat', function () {
 });
 
 it('ignores unrelated messages', function () {
-    QuizPlayer::factory()->create(['weekly_points' => 40, 'answers_count' => 5]);
+    QuizPlayer::factory()->create(['answers_count' => 5]);
 
     $api = new FakeTelegramApi;
     (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('كلام عادي عن المتصدرين في الدوري'));

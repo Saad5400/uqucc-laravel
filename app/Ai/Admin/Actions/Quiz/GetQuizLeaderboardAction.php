@@ -58,7 +58,7 @@ class GetQuizLeaderboardAction extends AdminAction
     {
         $weekly = $this->board(
             $this->leaderboard->weekly(self::LIMIT),
-            fn (QuizPlayer $player): int => $player->weekly_points,
+            fn (QuizPlayer $player): int => (int) $player->weekly_points,
         );
 
         $window = $this->board(

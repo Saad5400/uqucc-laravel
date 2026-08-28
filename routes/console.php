@@ -61,6 +61,11 @@ Schedule::command('quiz:post')
     ->withoutOverlapping(10)
     ->runInBackground();
 
+// Thursday evening, after the new week's first question went out at 16:00 and
+// the outgoing week's last one (Wednesday's) stopped taking votes with it.
+// The command only sends a message — the weekly board is summed from the
+// answer trail per quiz day (App\Services\Quiz\QuizLeaderboard), so a run
+// that fires late, twice, or not at all costs nobody their points.
 Schedule::command('quiz:announce-weekly')
     ->thursdays()
     ->at('21:00')

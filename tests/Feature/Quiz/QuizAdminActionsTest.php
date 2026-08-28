@@ -200,12 +200,11 @@ it('refuses to regenerate a posted quiz', function () {
 it('renders the leaderboard', function () {
     $player = QuizPlayer::factory()->create([
         'first_name' => 'أحمد',
-        'weekly_points' => 40,
         'total_points' => 120,
         'current_streak' => 3,
     ]);
 
-    QuizAnswer::factory()->for($player, 'player')->create(['points' => 40, 'answered_at' => now()->subDay()]);
+    QuizAnswer::factory()->for($player, 'player')->onQuizDate(today())->create(['points' => 40]);
 
     $result = app(GetQuizLeaderboardAction::class)->handle([], $this->user);
 

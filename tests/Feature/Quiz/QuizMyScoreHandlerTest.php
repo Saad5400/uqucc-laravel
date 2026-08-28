@@ -22,11 +22,10 @@ function myScoreMessage(string $text, int $userId = 111): Message
 it('replies with the player\'s own standing and schedules deletion', function (string $trigger) {
     Bus::fake();
 
-    QuizPlayer::factory()->create(['weekly_points' => 30]);
+    $rival = QuizPlayer::factory()->create();
     $player = QuizPlayer::factory()->create([
         'telegram_user_id' => 111,
         'first_name' => 'سعد',
-        'weekly_points' => 25,
         'total_points' => 90,
         'current_streak' => 3,
         'best_streak' => 6,
@@ -34,8 +33,9 @@ it('replies with the player\'s own standing and schedules deletion', function (s
         'answers_count' => 9,
     ]);
 
-    QuizAnswer::factory()->for($player, 'player')->create(['points' => 25, 'answered_at' => now()->subDay()]);
-    QuizAnswer::factory()->for($player, 'player')->create(['points' => 40, 'answered_at' => now()->subDays(60)]);
+    QuizAnswer::factory()->for($rival, 'player')->onQuizDate(today())->create(['points' => 30]);
+    QuizAnswer::factory()->for($player, 'player')->onQuizDate(today())->create(['points' => 25]);
+    QuizAnswer::factory()->for($player, 'player')->onQuizDate(today()->subDays(60))->create(['points' => 40]);
 
     $api = new FakeTelegramApi;
     (new QuizMyScoreHandler($api))->handle(myScoreMessage($trigger));
@@ -61,7 +61,6 @@ it('tells a player whose streak freeze is spent when it comes back', function ()
 
     QuizPlayer::factory()->create([
         'telegram_user_id' => 111,
-        'weekly_points' => 25,
         'answers_count' => 9,
         'streak_frozen_on' => today()->subDays(QuizAnswerRecorder::FREEZE_COOLDOWN_DAYS - 2),
     ]);
