@@ -98,7 +98,6 @@ class QuizAnswerRecorder
 
                 $player->update([
                     'total_points' => $player->total_points + $points,
-                    'weekly_points' => $player->weekly_points + $points,
                     'current_streak' => $streak,
                     'best_streak' => max($player->best_streak, $streak),
                     'streak_frozen_on' => $frozen ? $quiz->quiz_date : $player->streak_frozen_on,

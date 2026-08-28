@@ -17,7 +17,6 @@ class QuizPlayerFactory extends Factory
             'username' => $this->faker->optional()->userName(),
             'major' => null,
             'total_points' => 0,
-            'weekly_points' => 0,
             'current_streak' => 0,
             'best_streak' => 0,
             'streak_frozen_on' => null,

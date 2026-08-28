@@ -78,7 +78,7 @@ class QuizLeaderboardHandler extends BaseHandler
 
         return "📅 <b>هذا الأسبوع</b>\n".$this->rankedLines(
             $players,
-            fn (QuizPlayer $player): int => $player->weekly_points,
+            fn (QuizPlayer $player): int => (int) $player->weekly_points,
         );
     }
 
@@ -127,7 +127,7 @@ class QuizLeaderboardHandler extends BaseHandler
 
         return sprintf(
             "👤 <b>نتيجتك</b>\nهذا الأسبوع: %s (ترتيبك %d)\nآخر %d يوماً: %s (ترتيبك %d)\nالسلسلة الحالية: %s 🔥 (أفضل سلسلة: %s)",
-            ArabicPlural::points($player->weekly_points),
+            ArabicPlural::points($this->leaderboard()->weeklyPointsFor($player)),
             $this->leaderboard()->weeklyRankFor($player),
             QuizLeaderboard::WINDOW_DAYS,
             ArabicPlural::points($this->leaderboard()->windowPointsFor($player)),
@@ -158,6 +158,6 @@ class QuizLeaderboardHandler extends BaseHandler
 
     private function leaderboard(): QuizLeaderboard
     {
-        return $this->leaderboard ??= new QuizLeaderboard;
+        return $this->leaderboard ??= app(QuizLeaderboard::class);
     }
 }

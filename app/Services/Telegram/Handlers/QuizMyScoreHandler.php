@@ -53,7 +53,7 @@ class QuizMyScoreHandler extends BaseHandler
             "السلسلة الحالية: %s 🔥 (أفضل سلسلة: %s)\n".
             "الإجابات الصحيحة: %d من %d\n".
             '%s',
-            ArabicPlural::points($player->weekly_points),
+            ArabicPlural::points($this->leaderboard()->weeklyPointsFor($player)),
             $this->leaderboard()->weeklyRankFor($player),
             QuizLeaderboard::WINDOW_DAYS,
             ArabicPlural::points($this->leaderboard()->windowPointsFor($player)),
@@ -91,6 +91,6 @@ class QuizMyScoreHandler extends BaseHandler
 
     private function leaderboard(): QuizLeaderboard
     {
-        return $this->leaderboard ??= new QuizLeaderboard;
+        return $this->leaderboard ??= app(QuizLeaderboard::class);
     }
 }

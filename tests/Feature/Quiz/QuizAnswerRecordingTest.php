@@ -54,7 +54,6 @@ it('records a correct answer with base points and creates the player', function 
         ->and($player->first_name)->toBe('سعد')
         ->and($player->username)->toBe('saad')
         ->and($player->total_points)->toBe(QuizAnswerRecorder::POINTS_CORRECT)
-        ->and($player->weekly_points)->toBe(QuizAnswerRecorder::POINTS_CORRECT)
         ->and($player->current_streak)->toBe(1)
         ->and($player->best_streak)->toBe(1)
         ->and($player->correct_count)->toBe(1)
@@ -91,7 +90,6 @@ it('continues the streak when the previous quiz was answered', function () {
         'current_streak' => 3,
         'best_streak' => 5,
         'total_points' => 50,
-        'weekly_points' => 20,
         'last_answered_on' => today()->subDay(),
     ]);
 
@@ -102,8 +100,7 @@ it('continues the streak when the previous quiz was answered', function () {
     // 10 base + min(4 - 1, 7) = 13
     expect($player->current_streak)->toBe(4)
         ->and($player->best_streak)->toBe(5)
-        ->and($player->total_points)->toBe(50 + 13)
-        ->and($player->weekly_points)->toBe(20 + 13);
+        ->and($player->total_points)->toBe(50 + 13);
 });
 
 it('caps the streak bonus', function () {

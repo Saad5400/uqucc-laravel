@@ -91,6 +91,20 @@ class DailyQuiz extends Model
     }
 
     /**
+     * The question in play: the most recent one that actually went out. It
+     * keeps taking votes until the next question replaces it, which is what
+     * makes its day — rather than today's date — the unit the leaderboards
+     * count by.
+     */
+    public static function lastPosted(): ?self
+    {
+        return static::query()
+            ->whereIn('status', [self::STATUS_POSTED, self::STATUS_CLOSED])
+            ->orderByDesc('quiz_date')
+            ->first();
+    }
+
+    /**
      * The most recent quiz that went out before the given date — the anchor
      * for streak continuation (a streak survives days where no quiz was
      * posted at all, e.g. a generation outage).
