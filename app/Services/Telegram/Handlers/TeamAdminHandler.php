@@ -302,7 +302,7 @@ class TeamAdminHandler extends BaseTeamHandler
 
         $suffix = $category !== null ? " ضمن تصنيف «{$category->name}»" : '';
 
-        $this->reply($message, "✅ تم إنشاء فريق «{$name}»{$suffix}.\nينضم له الأعضاء بإرسال: انضم {$name}");
+        $this->reply($message, "✅ تم إنشاء فريق «{$name}»{$suffix}.\nينضم له الأعضاء بإرسال «انضم» ثم الضغط على اسم الفريق.");
     }
 
     protected function confirmDeleteTeam(Message $message, string $name): void

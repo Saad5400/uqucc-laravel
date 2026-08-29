@@ -23,6 +23,7 @@ use App\Services\Telegram\Handlers\QuizLeaderboardHandler;
 use App\Services\Telegram\Handlers\QuizMyScoreHandler;
 use App\Services\Telegram\Handlers\TeamAdminHandler;
 use App\Services\Telegram\Handlers\TeamInfoHandler;
+use App\Services\Telegram\Handlers\TeamJoinPickerHandler;
 use App\Services\Telegram\Handlers\TeamMembershipHandler;
 use App\Services\Telegram\Handlers\TeamMentionHandler;
 use App\Services\Telegram\Handlers\TruthTableHandler;
@@ -115,6 +116,8 @@ class ProcessTelegramUpdate implements ShouldQueue
             try {
                 if (str_starts_with((string) $callbackQuery->getData(), TeamAdminHandler::CALLBACK_PREFIX)) {
                     (new TeamAdminHandler($telegram))->handleCallback($callbackQuery);
+                } elseif (str_starts_with((string) $callbackQuery->getData(), TeamJoinPickerHandler::CALLBACK_PREFIX)) {
+                    (new TeamJoinPickerHandler($telegram))->handleCallback($callbackQuery);
                 } else {
                     $pageManagementHandler = new PageManagementHandler($telegram, app(ContentParser::class));
                     $pageManagementHandler->handleCallback($callbackQuery);
@@ -165,6 +168,7 @@ class ProcessTelegramUpdate implements ShouldQueue
             new QuizLeaderboardHandler($telegram),
             new QuizMyScoreHandler($telegram),
             new TeamAdminHandler($telegram),
+            new TeamJoinPickerHandler($telegram),
             new TeamMembershipHandler($telegram),
             new TeamInfoHandler($telegram),
             new TeamMentionHandler($telegram),

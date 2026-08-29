@@ -83,7 +83,7 @@ class TeamInfoHandler extends BaseTeamHandler
 
         $this->replyHtml(
             $message,
-            "📚 فرق هذه المجموعة:\n".$lines->implode("\n")."\n\nللانضمام: انضم اسم الفريق",
+            "📚 فرق هذه المجموعة:\n".$lines->implode("\n")."\n\nللانضمام: أرسل «انضم» واختر فرقك من الأزرار.",
         );
     }
 
@@ -108,7 +108,7 @@ class TeamInfoHandler extends BaseTeamHandler
         $members = $team->members()->orderBy('id')->get();
 
         if ($members->isEmpty()) {
-            $this->reply($message, "فريق «{$team->name}» بلا أعضاء بعد.\nالانضمام: انضم {$team->name}");
+            $this->reply($message, "فريق «{$team->name}» بلا أعضاء بعد.\nللانضمام: أرسل «انضم» واختر «{$team->name}».");
 
             return;
         }
@@ -143,7 +143,7 @@ class TeamInfoHandler extends BaseTeamHandler
             ->get();
 
         if ($memberships->isEmpty()) {
-            $this->reply($message, "لست في أي فريق بعد.\nاعرض الفرق بالأمر «الفرق»، ثم اطلب الانضمام: انضم اسم الفريق");
+            $this->reply($message, "لست في أي فريق بعد.\nأرسل «انضم» واختر فرقك من الأزرار — ضغطة واحدة لكل فريق.");
 
             return;
         }

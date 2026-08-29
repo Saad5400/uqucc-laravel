@@ -3,6 +3,7 @@
 namespace App\Services\Quiz;
 
 use App\Helpers\ArabicPlural;
+use App\Helpers\Bidi;
 use App\Models\DailyQuiz;
 use App\Models\QuizPlayer;
 use App\Models\QuizPost;
@@ -28,6 +29,12 @@ class QuizPoster
     /** How many players the weekly winners announcement names. */
     public const WEEKLY_WINNERS = 20;
 
+    /** How many teams the weekly winners announcement names. */
+    public const WEEKLY_WINNING_TEAMS = 3;
+
+    /** The podium, shared by every ranked list the bot posts. */
+    private const MEDALS = ['🥇', '🥈', '🥉'];
+
     /**
      * The generic prompt on the poll itself — the question and its options live
      * in the image above it, so the poll only needs to send the reader there
@@ -45,6 +52,8 @@ class QuizPoster
     private ?QuizTopicVote $topicVote = null;
 
     private ?QuizLeaderboard $leaderboard = null;
+
+    private ?QuizTeamLeaderboard $teamLeaderboard = null;
 
     public function __construct(
         private readonly QuizSettings $settings,
@@ -364,16 +373,14 @@ class QuizPoster
             return;
         }
 
-        $medals = ['🥇', '🥈', '🥉'];
-
         $lines = $winners
             ->values()
-            ->map(fn (QuizPlayer $player, int $index): string => sprintf(
+            ->map(fn (QuizPlayer $player, int $index): string => Bidi::line(sprintf(
                 '%s %s — %s',
-                $medals[$index] ?? ($index + 1).'.',
-                htmlspecialchars($player->displayName(), ENT_QUOTES | ENT_HTML5, 'UTF-8'),
+                self::MEDALS[$index] ?? Bidi::ltr(($index + 1).'.'),
+                Bidi::isolate(htmlspecialchars($player->displayName(), ENT_QUOTES | ENT_HTML5, 'UTF-8')),
                 ArabicPlural::points((int) $player->weekly_points),
-            ))
+            )))
             ->implode("\n");
 
         $text = "🏆 <b>متصدرو سؤال اليوم في الأسبوع المنصرم</b>\n\n{$lines}\n\nبدأ أسبوع جديد — لوحة الأسبوع تبدأ من الصفر للجميع. لا تفوّتوا سؤال الغد! 👀";
@@ -381,7 +388,7 @@ class QuizPoster
         foreach ($this->settings->targets() as $target) {
             try {
                 $this->telegram()->sendMessage($target->apply([
-                    'text' => $text,
+                    'text' => $text.$this->weeklyTeamBlock($target->chatId),
                     'parse_mode' => 'HTML',
                 ]));
             } catch (\Throwable $exception) {
@@ -393,9 +400,56 @@ class QuizPoster
         }
     }
 
+    /**
+     * The chat's own team podium for the week just ended, appended to the
+     * winners announcement — the moment a cohort's week of answering pays
+     * off in front of everyone. Empty for a chat with no teams, or none that
+     * reached the quorum ({@see QuizTeamLeaderboard}); the announcement is
+     * about winners, so there is nothing to teach here.
+     */
+    private function weeklyTeamBlock(int $chatId): string
+    {
+        $standings = array_slice(
+            array_filter(
+                $this->teamLeaderboard()->forChat(
+                    $chatId,
+                    $this->leaderboard()->lastWeekStart(),
+                    $this->leaderboard()->lastWeekEnd(),
+                ),
+                static fn (QuizTeamStanding $standing): bool => $standing->qualifies(),
+            ),
+            0,
+            self::WEEKLY_WINNING_TEAMS,
+        );
+
+        if ($standings === []) {
+            return '';
+        }
+
+        $lines = [Bidi::line('🛡️ <b>فرق الأسبوع</b>')];
+
+        foreach ($standings as $index => $standing) {
+            $lines[] = Bidi::line(sprintf(
+                '%s %s — معدل %s · شارك %d من %d',
+                self::MEDALS[$index] ?? Bidi::ltr(($index + 1).'.'),
+                Bidi::isolate(htmlspecialchars($standing->team->name, ENT_QUOTES | ENT_HTML5, 'UTF-8')),
+                ArabicPlural::points($standing->average()),
+                $standing->activeMembers,
+                $standing->members,
+            ));
+        }
+
+        return "\n\n".implode("\n", $lines);
+    }
+
     private function leaderboard(): QuizLeaderboard
     {
         return $this->leaderboard ??= app(QuizLeaderboard::class);
+    }
+
+    private function teamLeaderboard(): QuizTeamLeaderboard
+    {
+        return $this->teamLeaderboard ??= app(QuizTeamLeaderboard::class);
     }
 
     private function telegram(): Api

@@ -1,8 +1,12 @@
 <?php
 
+use App\Helpers\Bidi;
 use App\Models\QuizAnswer;
 use App\Models\QuizPlayer;
+use App\Models\TelegramTeam;
+use App\Models\TelegramTeamMember;
 use App\Services\Quiz\QuizLeaderboard;
+use App\Services\Quiz\QuizTeamLeaderboard;
 use App\Services\Telegram\Handlers\QuizLeaderboardHandler;
 use Illuminate\Support\Facades\Cache;
 use Telegram\Bot\Objects\Message;
@@ -44,7 +48,7 @@ it('shows the weekly and rolling leaderboards with the asking player\'s standing
 
     expect($api->sentMessages)->toHaveCount(1);
 
-    $text = $api->sentMessages[0]['text'];
+    $text = withoutBidi($api->sentMessages[0]['text']);
 
     expect($text)->toContain('هذا الأسبوع')
         ->toContain('آخر 30 يوماً')
@@ -77,7 +81,7 @@ it('ranks the rolling board on the window only, so an old lead ages out', functi
     $api = new FakeTelegramApi;
     (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين', userId: 999));
 
-    $text = $api->sentMessages[0]['text'];
+    $text = withoutBidi($api->sentMessages[0]['text']);
 
     expect($text)->toContain('🥇 جديد')
         ->not->toContain('قديم');
@@ -97,7 +101,7 @@ it('omits the personal section for someone who never played', function () {
     $api = new FakeTelegramApi;
     (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين', userId: 999));
 
-    expect($api->sentMessages[0]['text'])->not->toContain('نتيجتك');
+    expect(withoutBidi($api->sentMessages[0]['text']))->not->toContain('نتيجتك');
 });
 
 it('rate-limits repeated leaderboard requests in the same chat', function () {
@@ -124,4 +128,129 @@ it('ignores unrelated messages', function () {
     (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('كلام عادي عن المتصدرين في الدوري'));
 
     expect($api->sentMessages)->toBeEmpty();
+});
+
+/**
+ * A player who answered today's question for `points`, in `team` if given —
+ * the shape every team-board case is built from.
+ */
+function teamPlayer(int $telegramUserId, string $name, int $points, ?TelegramTeam $team = null): QuizPlayer
+{
+    $player = QuizPlayer::factory()->create([
+        'telegram_user_id' => $telegramUserId,
+        'first_name' => $name,
+        'answers_count' => 1,
+    ]);
+
+    QuizAnswer::factory()->for($player, 'player')->onQuizDate(today())->create(['points' => $points]);
+
+    if ($team !== null) {
+        TelegramTeamMember::factory()->for($team, 'team')->create([
+            'telegram_user_id' => $telegramUserId,
+            'first_name' => $name,
+        ]);
+    }
+
+    return $player;
+}
+
+describe('the team board', function () {
+    it('ranks the chat\'s teams by what their players averaged, not by roster size', function () {
+        $small = TelegramTeam::factory()->create(['chat_id' => -100200300, 'name' => 'الزاهر']);
+        $big = TelegramTeam::factory()->create(['chat_id' => -100200300, 'name' => 'العابدية']);
+
+        teamPlayer(201, 'أول', 30, $small);
+        teamPlayer(202, 'ثاني', 30, $small);
+        teamPlayer(203, 'ثالث', 30, $small);
+
+        teamPlayer(301, 'رابع', 10, $big);
+        teamPlayer(302, 'خامس', 10, $big);
+        teamPlayer(303, 'سادس', 10, $big);
+        // Two more on the roster who did not play: they neither help nor hurt.
+        TelegramTeamMember::factory()->count(2)->for($big, 'team')->create();
+
+        $api = new FakeTelegramApi;
+        (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين', userId: 999));
+
+        $text = withoutBidi($api->sentMessages[0]['text']);
+
+        expect($text)->toContain('🛡️ <b>الفرق هذا الأسبوع</b>')
+            ->toContain('🥇 الزاهر — معدل 30 نقطة · شارك 3 من 3')
+            ->toContain('🥈 العابدية — معدل 10 نقاط · شارك 3 من 5');
+    });
+
+    it('leaves a team below the quorum unranked, however well its player did', function () {
+        $ranked = TelegramTeam::factory()->create(['chat_id' => -100200300, 'name' => 'الزاهر']);
+        $tiny = TelegramTeam::factory()->create(['chat_id' => -100200300, 'name' => 'العزيزية']);
+
+        teamPlayer(201, 'أول', 10, $ranked);
+        teamPlayer(202, 'ثاني', 10, $ranked);
+        teamPlayer(203, 'ثالث', 10, $ranked);
+
+        teamPlayer(401, 'بطل', 500, $tiny);
+        teamPlayer(402, 'بطلة', 500, $tiny);
+
+        $api = new FakeTelegramApi;
+        (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين', userId: 999));
+
+        $text = withoutBidi($api->sentMessages[0]['text']);
+
+        expect($text)->toContain('🥇 الزاهر')
+            ->not->toContain('العزيزية');
+    });
+
+    it('teaches the quorum when no team has reached it yet', function () {
+        $team = TelegramTeam::factory()->create(['chat_id' => -100200300, 'name' => 'الزاهر']);
+
+        teamPlayer(201, 'أول', 10, $team);
+        teamPlayer(202, 'ثاني', 10, $team);
+
+        $api = new FakeTelegramApi;
+        (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين', userId: 999));
+
+        expect(withoutBidi($api->sentMessages[0]['text']))
+            ->toContain('لم يكتمل نصاب أي فريق بعد')
+            ->toContain((string) QuizTeamLeaderboard::MIN_ACTIVE_MEMBERS);
+    });
+
+    it('closes with the join invitation wherever the chat has teams', function () {
+        TelegramTeam::factory()->create(['chat_id' => -100200300, 'name' => 'الزاهر']);
+        teamPlayer(201, 'أول', 10);
+
+        $api = new FakeTelegramApi;
+        (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين', userId: 999));
+
+        expect(withoutBidi($api->sentMessages[0]['text']))->toContain('أرسل: '.QuizLeaderboardHandler::JOIN_COMMAND);
+    });
+
+    it('says nothing about teams in a chat that has none', function () {
+        teamPlayer(201, 'أول', 10);
+
+        $api = new FakeTelegramApi;
+        (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين', userId: 999));
+
+        $text = withoutBidi($api->sentMessages[0]['text']);
+
+        expect($text)->not->toContain('الفرق هذا الأسبوع')
+            ->not->toContain(QuizLeaderboardHandler::JOIN_COMMAND);
+    });
+});
+
+it('collapses each board into an expandable quote and fences its lines', function () {
+    QuizAnswer::factory()
+        ->for(QuizPlayer::factory()->create(['first_name' => 'Ahmad_99', 'answers_count' => 1]), 'player')
+        ->onQuizDate(today())
+        ->create(['points' => 40]);
+
+    $api = new FakeTelegramApi;
+    (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين', userId: 999));
+
+    $text = $api->sentMessages[0]['text'];
+
+    expect($text)->toContain('<blockquote expandable>')
+        ->toContain('</blockquote>')
+        // Every line opens right-to-left, and the Latin name is isolated so it
+        // cannot drag the rank or the score around it.
+        ->toContain(Bidi::RLM.'🥇 ')
+        ->toContain(Bidi::isolate('Ahmad_99'));
 });

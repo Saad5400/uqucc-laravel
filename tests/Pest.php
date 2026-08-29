@@ -41,7 +41,18 @@ expect()->extend('toBeOne', function () {
 |
 */
 
-function something()
+/**
+ * A bot message with its invisible bidi fencing removed, so an assertion can
+ * read the way the line reads on screen. The marks ({@see App\Helpers\Bidi})
+ * only decide ordering, never content — asserting on the fenced string would
+ * test the fencing rather than the message. One dedicated test covers the
+ * marks themselves.
+ */
+function withoutBidi(string $text): string
 {
-    // ..
+    return str_replace(
+        [App\Helpers\Bidi::RLM, App\Helpers\Bidi::FSI, App\Helpers\Bidi::LRI, App\Helpers\Bidi::PDI],
+        '',
+        $text,
+    );
 }

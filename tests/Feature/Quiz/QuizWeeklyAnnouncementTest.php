@@ -2,6 +2,8 @@
 
 use App\Models\QuizAnswer;
 use App\Models\QuizPlayer;
+use App\Models\TelegramTeam;
+use App\Models\TelegramTeamMember;
 use App\Services\Quiz\QuizPoster;
 use App\Settings\QuizSettings;
 use Tests\Fakes\FakeTelegramApi;
@@ -48,7 +50,7 @@ it('announces the top players of the week that just ended', function () {
 
     expect($this->fake->sentMessages)->toHaveCount(1);
 
-    $text = $this->fake->sentMessages[0]['text'];
+    $text = withoutBidi($this->fake->sentMessages[0]['text']);
 
     expect($this->fake->sentMessages[0]['chat_id'])->toBe(-100200300)
         ->and($text)->toContain('🥇 أحمد — 50 نقطة')
@@ -68,7 +70,7 @@ it('leaves the new week\'s points out of the announcement, and keeps them', func
 
     $this->artisan('quiz:announce-weekly')->assertExitCode(0);
 
-    expect($this->fake->sentMessages[0]['text'])->toContain('أحمد — 30 نقطة');
+    expect(withoutBidi($this->fake->sentMessages[0]['text']))->toContain('أحمد — 30 نقطة');
 
     // Nothing is reset, so today's points still stand on the new week's board.
     expect(app(App\Services\Quiz\QuizLeaderboard::class)->weeklyPointsFor($player))->toBe(12);
@@ -91,7 +93,7 @@ it('caps the announcement at twenty players', function () {
 
     $this->artisan('quiz:announce-weekly')->assertExitCode(0);
 
-    $text = $this->fake->sentMessages[0]['text'];
+    $text = withoutBidi($this->fake->sentMessages[0]['text']);
 
     expect($text)->toContain('20. لاعب20')
         ->and($text)->not->toContain('لاعب21');
@@ -135,5 +137,61 @@ it('escapes player names in the HTML announcement', function () {
 
     $this->artisan('quiz:announce-weekly')->assertExitCode(0);
 
-    expect($this->fake->sentMessages[0]['text'])->toContain('&lt;b&gt;خبيث&lt;/b&gt;');
+    expect(withoutBidi($this->fake->sentMessages[0]['text']))->toContain('&lt;b&gt;خبيث&lt;/b&gt;');
+});
+
+/** A player of `team` who scored `points` on the given day's question. */
+function teamScoredOn(TelegramTeam $team, int $telegramUserId, string $quizDate, int $points): void
+{
+    $player = QuizPlayer::factory()->create([
+        'telegram_user_id' => $telegramUserId,
+        'first_name' => 'لاعب'.$telegramUserId,
+    ]);
+
+    TelegramTeamMember::factory()->for($team, 'team')->create(['telegram_user_id' => $telegramUserId]);
+
+    scoredOn($player, $quizDate, $points);
+}
+
+it('crowns the chat\'s own teams alongside the players', function () {
+    $team = TelegramTeam::factory()->create(['chat_id' => -100200300, 'name' => 'العابدية']);
+
+    teamScoredOn($team, 501, '2026-08-24', 30);
+    teamScoredOn($team, 502, '2026-08-25', 30);
+    teamScoredOn($team, 503, '2026-08-26', 30);
+
+    $this->artisan('quiz:announce-weekly')->assertExitCode(0);
+
+    expect(withoutBidi($this->fake->sentMessages[0]['text']))
+        ->toContain('🛡️ <b>فرق الأسبوع</b>')
+        ->toContain('🥇 العابدية — معدل 30 نقطة · شارك 3 من 3');
+});
+
+it('leaves the team block out where no team reached the quorum', function () {
+    $team = TelegramTeam::factory()->create(['chat_id' => -100200300, 'name' => 'العابدية']);
+
+    teamScoredOn($team, 501, '2026-08-24', 30);
+    teamScoredOn($team, 502, '2026-08-25', 30);
+
+    $this->artisan('quiz:announce-weekly')->assertExitCode(0);
+
+    expect(withoutBidi($this->fake->sentMessages[0]['text']))->not->toContain('فرق الأسبوع');
+});
+
+it('names each group its own teams', function () {
+    $settings = app(QuizSettings::class);
+    $settings->chat_ids = ['-100200300', '-100400500'];
+    $settings->save();
+
+    $ours = TelegramTeam::factory()->create(['chat_id' => -100200300, 'name' => 'العابدية']);
+    TelegramTeam::factory()->create(['chat_id' => -100400500, 'name' => 'الزاهر']);
+
+    teamScoredOn($ours, 501, '2026-08-24', 30);
+    teamScoredOn($ours, 502, '2026-08-25', 30);
+    teamScoredOn($ours, 503, '2026-08-26', 30);
+
+    $this->artisan('quiz:announce-weekly')->assertExitCode(0);
+
+    expect(withoutBidi($this->fake->sentMessages[0]['text']))->toContain('العابدية')
+        ->and(withoutBidi($this->fake->sentMessages[1]['text']))->not->toContain('العابدية');
 });
