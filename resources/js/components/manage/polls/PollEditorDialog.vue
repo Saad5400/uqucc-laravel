@@ -1,9 +1,9 @@
 <script setup lang="ts">
 /**
- * Write an opinion poll or edit one that has not gone out yet. Two to ten
- * options, Telegram's caps shown live, and — for a new poll — a shelf of
- * ready-made questions, because the queue being empty is what actually kills
- * this feature.
+ * Write an opinion poll by hand, or edit one — authored or generated — that
+ * has not gone out yet. Two to ten options and Telegram's caps shown live;
+ * a new poll also gets a shelf of ready-made questions, for the admin who
+ * would rather pick one than wait on a generation.
  */
 import CharCount from '@/components/manage/CharCount.vue';
 import { Button } from '@/components/ui/button';

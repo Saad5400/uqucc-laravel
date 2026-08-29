@@ -94,7 +94,10 @@ describe('posting the day\'s poll', function () {
         expect($this->fake->sentPolls)->toHaveCount(1);
     });
 
-    it('posts nothing on a day with an empty queue', function () {
+    // AI is left unconfigured throughout this file, so posting never reaches
+    // its inline fallback here and an empty day stays empty. The fallback has
+    // its own coverage in OpinionPollGenerationTest.
+    it('posts nothing on a day with an empty queue it cannot author for', function () {
         OpinionPoll::factory()->create(['poll_date' => today()->addDay()]);
 
         runPollCommand();

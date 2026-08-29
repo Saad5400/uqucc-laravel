@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Ai\OpinionPoll\OpinionPollTheme;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -46,6 +47,7 @@ class OpinionPoll extends Model
         'poll_date',
         'question',
         'options',
+        'theme',
         'status',
         'post_time',
         'results',
@@ -59,6 +61,7 @@ class OpinionPoll extends Model
         return [
             'poll_date' => 'date',
             'options' => 'array',
+            'theme' => OpinionPollTheme::class,
             'results' => 'array',
             'posted_at' => 'datetime',
             'closes_at' => 'datetime',
@@ -74,6 +77,30 @@ class OpinionPoll extends Model
     public static function forDate(CarbonInterface $date): ?self
     {
         return static::query()->whereDate('poll_date', $date)->first();
+    }
+
+    /**
+     * The theme a generated poll should take next: the one whose turn has
+     * waited longest, counting the days admins have already queued ahead as
+     * used. A theme nobody has asked from yet always wins — so the rotation
+     * covers the whole vocabulary before it repeats any of it.
+     *
+     * Ties break on the enum's own order rather than at random, so the same
+     * queue state always produces the same next theme and a regeneration does
+     * not quietly wander off to another angle.
+     */
+    public static function nextTheme(): OpinionPollTheme
+    {
+        $lastUsed = static::query()
+            ->whereNotNull('theme')
+            ->selectRaw('theme, MAX(poll_date) as last_date')
+            ->groupBy('theme')
+            ->pluck('last_date', 'theme');
+
+        $waiting = collect(OpinionPollTheme::all())
+            ->sortBy(fn (OpinionPollTheme $theme): string => (string) ($lastUsed[$theme->value] ?? ''));
+
+        return $waiting->first();
     }
 
     public function isReady(): bool

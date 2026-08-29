@@ -17,6 +17,7 @@ class OpinionPollFactory extends Factory
             'poll_date' => today(),
             'question' => 'ما المحرر الذي تكتب به أكثر؟',
             'options' => ['VS Code', 'IntelliJ', 'Vim', 'شيء آخر'],
+            'theme' => null,
             'status' => OpinionPoll::STATUS_READY,
             'post_time' => null,
         ];

@@ -1,10 +1,12 @@
 <?php
 
+use App\Jobs\GenerateOpinionPollJob;
 use App\Models\OpinionPoll;
 use App\Models\User;
 use App\Services\OpinionPoll\OpinionPollPoster;
 use App\Settings\OpinionPollSettings;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Support\Facades\Queue;
 use Inertia\Testing\AssertableInertia as Assert;
 use Tests\Fakes\FakeTelegramApi;
 
@@ -70,6 +72,8 @@ it('renders the page with the queue, the live poll and past results', function (
             ->has('recent', 1)
             ->where('recent.0.total_votes', 13)
             ->has('suggestions')
+            ->has('themes', 8)
+            ->has('aiDisabledReason')
             ->where('limits.question', 300)
             ->where('limits.max_options', 10)
             ->where('today', today()->toDateString())
@@ -191,6 +195,61 @@ describe('writing polls', function () {
         expect($poll->refresh()->question)->not->toBe('سؤال آخر؟')
             ->and(OpinionPoll::query()->count())->toBe(1);
     });
+});
+
+describe('generating from the panel', function () {
+    it('queues a generation for the chosen day and angle', function () {
+        Queue::fake();
+
+        $this->actingAs($this->admin)
+            ->post('/manage/polls/generate', ['date' => today()->addDay()->toDateString(), 'theme' => 'tools'])
+            ->assertSessionHasNoErrors();
+
+        Queue::assertPushed(
+            GenerateOpinionPollJob::class,
+            fn (GenerateOpinionPollJob $job): bool => $job->date === today()->addDay()->toDateString()
+                && $job->theme === 'tools'
+                && $job->replace === false,
+        );
+    });
+
+    it('regenerates a day that already holds a queued poll', function () {
+        Queue::fake();
+        OpinionPoll::factory()->create();
+
+        $this->actingAs($this->admin)
+            ->post('/manage/polls/generate', [])
+            ->assertSessionHasNoErrors();
+
+        Queue::assertPushed(
+            GenerateOpinionPollJob::class,
+            fn (GenerateOpinionPollJob $job): bool => $job->theme === null && $job->replace === true,
+        );
+    });
+
+    it('refuses a day whose poll already went out', function () {
+        Queue::fake();
+        OpinionPoll::factory()->posted()->create();
+
+        $this->actingAs($this->admin)
+            ->post('/manage/polls/generate', [])
+            ->assertSessionHasErrors('generate');
+
+        Queue::assertNothingPushed();
+    });
+
+    it('rejects a past day or an unknown angle', function (array $payload, string $field) {
+        Queue::fake();
+
+        $this->actingAs($this->admin)
+            ->post('/manage/polls/generate', $payload)
+            ->assertSessionHasErrors($field);
+
+        Queue::assertNothingPushed();
+    })->with([
+        'past day' => [['date' => '2020-01-01'], 'date'],
+        'unknown angle' => [['theme' => 'not-a-theme'], 'theme'],
+    ]);
 });
 
 describe('posting and closing by hand', function () {

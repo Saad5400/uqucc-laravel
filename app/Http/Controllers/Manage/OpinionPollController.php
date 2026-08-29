@@ -2,10 +2,14 @@
 
 namespace App\Http\Controllers\Manage;
 
+use App\Ai\OpinionPoll\OpinionPollAuthor;
+use App\Ai\OpinionPoll\OpinionPollTheme;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Manage\GenerateOpinionPollRequest;
 use App\Http\Requests\Manage\StoreOpinionPollRequest;
 use App\Http\Requests\Manage\UpdateOpinionPollRequest;
 use App\Http\Requests\Manage\UpdateOpinionPollSettingsRequest;
+use App\Jobs\GenerateOpinionPollJob;
 use App\Models\OpinionPoll;
 use App\Models\TelegramChatSetting;
 use App\Services\OpinionPoll\OpinionPollPoster;
@@ -32,7 +36,7 @@ class OpinionPollController extends Controller
     /** How far ahead the editor looks for a free day before giving up. */
     private const MAX_SCHEDULING_HORIZON_DAYS = 365;
 
-    public function index(OpinionPollSettings $settings, OpinionPollSchedule $schedule): Response
+    public function index(OpinionPollSettings $settings, OpinionPollSchedule $schedule, OpinionPollAuthor $author): Response
     {
         return Inertia::render('manage/polls/Index', [
             'settings' => [
@@ -58,6 +62,12 @@ class OpinionPollController extends Controller
             'upcoming' => $this->upcoming(),
             'recent' => $this->recent(),
             'suggestions' => OpinionPollSuggestions::all(),
+            'themes' => collect(OpinionPollTheme::all())
+                ->map(fn (OpinionPollTheme $theme): array => [
+                    'value' => $theme->value,
+                    'label' => $theme->label(),
+                ]),
+            'aiDisabledReason' => $author->disabledReason(),
             'limits' => [
                 'question' => OpinionPoll::MAX_QUESTION_CHARS,
                 'option' => OpinionPoll::MAX_OPTION_CHARS,
@@ -79,6 +89,32 @@ class OpinionPollController extends Controller
         $settings->save();
 
         return back()->with('success', 'تم حفظ إعدادات استطلاع الرأي.');
+    }
+
+    /**
+     * Author a poll on demand (queued — the authoring model is slow). The
+     * morning schedule fills today; this button covers the first run,
+     * re-rolling a poll nobody likes, and building a buffer of upcoming days.
+     * A day that already holds a `ready` poll is regenerated in place; a
+     * posted one is never touched.
+     */
+    public function generate(GenerateOpinionPollRequest $request): RedirectResponse
+    {
+        $date = $request->date('date')?->startOfDay() ?? today();
+        $existing = OpinionPoll::forDate($date);
+        $replace = $existing !== null;
+
+        if ($existing !== null && ! $existing->isReady()) {
+            return back()->withErrors(['generate' => 'استطلاع هذا اليوم منشور بالفعل — لا يمكن إعادة توليده.']);
+        }
+
+        GenerateOpinionPollJob::dispatch($date->toDateString(), $request->validated('theme'), $replace);
+
+        $day = $date->isSameDay(today()) ? 'استطلاع اليوم' : 'استطلاع يوم '.$date->toDateString();
+
+        return back()->with('success', $replace
+            ? "بدأ إعادة توليد {$day} — سيتحدّث خلال دقائق."
+            : "بدأ توليد {$day} — سيظهر خلال دقائق.");
     }
 
     public function store(StoreOpinionPollRequest $request): RedirectResponse
@@ -202,6 +238,7 @@ class OpinionPollController extends Controller
                 'poll_date' => $poll->poll_date->toDateString(),
                 'status' => $poll->status,
                 'question' => $poll->question,
+                'theme' => $poll->theme?->label(),
                 'post_time' => $poll->post_time,
             ])
             ->toBase();
@@ -265,6 +302,7 @@ class OpinionPollController extends Controller
             'poll_date' => $poll->poll_date->toDateString(),
             'question' => $poll->question,
             'options' => $poll->options,
+            'theme' => $poll->theme?->label(),
             'status' => $poll->status,
             'post_time' => $poll->post_time,
             'results' => $poll->tally(),

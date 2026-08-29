@@ -6,6 +6,8 @@ export interface Poll {
     poll_date: string;
     question: string;
     options: string[];
+    /** The angle a generated poll was written from, or null when hand-written. */
+    theme: string | null;
     status: PollStatus;
     /** A one-day posting time («HH:MM»), or null to follow the default. */
     post_time: string | null;
@@ -24,6 +26,7 @@ export interface QueuedPoll {
     poll_date: string;
     status: PollStatus;
     question: string;
+    theme: string | null;
     post_time: string | null;
 }
 
@@ -34,6 +37,12 @@ export interface Limits {
     min_options: number;
     max_options: number;
     max_open_hours: number;
+}
+
+/** One angle the author can write from. */
+export interface Theme {
+    value: string;
+    label: string;
 }
 
 /** A ready-made poll the editor offers as a starting point. */

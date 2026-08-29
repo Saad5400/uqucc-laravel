@@ -96,6 +96,7 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::get('/polls', [OpinionPollController::class, 'index'])->name('polls.index');
         Route::put('/polls/settings', [OpinionPollController::class, 'updateSettings'])->name('polls.settings.update');
         Route::post('/polls', [OpinionPollController::class, 'store'])->name('polls.store');
+        Route::post('/polls/generate', [OpinionPollController::class, 'generate'])->name('polls.generate');
         Route::put('/polls/{poll}', [OpinionPollController::class, 'update'])->name('polls.update');
         Route::delete('/polls/{poll}', [OpinionPollController::class, 'destroy'])->name('polls.destroy');
         Route::post('/polls/{poll}/post', [OpinionPollController::class, 'post'])->name('polls.post');

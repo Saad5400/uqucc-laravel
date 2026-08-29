@@ -3,9 +3,10 @@ import ConfirmDialog from '@/components/manage/ConfirmDialog.vue';
 import EmptyState from '@/components/manage/EmptyState.vue';
 import ManageLayout from '@/components/manage/ManageLayout.vue';
 import PageHeader from '@/components/manage/PageHeader.vue';
+import GeneratePollDialog from '@/components/manage/polls/GeneratePollDialog.vue';
 import PollEditorDialog from '@/components/manage/polls/PollEditorDialog.vue';
 import PollResults from '@/components/manage/polls/PollResults.vue';
-import type { Limits, Poll, QueuedPoll, Suggestion } from '@/components/manage/polls/types';
+import type { Limits, Poll, QueuedPoll, Suggestion, Theme } from '@/components/manage/polls/types';
 import { statusBadges } from '@/components/manage/polls/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,7 @@ import { TagsInput, TagsInputInput, TagsInputItem, TagsInputItemDelete, TagsInpu
 import { arabicCount } from '@/lib/arabic';
 import { formatDateTime, formatDayOffset, formatShortDate, formatTimeOfDay, formatWeekdayDate } from '@/lib/formatters';
 import { Head, router, useForm } from '@inertiajs/vue3';
-import { BarChart3, CalendarClock, Loader2, MessageSquareDashed, Pencil, PenLine, Send, SquareCheckBig, Trash2 } from 'lucide-vue-next';
+import { BarChart3, CalendarClock, Loader2, MessageSquareDashed, Pencil, PenLine, Send, Sparkles, SquareCheckBig, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 defineOptions({ layout: ManageLayout });
@@ -43,6 +44,9 @@ const props = defineProps<{
     upcoming: QueuedPoll[];
     recent: Poll[];
     suggestions: Suggestion[];
+    themes: Theme[];
+    /** Why AI generation is unavailable, or null while it can run. */
+    aiDisabledReason: string | null;
     limits: Limits;
     today: string;
     nextFreeDate: string;
@@ -69,6 +73,8 @@ const nextPollContext = computed(() => {
 /* ------------------------------------------------------------------ */
 /* Writing, editing and deleting                                       */
 /* ------------------------------------------------------------------ */
+
+const generateDialogOpen = ref(false);
 
 const editorOpen = ref(false);
 const editingPoll = ref<Poll | null>(null);
@@ -206,7 +212,7 @@ const chatIdsError = computed(() => {
     <Head title="استطلاع الرأي" />
     <PageHeader
         title="استطلاع الرأي"
-        description="سؤال رأي مجهول بلا إجابة صحيحة، يُنشر يومياً في مجموعة التليجرام وتُعلن نتيجته بعد يوم — أخف باب يدخل منه العضو الصامت"
+        description="سؤال رأي مجهول بلا إجابة صحيحة، يكتبه الذكاء الاصطناعي كل صباح ويُنشر مساءً وتُعلن نتيجته بعد يوم — أخف باب يدخل منه العضو الصامت"
     />
 
     <div class="space-y-6">
@@ -270,9 +276,13 @@ const chatIdsError = computed(() => {
                         <Send class="size-4" />
                         نشر الآن
                     </Button>
-                    <Button size="sm" @click="openEditor(null)">
+                    <Button size="sm" variant="outline" @click="openEditor(null)">
                         <PenLine class="size-4" />
-                        استطلاع جديد
+                        كتابة يدوية
+                    </Button>
+                    <Button size="sm" :disabled="aiDisabledReason !== null" :title="aiDisabledReason ?? undefined" @click="generateDialogOpen = true">
+                        <Sparkles class="size-4" />
+                        توليد بالذكاء الاصطناعي
                     </Button>
                 </div>
             </CardHeader>
@@ -281,17 +291,31 @@ const chatIdsError = computed(() => {
                     v-if="currentPoll === null"
                     :icon="MessageSquareDashed"
                     title="لا يوجد استطلاع في الطابور"
-                    description="استطلاع الرأي يُكتب باليد — لا يولّده الذكاء الاصطناعي — والطابور الفارغ يعني يوماً صامتاً. اكتب واحداً أو ابدأ من الاقتراحات الجاهزة داخل النافذة."
+                    description="يُولَّد استطلاع اليوم تلقائياً كل صباح، وإن تعذّر ذلك يُكتب واحد لحظة النشر — فلا يمرّ يوم صامت. ولّد واحداً الآن لترى النتيجة قبل موعدها، أو اكتبه بنفسك."
                 >
-                    <Button size="sm" @click="openEditor(null)">
-                        <PenLine class="size-4" />
-                        استطلاع جديد
-                    </Button>
+                    <div class="flex flex-wrap justify-center gap-2">
+                        <Button
+                            size="sm"
+                            :disabled="aiDisabledReason !== null"
+                            :title="aiDisabledReason ?? undefined"
+                            @click="generateDialogOpen = true"
+                        >
+                            <Sparkles class="size-4" />
+                            توليد استطلاع
+                        </Button>
+                        <Button size="sm" variant="outline" @click="openEditor(null)">
+                            <PenLine class="size-4" />
+                            كتابة يدوية
+                        </Button>
+                    </div>
                 </EmptyState>
 
                 <div v-else class="space-y-3 rounded-lg border border-border p-4">
                     <div class="flex flex-wrap items-start justify-between gap-2">
-                        <p class="font-medium">{{ currentPoll.question }}</p>
+                        <div class="min-w-0 space-y-1">
+                            <p class="font-medium">{{ currentPoll.question }}</p>
+                            <Badge v-if="currentPoll.theme" variant="outline">{{ currentPoll.theme }}</Badge>
+                        </div>
                         <div class="flex items-center gap-1">
                             <Button variant="ghost" size="icon" aria-label="تعديل الاستطلاع" @click="openEditor(currentPoll)">
                                 <Pencil />
@@ -307,6 +331,8 @@ const chatIdsError = computed(() => {
                         </li>
                     </ul>
                 </div>
+
+                <p v-if="aiDisabledReason" class="text-xs text-muted-foreground">{{ aiDisabledReason }}</p>
             </CardContent>
         </Card>
 
@@ -320,7 +346,7 @@ const chatIdsError = computed(() => {
                     v-if="!queueAhead.length"
                     :icon="CalendarClock"
                     title="لا توجد أيام محجوزة بعد"
-                    description="جهّز أسبوعاً دفعة واحدة: الاستطلاع أسرع ما يُكتب في هذه اللوحة، وطابور ممتلئ يعني أن المجموعة لا تفقد الطقس اليومي في أول يوم انشغال."
+                    description="يكفي أن يُولَّد استطلاع كل صباح، لكن تجهيز أيام قادمة مسبقاً يتيح لك مراجعتها ومزجها بأسئلة من عندك — ولّد ليوم قادم من زر «توليد بالذكاء الاصطناعي»."
                 />
 
                 <template v-else>
@@ -333,6 +359,7 @@ const chatIdsError = computed(() => {
                             <span class="shrink-0 tabular-nums">{{ formatShortDate(poll.poll_date) }}</span>
                             <span class="shrink-0 text-xs text-muted-foreground">{{ formatDayOffset(poll.poll_date, today) }}</span>
                             <span class="min-w-0 flex-1 truncate">{{ poll.question }}</span>
+                            <Badge v-if="poll.theme" variant="outline" class="shrink-0">{{ poll.theme }}</Badge>
                             <Badge v-if="poll.status !== 'ready'" :variant="statusBadges[poll.status].variant">
                                 {{ statusBadges[poll.status].label }}
                             </Badge>
@@ -386,8 +413,8 @@ const chatIdsError = computed(() => {
                         <div class="space-y-1">
                             <Label for="polls-enabled">تفعيل استطلاع الرأي</Label>
                             <p class="text-xs text-muted-foreground">
-                                عند التفعيل: يُنشر استطلاع اليوم — إن وُجد في الطابور — في موعده، ويُغلق بعد المدة المحددة وتُعلن نتيجته. الأيام
-                                الفارغة تمرّ بهدوء بلا رسائل.
+                                عند التفعيل: يُولَّد استطلاع اليوم فجراً، ويُنشر في موعده، ويُغلق بعد المدة المحددة وتُعلن نتيجته. وإن بقي اليوم
+                                فارغاً حتى موعد النشر كُتب استطلاعه عندها.
                             </p>
                         </div>
                         <Switch id="polls-enabled" v-model="settingsForm.enabled" />
@@ -474,6 +501,8 @@ const chatIdsError = computed(() => {
             </CardContent>
         </Card>
     </div>
+
+    <GeneratePollDialog v-model:open="generateDialogOpen" :themes="themes" :upcoming="upcoming" :today="today" :default-date="nextFreeDate" />
 
     <PollEditorDialog
         v-model:open="editorOpen"
