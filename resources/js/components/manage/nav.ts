@@ -1,5 +1,6 @@
 import {
     Activity,
+    BarChart3,
     Bot,
     FileText,
     FileUp,
@@ -37,6 +38,7 @@ export const manageNavItems: ManageNavItem[] = [
     { title: 'ذكاء بوت التليجرام', href: '/manage/telegram-chats', icon: Bot },
     { title: 'فرق التليجرام', href: '/manage/telegram-teams', icon: UsersRound },
     { title: 'سؤال اليوم', href: '/manage/quiz', icon: Trophy },
+    { title: 'استطلاع الرأي', href: '/manage/polls', icon: BarChart3 },
     { title: 'سجل النشاط', href: '/manage/activity', icon: Activity, permission: 'view-activity-logs' },
     { title: 'الإعدادات', href: '/manage/settings', icon: Settings },
 ];

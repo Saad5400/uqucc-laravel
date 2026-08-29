@@ -61,6 +61,16 @@ Schedule::command('quiz:post')
     ->withoutOverlapping(10)
     ->runInBackground();
 
+// The whole opinion-poll clock in one entry: it closes a poll whose day is up
+// (announcing the result) and posts today's when its moment arrives. Runs every
+// minute for the same reason `quiz:post` does — the posting time is a setting a
+// single day can override (see App\Services\OpinionPoll\OpinionPollSchedule) —
+// and no-ops on a day with nothing queued.
+Schedule::command('poll:post')
+    ->everyMinute()
+    ->withoutOverlapping(10)
+    ->runInBackground();
+
 // Thursday evening, after the new week's first question went out at 16:00 and
 // the outgoing week's last one (Wednesday's) stopped taking votes with it.
 // The command only sends a message — the weekly board is summed from the
