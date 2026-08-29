@@ -29,14 +29,4 @@ class QuizTeamStanding
     {
         return $this->activeMembers === 0 ? 0 : (int) round($this->points / $this->activeMembers);
     }
-
-    /**
-     * Whether the team is ranked at all. Below the quorum an average is not a
-     * team's performance but one person's, so those teams are listed nowhere
-     * and lose nothing by it.
-     */
-    public function qualifies(): bool
-    {
-        return $this->activeMembers >= QuizTeamLeaderboard::MIN_ACTIVE_MEMBERS;
-    }
 }

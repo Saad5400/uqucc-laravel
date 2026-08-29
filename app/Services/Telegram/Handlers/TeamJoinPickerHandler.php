@@ -323,8 +323,12 @@ class TeamJoinPickerHandler extends BaseTeamHandler
         $lines = [$greeting];
 
         $lines[] = $view === self::MENU
-            ? 'اختر التصنيف أولًا:'
+            ? 'اختر التصنيف أولًا — و✅ تعني أنك في أحد فرقه:'
             : 'اضغط على الفريق للانضمام — واضغط عليه مرة أخرى للخروج منه.';
+
+        if ($view !== self::MENU && count($this->buckets($chatId)) > 1) {
+            $lines[] = 'ولاختيار فرق من تصنيف آخر: «⬅️ باقي التصنيفات».';
+        }
 
         $teams = $this->teamNamesOf($chatId, $userId);
 
@@ -357,6 +361,21 @@ class TeamJoinPickerHandler extends BaseTeamHandler
             ->all();
     }
 
+    /**
+     * The ids of the teams the member is in, in this chat.
+     *
+     * @return array<int, int>
+     */
+    private function teamIdsOf(int $chatId, int $userId): array
+    {
+        return TelegramTeamMember::query()
+            ->where('telegram_user_id', $userId)
+            ->whereHas('team', fn ($query) => $query->where('chat_id', $chatId))
+            ->pluck('team_id')
+            ->map(fn ($teamId): int => (int) $teamId)
+            ->all();
+    }
+
     private function keyboard(int $chatId, int $userId, int $view): Keyboard
     {
         $keyboard = Keyboard::make()->inline();
@@ -381,8 +400,11 @@ class TeamJoinPickerHandler extends BaseTeamHandler
 
         $footer = [];
 
+        // The way back to the other categories. Present in every team view of
+        // a chat that has more than one bucket — without it a member could
+        // only ever join out of the category they first opened.
         if ($view !== self::MENU && count($this->buckets($chatId)) > 1) {
-            $footer[] = $this->button('⬅️ التصنيفات', 'menu', $userId);
+            $footer[] = $this->button('⬅️ باقي التصنيفات', 'menu', $userId);
         }
 
         $footer[] = $this->button('✔️ تم', 'done', $userId);
@@ -393,15 +415,24 @@ class TeamJoinPickerHandler extends BaseTeamHandler
     }
 
     /**
+     * The category menu. Each button carries how many teams the category
+     * holds and a ✅ when the member is already in one of them, so a member
+     * coming back from one category can see at a glance which others they
+     * have yet to visit.
+     *
      * @return array<int, \Telegram\Bot\Keyboard\Button>
      */
     private function categoryButtons(int $chatId, int $userId): array
     {
+        $memberOf = $this->teamIdsOf($chatId, $userId);
         $buttons = [];
 
         foreach ($this->buckets($chatId) as $id => $name) {
-            $count = $this->teamsIn($chatId, $id)->count();
-            $buttons[] = $this->button("{$name} ({$count})", 'c:'.$id, $userId);
+            $teams = $this->teamsIn($chatId, $id);
+            $joined = $teams->whereIn('id', $memberOf)->count();
+            $mark = $joined > 0 ? '✅ ' : '';
+
+            $buttons[] = $this->button($mark."{$name} ({$teams->count()})", 'c:'.$id, $userId);
         }
 
         return $buttons;
@@ -412,13 +443,7 @@ class TeamJoinPickerHandler extends BaseTeamHandler
      */
     private function teamButtons(int $chatId, int $userId, int $view): array
     {
-        $memberOf = TelegramTeamMember::query()
-            ->where('telegram_user_id', $userId)
-            ->whereHas('team', fn ($query) => $query->where('chat_id', $chatId))
-            ->pluck('team_id')
-            ->map(fn ($teamId): int => (int) $teamId)
-            ->all();
-
+        $memberOf = $this->teamIdsOf($chatId, $userId);
         $buttons = [];
 
         foreach ($this->teamsIn($chatId, $view)->take(self::MAX_BUTTONS) as $team) {

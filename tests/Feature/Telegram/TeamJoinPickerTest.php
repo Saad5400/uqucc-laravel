@@ -204,6 +204,39 @@ describe('pressing the buttons', function () {
             ->not->toContain('علوم الحاسب');
     });
 
+    it('walks back to the menu and on into another category', function () {
+        $branch = pickerCategory('الفرع');
+        $major = pickerCategory('التخصص');
+        $abidiyah = pickerTeam('العابدية', $branch);
+        $cs = pickerTeam('علوم الحاسب', $major);
+
+        runPickerUpdate(pickerPress('c:'.$branch->id));
+        runPickerUpdate(pickerPress('t:'.$abidiyah->id));
+
+        // Back to the menu: it shows every category, with a ✅ on the one the
+        // member now has a team in.
+        $menu = runPickerUpdate(pickerPress('menu'));
+
+        expect(pickerKeyboard($menu))->toContain('✅ الفرع (1)')
+            ->toContain('التخصص (1)')
+            ->toContain(TeamJoinPickerHandler::CALLBACK_PREFIX.PICKER_MEMBER_ID.':c:'.$major->id);
+
+        // And on into the other category, which the member can join from too.
+        $other = runPickerUpdate(pickerPress('c:'.$major->id));
+
+        expect(pickerKeyboard($other))->toContain('علوم الحاسب')
+            ->not->toContain('العابدية');
+
+        $joined = runPickerUpdate(pickerPress('t:'.$cs->id));
+
+        expect(TelegramTeamMember::query()->where('telegram_user_id', PICKER_MEMBER_ID)->count())->toBe(2)
+            ->and($joined->editedMessages[0]['text'])->toContain('فرقك الآن: العابدية • علوم الحاسب')
+            // The toggle leaves the member where they were choosing, with the
+            // way back still under the list.
+            ->and(pickerKeyboard($joined))->toContain('✅ علوم الحاسب')
+            ->toContain(':menu');
+    });
+
     it('joins the team on the first press, with no admin approval in the way', function () {
         $team = pickerTeam('العابدية');
 

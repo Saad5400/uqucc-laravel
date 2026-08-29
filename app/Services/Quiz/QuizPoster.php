@@ -403,20 +403,17 @@ class QuizPoster
     /**
      * The chat's own team podium for the week just ended, appended to the
      * winners announcement — the moment a cohort's week of answering pays
-     * off in front of everyone. Empty for a chat with no teams, or none that
-     * reached the quorum ({@see QuizTeamLeaderboard}); the announcement is
-     * about winners, so there is nothing to teach here.
+     * off in front of everyone. Empty for a chat with no teams, or none whose
+     * members played that week; the announcement is about winners, so there
+     * is nothing to teach here.
      */
     private function weeklyTeamBlock(int $chatId): string
     {
         $standings = array_slice(
-            array_filter(
-                $this->teamLeaderboard()->forChat(
-                    $chatId,
-                    $this->leaderboard()->lastWeekStart(),
-                    $this->leaderboard()->lastWeekEnd(),
-                ),
-                static fn (QuizTeamStanding $standing): bool => $standing->qualifies(),
+            $this->teamLeaderboard()->forChat(
+                $chatId,
+                $this->leaderboard()->lastWeekStart(),
+                $this->leaderboard()->lastWeekEnd(),
             ),
             0,
             self::WEEKLY_WINNING_TEAMS,

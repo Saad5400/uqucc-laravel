@@ -34,10 +34,9 @@ use Illuminate\Database\Eloquent\Builder;
  *    and to get more teammates answering — which is the behaviour the whole
  *    feature exists to produce.
  *
- * Two guards keep that honest. A team is ranked only once
- * {@see self::MIN_ACTIVE_MEMBERS} of its members have played in the period,
- * so one strong player cannot carry an empty roster to the top; and equal
- * averages are broken by the number who played, so breadth wins ties.
+ * Equal averages are broken by the number of members who played, so breadth
+ * wins ties: between two teams scoring the same per head, the one that got
+ * more of its people answering is ahead.
  *
  * Nothing here is stored. Standings are derived on read, exactly like the
  * individual boards, so a late vote, a re-run or a team created mid-week can
@@ -45,14 +44,11 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class QuizTeamLeaderboard
 {
-    /** How many members must have played before a team is ranked at all. */
-    public const MIN_ACTIVE_MEMBERS = 3;
-
     /**
      * Every team in the chat that at least one member played for in the
-     * period, best first. Includes teams still short of the quorum — they
-     * carry {@see QuizTeamStanding::qualifies()} false so a caller can rank
-     * the eligible ones and still tell the others what they are missing.
+     * period, best first. A team nobody played for is absent rather than
+     * last: it has no average to rank, and listing it at zero would only
+     * shame a roster for a week it sat out.
      *
      * @return array<int, QuizTeamStanding>
      */

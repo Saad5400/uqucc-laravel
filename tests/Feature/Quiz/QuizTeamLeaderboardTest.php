@@ -91,17 +91,16 @@ it('ignores answers from outside the period', function () {
     expect(teamBoard())->toBeEmpty();
 });
 
-it('rounds the average and holds the quorum line', function () {
+it('averages over the members who played, rounded', function () {
     $team = boardTeam('الزاهر');
 
     playerFor($team, 201, 10);
     playerFor($team, 202, 11);
+    // Two more on the roster who sat the week out: they are neither in the
+    // numerator nor the denominator.
+    TelegramTeamMember::factory()->count(2)->for($team, 'team')->create();
 
-    expect(teamBoard()[0]->qualifies())->toBeFalse()
-        ->and(teamBoard()[0]->average())->toBe(11);
-
-    playerFor($team, 203, 12);
-
-    expect(teamBoard()[0]->qualifies())->toBeTrue()
-        ->and(teamBoard()[0]->average())->toBe(11);
+    expect(teamBoard()[0]->average())->toBe(11)
+        ->and(teamBoard()[0]->activeMembers)->toBe(2)
+        ->and(teamBoard()[0]->members)->toBe(4);
 });

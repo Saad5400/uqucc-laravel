@@ -8,7 +8,6 @@ use App\Models\QuizPlayer;
 use App\Models\TelegramTeam;
 use App\Services\Quiz\QuizLeaderboard;
 use App\Services\Quiz\QuizTeamLeaderboard;
-use App\Services\Quiz\QuizTeamStanding;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Telegram\Bot\Objects\Message;
@@ -136,10 +135,8 @@ class QuizLeaderboardHandler extends BaseHandler
      * individual weekly board, so the two tell one story.
      *
      * A team is ranked by the average of the members who played, not by their
-     * sum ({@see QuizTeamLeaderboard} explains why), and only once enough of
-     * them have played. A chat whose teams are all short of that quorum still
-     * gets the section: it names what is missing, which is the only thing
-     * that would fix it.
+     * sum; {@see QuizTeamLeaderboard} explains why. A week nobody has played
+     * for their team yet gets the invitation instead of an empty podium.
      */
     private function teamSection(Message $message): ?string
     {
@@ -149,20 +146,16 @@ class QuizLeaderboardHandler extends BaseHandler
             return null;
         }
 
-        $standings = $this->teamLeaderboard()->forChat($chatId, $this->leaderboard()->weekStart());
         $ranked = array_slice(
-            array_filter($standings, static fn (QuizTeamStanding $standing): bool => $standing->qualifies()),
+            $this->teamLeaderboard()->forChat($chatId, $this->leaderboard()->weekStart()),
             0,
             self::TEAM_LIMIT,
         );
 
         if ($ranked === []) {
             return $this->section('🛡️ <b>الفرق هذا الأسبوع</b>', [
-                Bidi::line(sprintf(
-                    'لم يكتمل نصاب أي فريق بعد — يحتاج الفريق %s هذا الأسبوع ليدخل الترتيب.',
-                    ArabicPlural::people(QuizTeamLeaderboard::MIN_ACTIVE_MEMBERS),
-                )),
-                Bidi::line('اجمعوا زملاءكم على سؤال اليوم! 🔥'),
+                Bidi::line('لم يسجّل أي فريق نقاطاً هذا الأسبوع بعد.'),
+                Bidi::line('أجب على سؤال اليوم وكن أول من يفتح الحساب لفريقه! 🔥'),
             ]);
         }
 
@@ -184,8 +177,8 @@ class QuizLeaderboardHandler extends BaseHandler
         return $this->section(
             '🛡️ <b>الفرق هذا الأسبوع</b>',
             $lines,
-            'ترتيب الفرق بمعدل نقاط من شارك من أعضائه لا بمجموعها، فالفريق الكبير لا يفوز بعدده — ويلزمه '
-                .ArabicPlural::people(QuizTeamLeaderboard::MIN_ACTIVE_MEMBERS).' على الأقل.',
+            'ترتيب الفرق بمعدل نقاط من شارك من أعضائه لا بمجموعها — فالفريق الكبير لا يفوز بعدده، '
+                .'وعند التساوي يتقدم الفريق الذي شارك عدد أكبر من أعضائه.',
         );
     }
 

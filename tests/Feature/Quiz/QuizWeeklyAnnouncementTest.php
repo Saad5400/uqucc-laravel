@@ -167,11 +167,11 @@ it('crowns the chat\'s own teams alongside the players', function () {
         ->toContain('🥇 العابدية — معدل 30 نقطة · شارك 3 من 3');
 });
 
-it('leaves the team block out where no team reached the quorum', function () {
+it('leaves the team block out where no team played at all', function () {
     $team = TelegramTeam::factory()->create(['chat_id' => -100200300, 'name' => 'العابدية']);
+    TelegramTeamMember::factory()->count(3)->for($team, 'team')->create();
 
-    teamScoredOn($team, 501, '2026-08-24', 30);
-    teamScoredOn($team, 502, '2026-08-25', 30);
+    scoredOn(QuizPlayer::factory()->create(['first_name' => 'وحيد']), '2026-08-26', 50);
 
     $this->artisan('quiz:announce-weekly')->assertExitCode(0);
 

@@ -6,7 +6,6 @@ use App\Models\QuizPlayer;
 use App\Models\TelegramTeam;
 use App\Models\TelegramTeamMember;
 use App\Services\Quiz\QuizLeaderboard;
-use App\Services\Quiz\QuizTeamLeaderboard;
 use App\Services\Telegram\Handlers\QuizLeaderboardHandler;
 use Illuminate\Support\Facades\Cache;
 use Telegram\Bot\Objects\Message;
@@ -154,6 +153,15 @@ function teamPlayer(int $telegramUserId, string $name, int $points, ?TelegramTea
     return $player;
 }
 
+/** The «المتصدرين» reply, as posted to the group. */
+function leaderboardText(int $userId = 999): string
+{
+    $api = new FakeTelegramApi;
+    (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين', userId: $userId));
+
+    return $api->sentMessages[0]['text'];
+}
+
 describe('the team board', function () {
     it('ranks the chat\'s teams by what their players averaged, not by roster size', function () {
         $small = TelegramTeam::factory()->create(['chat_id' => -100200300, 'name' => 'الزاهر']);
@@ -179,38 +187,30 @@ describe('the team board', function () {
             ->toContain('🥈 العابدية — معدل 10 نقاط · شارك 3 من 5');
     });
 
-    it('leaves a team below the quorum unranked, however well its player did', function () {
-        $ranked = TelegramTeam::factory()->create(['chat_id' => -100200300, 'name' => 'الزاهر']);
-        $tiny = TelegramTeam::factory()->create(['chat_id' => -100200300, 'name' => 'العزيزية']);
+    it('ranks a team however few of its members played', function () {
+        $many = TelegramTeam::factory()->create(['chat_id' => -100200300, 'name' => 'الزاهر']);
+        $one = TelegramTeam::factory()->create(['chat_id' => -100200300, 'name' => 'العزيزية']);
 
-        teamPlayer(201, 'أول', 10, $ranked);
-        teamPlayer(202, 'ثاني', 10, $ranked);
-        teamPlayer(203, 'ثالث', 10, $ranked);
+        teamPlayer(201, 'أول', 10, $many);
+        teamPlayer(202, 'ثاني', 10, $many);
+        teamPlayer(203, 'ثالث', 10, $many);
 
-        teamPlayer(401, 'بطل', 500, $tiny);
-        teamPlayer(402, 'بطلة', 500, $tiny);
+        teamPlayer(401, 'بطل', 500, $one);
 
-        $api = new FakeTelegramApi;
-        (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين', userId: 999));
+        $text = withoutBidi(leaderboardText());
 
-        $text = withoutBidi($api->sentMessages[0]['text']);
-
-        expect($text)->toContain('🥇 الزاهر')
-            ->not->toContain('العزيزية');
+        expect($text)->toContain('🥇 العزيزية — معدل 500 نقطة · شارك 1 من 1')
+            ->toContain('🥈 الزاهر — معدل 10 نقاط · شارك 3 من 3');
     });
 
-    it('teaches the quorum when no team has reached it yet', function () {
+    it('invites the first team to open its account when none has played', function () {
         $team = TelegramTeam::factory()->create(['chat_id' => -100200300, 'name' => 'الزاهر']);
+        TelegramTeamMember::factory()->count(3)->for($team, 'team')->create();
+        teamPlayer(999, 'وحيد', 10);
 
-        teamPlayer(201, 'أول', 10, $team);
-        teamPlayer(202, 'ثاني', 10, $team);
-
-        $api = new FakeTelegramApi;
-        (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين', userId: 999));
-
-        expect(withoutBidi($api->sentMessages[0]['text']))
-            ->toContain('لم يكتمل نصاب أي فريق بعد')
-            ->toContain((string) QuizTeamLeaderboard::MIN_ACTIVE_MEMBERS);
+        expect(withoutBidi(leaderboardText()))
+            ->toContain('لم يسجّل أي فريق نقاطاً هذا الأسبوع بعد')
+            ->toContain('أجب على سؤال اليوم');
     });
 
     it('closes with the join invitation wherever the chat has teams', function () {
