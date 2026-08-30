@@ -480,7 +480,7 @@ class UquccSearchHandler extends BaseHandler
         $chatId = $message->getChat()->getId();
         $loadingMessage = null;
 
-        // Check if screenshot needs to be generated (not cached)
+        // Only when the card has to be drawn — a cached one is a file read.
         if (! $this->ogImageService->hasPageScreenshot($page, OgImageService::TYPE_BOT)) {
             // Send loading message
             $loadingMessage = $this->telegram->sendMessage([
@@ -491,13 +491,15 @@ class UquccSearchHandler extends BaseHandler
         }
 
         try {
-            // Get cached or generate new screenshot using OgImageService with bot dimensions
-            $screenshotPath = $this->ogImageService->generatePageScreenshot($page, OgImageService::TYPE_BOT);
-            $screenshotExtension = ScreenshotConfig::extension();
+            // The page's square share card, drawn or read from cache. A failure
+            // here is deliberately not caught: a page reply whose image is
+            // missing is a broken reply, and OgImageService has already logged
+            // why it could not be drawn.
+            $cardPath = $this->ogImageService->generatePageScreenshot($page, OgImageService::TYPE_BOT);
 
             $params = [
                 'chat_id' => $chatId,
-                'photo' => InputFile::create($screenshotPath, "screenshot.{$screenshotExtension}"),
+                'photo' => InputFile::create($cardPath, 'card.'.ScreenshotConfig::extension()),
                 'caption' => $caption,
                 'parse_mode' => 'HTML',
                 'reply_to_message_id' => $this->getReplyToMessageId($message),
@@ -521,7 +523,7 @@ class UquccSearchHandler extends BaseHandler
                 }
             }
         }
-        // Note: We don't delete the screenshot file as it's cached for reuse
+        // Note: we don't delete the card file — it is the cache.
     }
 
     /**
@@ -746,7 +748,6 @@ class UquccSearchHandler extends BaseHandler
             'application/zip' => 'zip',
             'text/plain' => 'txt',
             'text/html' => 'html',
-            ScreenshotConfig::mimeType() => ScreenshotConfig::extension(),
         ];
 
         return $mimeMap[$mimeType] ?? null;

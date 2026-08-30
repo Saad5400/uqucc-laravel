@@ -13,7 +13,11 @@ class OgImageController extends Controller
     ) {}
 
     /**
-     * Generate and return an OG image for a given route.
+     * The share card for a route, as a PNG.
+     *
+     * This is what a crawler fetches when someone posts a link to the site.
+     * Drawn on demand and cached as a file, so the first share of a page pays
+     * for it and every later one is a file read.
      */
     public function generate(string $route = '/')
     {
@@ -24,14 +28,12 @@ class OgImageController extends Controller
                 $normalizedRoute = '';
             }
 
-            // Generate the screenshot
-            $screenshotPath = $this->ogImageService->generateRouteScreenshot(
+            $cardPath = $this->ogImageService->generateRouteScreenshot(
                 $normalizedRoute,
                 OgImageService::TYPE_OG
             );
 
-            // Return the image
-            return response()->file($screenshotPath, [
+            return response()->file($cardPath, [
                 'Content-Type' => ScreenshotConfig::mimeType(),
                 'Cache-Control' => ScreenshotConfig::cacheControl(),
             ]);
@@ -44,7 +46,10 @@ class OgImageController extends Controller
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            // Return a 500 error
+            // A preview is worth less than the page it points at: the crawler
+            // is told the image is unavailable and the link still works. The
+            // exception deliberately does not escape — unlike the bot's card,
+            // where the image IS the reply.
             return response('Failed to generate OG image', 500);
         }
     }

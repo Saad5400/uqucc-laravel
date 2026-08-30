@@ -43,12 +43,6 @@ return [
         'api_key' => env('OCR_SPACE_API_KEY'),
     ],
 
-    'browsershot' => [
-        'chrome_path' => env('CHROME_PATH'),
-        'node_binary' => env('NODE_BINARY'),
-        'node_modules_path' => env('NODE_PATH'),
-    ],
-
     /*
     |--------------------------------------------------------------------------
     | Takumi image renderer
@@ -57,7 +51,7 @@ return [
     | The cards App\Support\TakumiRenderer draws are laid out by a Node script
     | (scripts/takumi-render.mjs). Only the interpreter is configurable, and
     | only because the deployment image installs Node through Nix and PHP-FPM
-    | does not always see it on PATH — the same NODE_BINARY Browsershot uses.
+    | does not always see it on PATH (nixpacks.toml exports NODE_BINARY for it).
     | Everything else the render needs (the fonts, the packages) is in the repo.
     |
     */

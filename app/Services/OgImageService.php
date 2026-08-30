@@ -4,249 +4,367 @@ namespace App\Services;
 
 use App\Models\Page;
 use App\Support\ScreenshotConfig;
+use App\Support\Seo;
+use App\Support\SocialCard;
+use App\Support\TakumiRenderer;
 use Illuminate\Support\Facades\Cache;
-use Spatie\Browsershot\Browsershot;
+use Illuminate\Support\Facades\View;
+use RuntimeException;
 
+/**
+ * The site's share cards: the image a link preview shows, and the image the
+ * Telegram bot sends above a page's reply.
+ *
+ * Both used to be browser screenshots of the page itself — the whole app booted
+ * and painted by Chromium so that 720 pixels of it could be photographed. They
+ * are now drawn: two Blade templates under resources/views/social, laid out by
+ * the Takumi engine ({@see TakumiRenderer}), fed the handful of fields in
+ * {@see SocialCard}. No browser, no page load, no network, and a card that is
+ * legible at thumbnail size instead of a shrunken document page.
+ *
+ * A rendered card is written to disk and its path returned, because that is
+ * what both callers want — one hands the file to `response()->file()`, the
+ * other to Telegram — and because the file doubles as the cache. What keys it
+ * is the card's own content ({@see SocialCard::fingerprint()}): two pages that
+ * would produce the same image share the file, and an edit that changes what a
+ * card says lands on a new one without anybody clearing a key. The 7-day TTL is
+ * now only about reclaiming disk.
+ *
+ * Failures are the callers' to interpret and neither is changed by this being a
+ * renderer rather than a browser: the OG controller catches, logs and answers
+ * 500 (a preview is worth less than a page), while the bot lets the exception
+ * out (a page reply with no image is a broken reply).
+ */
 class OgImageService
 {
     public const TYPE_BOT = 'bot';
 
     public const TYPE_OG = 'og';
 
-    protected array $dimensions = [
-        self::TYPE_BOT => ['width' => 720, 'height' => 720],
-        self::TYPE_OG => ['width' => 720, 'height' => 378],
+    /**
+     * The two cards: the template that draws each, its size in CSS pixels, and
+     * how much text it has room for.
+     *
+     * Every `limits` number is a line count in disguise: a card is a fixed box
+     * and the engine will happily paint a fourth line of a three-line title
+     * outside it, so each field is trimmed to what fits in the lines the
+     * template reserved for it. They are set from the worst case — the section
+     * pill, the title and the description all at their longest at once — and
+     * belong here beside the sizes rather than in the content.
+     */
+    private const CARDS = [
+        self::TYPE_OG => [
+            'view' => 'social.og-card',
+            'width' => 720,
+            'height' => 378,
+            'limits' => ['title' => 62, 'description' => 118, 'section' => 26, 'url' => 52],
+        ],
+        self::TYPE_BOT => [
+            'view' => 'social.bot-card',
+            'width' => 720,
+            'height' => 720,
+            'limits' => ['title' => 80, 'description' => 140, 'section' => 36, 'url' => 46],
+        ],
     ];
 
     /**
-     * Generate a screenshot for a given URL with specified type.
+     * The cards are drawn at twice their CSS size: 1440 × 756 and 1440 × 1440.
+     *
+     * Not a retina flourish — 720 pixels was under every platform's recommended
+     * width for a large summary card, so the old screenshots were being
+     * upscaled by the very previews they were made for. resources/views/app.blade.php
+     * publishes the doubled numbers in og:image:width/height; change them together.
      */
-    public function generateScreenshot(string $url, string $type = self::TYPE_OG, ?string $cacheKey = null): string
-    {
-        $dimensions = $this->dimensions[$type] ?? $this->dimensions[self::TYPE_OG];
-        $cacheKey = $cacheKey ?? $this->buildCacheKey($url, $type);
-        $screenshotPath = $this->getScreenshotPath($cacheKey, $type);
-
-        // Check if cached screenshot exists and is valid
-        if (file_exists($screenshotPath) && Cache::has($cacheKey)) {
-            return $screenshotPath;
-        }
-
-        // Ensure screenshots directory exists
-        $screenshotsDir = dirname($screenshotPath);
-        if (! is_dir($screenshotsDir)) {
-            mkdir($screenshotsDir, 0755, true);
-        }
-
-        try {
-            $browsershot = Browsershot::url($url)
-                ->windowSize($dimensions['width'], $dimensions['height'])
-                ->deviceScaleFactor(1)
-                ->waitUntilNetworkIdle()
-                ->timeout(60)
-                ->dismissDialogs()
-                ->setOption('addStyleTag', json_encode([
-                    'content' => '.screenshot-hidden { display: none !important; } html { scrollbar-gutter: auto !important; }',
-                ]))
-                // Wait for fonts to be loaded before screenshot
-                ->waitForFunction('document.fonts.ready.then(() => true)');
-            $quality = ScreenshotConfig::quality();
-            $browsershot->setScreenshotType(ScreenshotConfig::format(), $quality);
-
-            // Set Chrome/Node paths from config if available (for Nixpacks deployment)
-            if ($chromePath = config('services.browsershot.chrome_path')) {
-                $browsershot->setChromePath($chromePath);
-            }
-            if ($nodeBinary = config('services.browsershot.node_binary')) {
-                $browsershot->setNodeBinary($nodeBinary);
-            }
-            if ($nodeModulesPath = config('services.browsershot.node_modules_path')) {
-                $browsershot->setNodeModulePath($nodeModulesPath);
-            }
-
-            $browsershot->addChromiumArguments([
-                'no-sandbox',
-                'disable-setuid-sandbox',
-                'disable-dev-shm-usage',
-                'disable-gpu',
-                'disable-web-security',
-                'disable-extensions',
-                'disable-plugins',
-                'disable-default-apps',
-                'disable-background-timer-throttling',
-                'disable-backgrounding-occluded-windows',
-                'disable-renderer-backgrounding',
-                'disable-features=TranslateUI',
-                'disable-component-update',
-                'disable-domain-reliability',
-                'disable-sync',
-                'disable-client-side-phishing-detection',
-                'disable-permissions-api',
-                'disable-notifications',
-                'disable-desktop-notifications',
-                'disable-background-networking',
-                'memory-pressure-off',
-                'max_old_space_size=128',
-                'aggressive-cache-discard',
-                // Fix crash reporter error
-                'disable-crash-reporter',
-                'disable-breakpad',
-                // Font rendering
-                'font-render-hinting=none',
-                'disable-font-subpixel-positioning',
-                'enable-font-antialiasing',
-            ]);
-
-            $browsershot->save($screenshotPath);
-
-            // Cache the screenshot path for the configured TTL
-            Cache::put($cacheKey, $screenshotPath, config('app-cache.screenshots.ttl'));
-
-            return $screenshotPath;
-        } catch (\Exception $e) {
-            // Clean up on error
-            if (file_exists($screenshotPath)) {
-                @unlink($screenshotPath);
-            }
-            throw $e;
-        }
-    }
+    private const SCALE = 2.0;
 
     /**
-     * Generate a screenshot for a Page model (for bot commands).
-     * Cleans up old versions of the screenshot before generating a new one.
+     * Bumped when the templates change, because nothing else about a card's
+     * appearance is in its fingerprint. Without it a redesign would reach
+     * visitors only as the week-old files expired, page by page.
+     */
+    private const DESIGN_VERSION = '1';
+
+    /**
+     * Titles for the handful of routes that are pages in the navigation but may
+     * have no `pages` row behind them — the tools and directories whose content
+     * lives in a Vue component.
+     *
+     * These mirror the fallback titles their controllers pass to
+     * {@see Seo::forDefault()} and are consulted only when the lookup finds no
+     * page, which on a fully-populated site is never. A tool without a page row
+     * still deserves its own name on a shared link rather than the site's.
+     */
+    private const ROUTE_TITLES = [
+        'adwat/almkafa' => 'موعد المكافأة',
+        'adwat/hasbh-alhrman' => 'حاسبة الحرمان',
+        'adwat/hasbh-almadl' => 'حاسبة المعدل',
+        'adwat/hasbh-altahwel' => 'حاسبة التحويل',
+        'adwat/jdwal-alsawab' => 'جداول الصواب',
+        'adwat/sorh-albtaqa' => 'صورة البطاقة الجامعية',
+        'adwat/alkhosousieen' => 'المدرسون الخصوصيون',
+        'qroubat' => 'قروبات الطلاب',
+        'almosaed' => 'المساعد الذكي',
+    ];
+
+    /** The site mark, read once per process from the favicon it shares. */
+    private static ?string $logo = null;
+
+    public function __construct(private readonly TakumiRenderer $takumi = new TakumiRenderer) {}
+
+    /**
+     * The card for a page, as a path to a PNG on disk.
+     *
+     * Old renders of the same page are swept before a new one is written: the
+     * filename carries the card's fingerprint, so an edited page leaves its
+     * previous card behind and they would otherwise pile up one per edit.
      */
     public function generatePageScreenshot(Page $page, string $type = self::TYPE_BOT): string
     {
-        $url = url($page->slug);
-        $cacheKey = $this->getPageCacheKey($page, $type);
-        $screenshotPath = $this->getScreenshotPath($cacheKey, $type);
+        $card = SocialCard::forPage($page, $this->host());
+        $slug = $this->normalizeSlug($page->slug);
 
-        // If we already have a valid cached version, return it
-        if (file_exists($screenshotPath) && Cache::has($cacheKey)) {
-            return $screenshotPath;
+        if ($this->isCached($type, $slug, $card)) {
+            return $this->pathFor($type, $slug, $card);
         }
 
-        // Clean up old versions of this page's screenshots before generating new one
-        // This prevents accumulation of versioned screenshot files
         $this->clearOldScreenshots($page->slug);
 
-        return $this->generateScreenshot($url, $type, $cacheKey);
+        return $this->render($card, $type, $slug);
     }
 
     /**
-     * Check if a cached screenshot exists for a Page without generating it.
-     * Useful for determining if a loading message should be shown.
+     * Whether a page's card is already on disk.
+     *
+     * The bot asks before it renders so it can say "one moment" only when there
+     * is actually a wait — which there now rarely is, a card being about a
+     * second of layout rather than a browser start-up.
      */
     public function hasPageScreenshot(Page $page, string $type = self::TYPE_BOT): bool
     {
-        $cacheKey = $this->getPageCacheKey($page, $type);
-        $screenshotPath = $this->getScreenshotPath($cacheKey, $type);
+        $card = SocialCard::forPage($page, $this->host());
 
-        return file_exists($screenshotPath) && Cache::has($cacheKey);
+        return $this->isCached($type, $this->normalizeSlug($page->slug), $card);
     }
 
     /**
-     * Generate a screenshot for a route (for OG images).
-     * Uses the current request's scheme and host to ensure correct URL in production.
+     * The card for a route, as a path to a PNG on disk.
+     *
+     * The route is resolved to a page for its title, section and description;
+     * a route with nothing behind it — an unknown URL, or a tool whose page has
+     * not been written — gets the site's own card rather than an error, because
+     * this is the endpoint a crawler hits and a preview is not a place to fail.
      */
     public function generateRouteScreenshot(string $route, string $type = self::TYPE_OG): string
     {
-        // Use request's scheme and host for production compatibility
-        // This ensures we use the actual public URL, not APP_URL which might be localhost
-        if (app()->runningInConsole()) {
-            $url = url($route);
-        } else {
-            $request = request();
-            $baseUrl = $request->getSchemeAndHttpHost();
-            $url = rtrim($baseUrl, '/').'/'.ltrim($route, '/');
+        $card = $this->cardForRoute($route);
+        $slug = $this->normalizeSlug($route);
 
-            // Handle root route case
-            if ($route === '' || $route === '/') {
-                $url = rtrim($baseUrl, '/');
-            }
+        if ($this->isCached($type, $slug, $card)) {
+            return $this->pathFor($type, $slug, $card);
         }
 
-        $cacheKey = $this->buildCacheKey($url, $type);
-
-        return $this->generateScreenshot($url, $type, $cacheKey);
+        return $this->render($card, $type, $slug);
     }
 
     /**
-     * Get the cache key for a Page model.
+     * The cache key for a page's card.
+     *
+     * Public because the Page model clears it on save. That is now belt and
+     * braces rather than the mechanism — a card whose content changed has a
+     * different key already — but it is what deletes the superseded file.
      */
     public function getPageCacheKey(Page $page, string $type = self::TYPE_BOT): string
     {
-        // Use page slug and updated_at timestamp to create versioned cache key
-        $version = $page->updated_at ? $page->updated_at->timestamp : '0';
-        $slug = str_replace('/', '_', trim($page->slug, '/')) ?: 'home';
-
-        return config('app-cache.keys.screenshot').":{$type}:{$slug}:{$version}";
+        return $this->cacheKey($type, $this->identifier($this->normalizeSlug($page->slug), SocialCard::forPage($page, $this->host())));
     }
 
     /**
-     * Build a cache key from a URL and type.
-     */
-    protected function buildCacheKey(string $url, string $type): string
-    {
-        $urlHash = md5($url);
-
-        return config('app-cache.keys.screenshot').":{$type}:{$urlHash}";
-    }
-
-    /**
-     * Get the file path for a screenshot.
-     */
-    protected function getScreenshotPath(string $cacheKey, string $type): string
-    {
-        // Extract identifier from cache key (last part after the colons)
-        $parts = explode(':', $cacheKey);
-        $identifier = end($parts);
-
-        $filename = "{$type}_{$identifier}.".ScreenshotConfig::extension();
-
-        return ScreenshotConfig::directory()."/{$filename}";
-    }
-
-    /**
-     * Clear cached screenshot for a Page.
+     * Forget both of a page's cards.
      */
     public function clearPageCache(Page $page): void
     {
+        $card = SocialCard::forPage($page, $this->host());
+        $slug = $this->normalizeSlug($page->slug);
+
         foreach ([self::TYPE_BOT, self::TYPE_OG] as $type) {
-            $cacheKey = $this->getPageCacheKey($page, $type);
-            $screenshotPath = $this->getScreenshotPath($cacheKey, $type);
+            Cache::forget($this->cacheKey($type, $this->identifier($slug, $card)));
 
-            // Remove from cache
-            Cache::forget($cacheKey);
+            $path = $this->pathFor($type, $slug, $card);
 
-            // Delete file if exists
-            if (file_exists($screenshotPath)) {
-                @unlink($screenshotPath);
+            if (file_exists($path)) {
+                @unlink($path);
             }
         }
     }
 
     /**
-     * Clear all old screenshot files for a Page slug.
+     * Delete every card file ever rendered for a slug, whatever it said at the
+     * time. The fingerprint in the filename means a page that has been edited
+     * has more than one.
      */
     public function clearOldScreenshots(string $slug): void
     {
-        $normalizedSlug = str_replace('/', '_', trim($slug, '/')) ?: 'home';
-        $screenshotsDir = ScreenshotConfig::directory();
+        $directory = ScreenshotConfig::directory();
 
-        if (! is_dir($screenshotsDir)) {
+        if (! is_dir($directory)) {
             return;
         }
 
-        // Find and delete all screenshots matching this slug pattern
-        $pattern = "{$screenshotsDir}/*_{$normalizedSlug}_*.".ScreenshotConfig::extension();
-        $files = glob($pattern);
+        $pattern = $directory.'/*_'.$this->normalizeSlug($slug).'_*.'.ScreenshotConfig::extension();
 
-        foreach ($files as $file) {
+        foreach (glob($pattern) ?: [] as $file) {
             if (is_file($file)) {
                 @unlink($file);
             }
         }
+    }
+
+    /**
+     * Draw the card and write it where the caller can hand it on.
+     *
+     * @throws RuntimeException when the render fails; {@see TakumiRenderer} has
+     *                          already logged why.
+     */
+    private function render(SocialCard $card, string $type, string $slug): string
+    {
+        $spec = self::CARDS[$type] ?? self::CARDS[self::TYPE_OG];
+
+        $html = View::make($spec['view'], [
+            ...$card->trimmed($spec['limits']),
+            'logo' => $this->logo(),
+            'siteName' => Seo::siteName(),
+        ])->render();
+
+        $png = $this->takumi->render($html, $spec['width'], $spec['height'], scale: self::SCALE);
+
+        $path = $this->pathFor($type, $slug, $card);
+        $directory = dirname($path);
+
+        if (! is_dir($directory)) {
+            mkdir($directory, 0755, true);
+        }
+
+        // Written beside its destination and moved into place, so a reader that
+        // arrives mid-render never opens a half-written PNG: rename is atomic
+        // within a filesystem, file_put_contents is not.
+        $temporary = $path.'.'.bin2hex(random_bytes(4)).'.tmp';
+
+        if (file_put_contents($temporary, $png) === false || ! rename($temporary, $path)) {
+            @unlink($temporary);
+
+            throw new RuntimeException("Failed to write the rendered card to {$path}");
+        }
+
+        Cache::put($this->cacheKey($type, $this->identifier($slug, $card)), $path, config('app-cache.screenshots.ttl'));
+
+        return $path;
+    }
+
+    /**
+     * The card a route asks for: its page's, or the site's own.
+     *
+     * The visibility rule is the one the page controller serves under, so a
+     * card exists for exactly the URLs that resolve — including the pages that
+     * are hidden from navigation but reachable from an AI citation.
+     */
+    private function cardForRoute(string $route): SocialCard
+    {
+        $path = '/'.trim($route, '/');
+
+        $page = Page::query()
+            ->where('slug', $path)
+            ->where(fn ($query) => $query->where('hidden', false)->orWhere('hidden_from_ai', false))
+            ->with('parent')
+            ->first();
+
+        if ($page) {
+            return SocialCard::forPage($page, $this->host());
+        }
+
+        return SocialCard::forSite(
+            $this->host(),
+            $path,
+            self::ROUTE_TITLES[trim($route, '/')] ?? null,
+        );
+    }
+
+    /**
+     * Whether this exact card is already rendered and still cached.
+     */
+    private function isCached(string $type, string $slug, SocialCard $card): bool
+    {
+        return file_exists($this->pathFor($type, $slug, $card))
+            && Cache::has($this->cacheKey($type, $this->identifier($slug, $card)));
+    }
+
+    private function pathFor(string $type, string $slug, SocialCard $card): string
+    {
+        return ScreenshotConfig::directory()
+            ."/{$type}_".$this->identifier($slug, $card).'.'.ScreenshotConfig::extension();
+    }
+
+    /**
+     * What distinguishes one card file from another: which page, and what it
+     * said. The same string appears in the filename after the type and in the
+     * cache key after the type, which is the shape `storage:cleanup
+     * --screenshots` reads a filename back into a key with.
+     */
+    private function identifier(string $slug, SocialCard $card): string
+    {
+        return $slug.'_'.$card->fingerprint(self::DESIGN_VERSION);
+    }
+
+    private function cacheKey(string $type, string $identifier): string
+    {
+        return config('app-cache.keys.screenshot').":{$type}:{$identifier}";
+    }
+
+    /**
+     * A slug as it appears in a filename: no slashes, and never empty.
+     */
+    private function normalizeSlug(string $slug): string
+    {
+        return str_replace('/', '_', trim($slug, '/')) ?: 'home';
+    }
+
+    /**
+     * The host the card should print.
+     *
+     * The request's own, when there is one, for the same reason the screenshots
+     * used it: APP_URL is not always the public address, and a card that names
+     * the wrong host is worse than one that names none.
+     */
+    private function host(): string
+    {
+        if (! app()->runningInConsole() && request()->getHttpHost() !== '') {
+            return request()->getHost();
+        }
+
+        return parse_url((string) config('app.url'), PHP_URL_HOST) ?: 'uqucc.sb.sa';
+    }
+
+    /**
+     * The site mark as a data: URI, taken from the favicon so the cards and the
+     * browser tab can never drift apart, and recoloured white for the tinted
+     * badge it sits in.
+     *
+     * It has to be an image rather than inline markup: the engine has no
+     * <svg> parser.
+     */
+    private function logo(): string
+    {
+        if (self::$logo !== null) {
+            return self::$logo;
+        }
+
+        $svg = @file_get_contents(public_path('favicon.svg'));
+
+        if ($svg === false) {
+            throw new RuntimeException('The site mark is missing: public/favicon.svg could not be read.');
+        }
+
+        return self::$logo = 'data:image/svg+xml;base64,'.base64_encode(
+            str_ireplace('#298287', '#ffffff', $svg)
+        );
     }
 }

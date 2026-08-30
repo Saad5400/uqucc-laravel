@@ -39,8 +39,10 @@
         <meta inertia="og:site_name" property="og:site_name" content="{{ $siteName }}">
         <meta inertia="og:locale" property="og:locale" content="ar_SA">
         <meta inertia="og:image" property="og:image" content="{{ $ogImageUrl }}">
-        <meta inertia="og:image:width" property="og:image:width" content="720">
-        <meta inertia="og:image:height" property="og:image:height" content="378">
+        {{-- The card is designed at 720 × 378 and rendered at 2x; these are the
+             pixels that actually arrive (App\Services\OgImageService::SCALE). --}}
+        <meta inertia="og:image:width" property="og:image:width" content="1440">
+        <meta inertia="og:image:height" property="og:image:height" content="756">
         <meta inertia="og:image:type" property="og:image:type" content="{{ \App\Support\ScreenshotConfig::mimeType() }}">
         <meta inertia="og:image:alt" property="og:image:alt" content="{{ $ogTitle }}">
 

@@ -6,13 +6,6 @@ nixPkgs = [
     "python311Packages.supervisor",
     "nodejs_22",               # Ensure you have node if you removed "..."
     "jdk",
-    # Browsershot / Puppeteer dependencies
-    "chromium",
-    "nss",
-    "freetype",
-    "harfbuzz",
-    "fontconfig",
-    "liberation_ttf",         # Fonts for proper text rendering
 ]
 
 [phases.install]
@@ -20,11 +13,6 @@ cmds = [
     "php -v && php --ini",
     "composer install --no-dev --prefer-dist --optimize-autoloader --no-interaction",
     "npm i --no-audit --no-fund --loglevel=error",
-    # Puppeteer for Browsershot (skip browser download since we use system chromium).
-    # NOTE: modern Puppeteer (>=20) ignores PUPPETEER_SKIP_CHROMIUM_DOWNLOAD and still
-    # pulls chrome + chrome-headless-shell, which fails on the nixpacks builder (no unzip
-    # in PATH). PUPPETEER_SKIP_DOWNLOAD=true is the correct flag and skips all downloads.
-    "PUPPETEER_SKIP_DOWNLOAD=true npm install -g puppeteer",
 ]
 
 [phases.build]
@@ -37,9 +25,6 @@ cmds = [
     # Frontend builds (command will run client + SSR)
     "npm run build:ssr",
 
-    # Update font cache for Chromium/Browsershot (Arabic fonts, etc.)
-    "fc-cache -fv || true",
-
     # supervisor/nginx assets
     "mkdir -p /etc/supervisor/conf.d/",
     "cp /assets/worker-*.conf /etc/supervisor/conf.d/",
@@ -51,41 +36,15 @@ cmds = [
 cmd = "/assets/start.sh"
 
 [staticAssets]
-# Fontconfig has no config of its own in this image: the Nix `fontconfig` package
-# ships the library, not /etc/fonts/fonts.conf. Without a config Chromium cannot
-# initialise its text stack at all — it shapes every run to zero glyphs and every
-# screenshot comes out with the layout drawn and no text in it, webfonts included
-# (`TextRunHarfBuzz error … font: '', glyph_count: 0`). FONTCONFIG_FILE below
-# points at this file.
-"fonts.conf" = '''
-<?xml version="1.0"?>
-<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
-<fontconfig>
-  <dir>/root/.nix-profile/share/fonts</dir>
-  <dir>/nix/var/nix/profiles/default/share/fonts</dir>
-  <dir>/app/resources/fonts</dir>
-  <cachedir>/tmp/.cache/fontconfig</cachedir>
-</fontconfig>
-'''
-
 "start.sh" = '''
 #!/bin/bash
 set -e
 
-# --- Browsershot / Puppeteer environment variables
-# Use readlink -f to resolve symlinks to actual Nix store paths
-# This ensures www-data can access them (not just root's profile)
-export PUPPETEER_SKIP_DOWNLOAD=true
-export PUPPETEER_EXECUTABLE_PATH=$(readlink -f "$(which chromium)")
-export CHROME_PATH=$(readlink -f "$(which chromium)")
+# --- The image renderer's Node interpreter (App\Support\TakumiRenderer runs
+# scripts/takumi-render.mjs). Resolved through readlink -f to the real Nix store
+# path so PHP-FPM, which does not inherit root's PATH, can execute it; the
+# `php artisan optimize` below bakes it into the cached config.
 export NODE_BINARY=$(readlink -f "$(which node)")
-export NODE_PATH=$(npm root -g)
-
-# --- Fontconfig: without this Chromium renders every screenshot text-less
-export FONTCONFIG_FILE=/assets/fonts.conf
-mkdir -p /tmp/.cache/fontconfig
-chmod -R 777 /tmp/.cache/fontconfig
-fc-cache -f || true
 
 # --- ensure Laravel writable paths (volume may be empty on first boot)
 mkdir -p /app/storage/framework/{cache,sessions,views} \
@@ -96,12 +55,8 @@ mkdir -p /app/storage/framework/{cache,sessions,views} \
 chown -R www-data:www-data /app/storage /app/bootstrap/cache || true
 # permissive enough for containers
 chmod -R ug+rwX /app/storage /app/bootstrap/cache
-# Screenshots directory needs to be writable by node (running as www-data)
+# Rendered share cards are written here by PHP-FPM (running as www-data)
 chmod 777 /app/storage/app/public/screenshots
-
-# --- Chromium needs writable directories for www-data user
-mkdir -p /tmp/.config /tmp/.cache /tmp/.local/share
-chmod -R 777 /tmp/.config /tmp/.cache /tmp/.local/share
 
 # Make sure nginx can write logs & pid (your nginx logs go elsewhere, but safe)
 mkdir -p /var/log/nginx
@@ -280,7 +235,7 @@ stderr_logfile=/var/log/worker-telegram-bot.log
 stdout_logfile_maxbytes=10MB
 stderr_logfile_maxbytes=10MB
 stopwaitsecs=3600
-environment=PUPPETEER_SKIP_DOWNLOAD="true",NODE_PATH="%(ENV_NODE_PATH)s",CHROME_PATH="%(ENV_CHROME_PATH)s",FONTCONFIG_FILE="%(ENV_FONTCONFIG_FILE)s"
+environment=NODE_BINARY="%(ENV_NODE_BINARY)s"
 '''
 
 "php-fpm.conf" = '''
@@ -313,18 +268,10 @@ php_admin_value[opcache.validate_timestamps] = 0
 php_admin_value[opcache.max_accelerated_files] = 20000
 php_admin_value[opcache.memory_consumption] = 128
 
-; Browsershot / Puppeteer environment
-env[PUPPETEER_SKIP_DOWNLOAD] = true
-env[NODE_PATH] = $NODE_PATH
-env[CHROME_PATH] = $CHROME_PATH
+; The Node interpreter the image renderer runs scripts/takumi-render.mjs with
 env[NODE_BINARY] = $NODE_BINARY
-; Chromium renders text-less screenshots without a fontconfig config
-env[FONTCONFIG_FILE] = $FONTCONFIG_FILE
-; Chromium needs these directories to be writable
+; Node wants a writable HOME
 env[HOME] = /tmp
-env[XDG_CONFIG_HOME] = /tmp/.config
-env[XDG_CACHE_HOME] = /tmp/.cache
-env[XDG_DATA_HOME] = /tmp/.local/share
 '''
 
 "nginx.template.conf" = '''
