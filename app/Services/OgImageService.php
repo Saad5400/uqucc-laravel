@@ -6,6 +6,7 @@ use App\Models\Page;
 use App\Support\ScreenshotConfig;
 use App\Support\Seo;
 use App\Support\SocialCard;
+use App\Support\SocialCardContent;
 use App\Support\TakumiRenderer;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\View;
@@ -18,9 +19,17 @@ use RuntimeException;
  * Both used to be browser screenshots of the page itself — the whole app booted
  * and painted by Chromium so that 720 pixels of it could be photographed. They
  * are now drawn: two Blade templates under resources/views/social, laid out by
- * the Takumi engine ({@see TakumiRenderer}), fed the handful of fields in
- * {@see SocialCard}. No browser, no page load, no network, and a card that is
- * legible at thumbnail size instead of a shrunken document page.
+ * the Takumi engine ({@see TakumiRenderer}). No browser, no page load, no
+ * network, and a card that is legible at thumbnail size instead of a shrunken
+ * document page.
+ *
+ * They still carry the page, though. A screenshot's one real virtue was that it
+ * showed what the page SAID, and a card of title-and-description was less than
+ * the site had been sharing — so the body of each card is the page's own
+ * content, rewritten into markup the engine can lay out by
+ * {@see SocialCardContent}. The wide card shows as much as its fixed box holds
+ * and fades the cut; the tall one grows with the page up to a ceiling and says
+ * so when it stops short.
  *
  * A rendered card is written to disk and its path returned, because that is
  * what both callers want — one hands the file to `response()->file()`, the
@@ -45,25 +54,39 @@ class OgImageService
      * The two cards: the template that draws each, its size in CSS pixels, and
      * how much text it has room for.
      *
-     * Every `limits` number is a line count in disguise: a card is a fixed box
-     * and the engine will happily paint a fourth line of a three-line title
+     * Every `limits` number is a line count in disguise: the frame is a fixed
+     * box and the engine will happily paint a fourth line of a three-line title
      * outside it, so each field is trimmed to what fits in the lines the
-     * template reserved for it. They are set from the worst case — the section
-     * pill, the title and the description all at their longest at once — and
-     * belong here beside the sizes rather than in the content.
+     * template reserved for it.
+     *
+     * `content` is the different kind of budget — how much of the PAGE each
+     * card draws ({@see SocialCardContent}). It is not a safety limit: both
+     * templates clip their content box in CSS, so the numbers say how much is
+     * worth drawing rather than how much is safe to. The wide card fades what
+     * it cannot fit; the tall one says «تابع القراءة في الموقع».
      */
     private const CARDS = [
         self::TYPE_OG => [
             'view' => 'social.og-card',
             'width' => 720,
             'height' => 378,
-            'limits' => ['title' => 62, 'description' => 118, 'section' => 26, 'url' => 52],
+            'minHeight' => null,
+            'limits' => ['title' => 72, 'description' => 118, 'section' => 26, 'url' => 52],
+            // No images: this card is drawn inside a crawler's request, and an
+            // image budget is what would let it wait on somebody else's server.
+            // Its four visible lines are no place for a picture anyway.
+            'content' => ['characters' => 340, 'images' => 0, 'width' => 636],
         ],
         self::TYPE_BOT => [
             'view' => 'social.bot-card',
             'width' => 720,
-            'height' => 720,
-            'limits' => ['title' => 80, 'description' => 140, 'section' => 36, 'url' => 46],
+            // Height follows the content, exactly as the quiz card's does: a
+            // page reply is READ in the group, and a fixed box would either
+            // crop a long page or pad a short one.
+            'height' => null,
+            'minHeight' => 720,
+            'limits' => ['title' => 80, 'description' => 200, 'section' => 30, 'url' => 46],
+            'content' => ['characters' => 2200, 'images' => 4, 'width' => 632],
         ],
     ];
 
@@ -82,7 +105,7 @@ class OgImageService
      * appearance is in its fingerprint. Without it a redesign would reach
      * visitors only as the week-old files expired, page by page.
      */
-    private const DESIGN_VERSION = '1';
+    private const DESIGN_VERSION = '2';
 
     /**
      * Titles for the handful of routes that are pages in the navigation but may
@@ -109,7 +132,10 @@ class OgImageService
     /** The site mark, read once per process from the favicon it shares. */
     private static ?string $logo = null;
 
-    public function __construct(private readonly TakumiRenderer $takumi = new TakumiRenderer) {}
+    public function __construct(
+        private readonly TakumiRenderer $takumi = new TakumiRenderer,
+        private readonly SocialCardContent $content = new SocialCardContent,
+    ) {}
 
     /**
      * The card for a page, as a path to a PNG on disk.
@@ -229,13 +255,22 @@ class OgImageService
     {
         $spec = self::CARDS[$type] ?? self::CARDS[self::TYPE_OG];
 
+        $body = $this->content->build(
+            $card->content,
+            $spec['content']['characters'],
+            $spec['content']['images'],
+            $spec['content']['width'],
+        );
+
         $html = View::make($spec['view'], [
             ...$card->trimmed($spec['limits']),
+            'body' => $body->html,
+            'truncated' => $body->truncated,
             'logo' => $this->logo(),
             'siteName' => Seo::siteName(),
         ])->render();
 
-        $png = $this->takumi->render($html, $spec['width'], $spec['height'], scale: self::SCALE);
+        $png = $this->takumi->render($html, $spec['width'], $spec['height'], $spec['minHeight'], self::SCALE);
 
         $path = $this->pathFor($type, $slug, $card);
         $directory = dirname($path);

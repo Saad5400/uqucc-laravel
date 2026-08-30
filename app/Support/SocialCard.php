@@ -27,12 +27,14 @@ final readonly class SocialCard
      * @param  string|null  $section  The parent page's title, drawn as a pill above the headline; null when there is no parent.
      * @param  string  $description  One or two sentences under the headline.
      * @param  string  $url  Host and path, no scheme — the line in the card's footer.
+     * @param  array<string, mixed>|string|null  $content  The page's own content, drawn into the card's body by {@see SocialCardContent}. Null for a route with no page behind it.
      */
     public function __construct(
         public string $title,
         public ?string $section,
         public string $description,
         public string $url,
+        public array|string|null $content = null,
     ) {}
 
     /**
@@ -49,6 +51,7 @@ final readonly class SocialCard
             section: $isHome ? null : $page->parent?->title,
             description: Seo::descriptionFor($page),
             url: self::url($host, $page->slug),
+            content: $page->html_content,
         );
     }
 
@@ -114,8 +117,39 @@ final readonly class SocialCard
             $this->section ?? '',
             $this->description,
             $this->url,
+            $this->contentDigest(),
             ...$extra,
         ]));
+    }
+
+    /**
+     * A digest of the page content the body is drawn from — the RAW content,
+     * not the transformed markup.
+     *
+     * Deliberately the input rather than the output, because this is computed
+     * on paths that must not do I/O: the bot asks whether a card is ready
+     * before it renders one, and a page save clears its keys. Transforming the
+     * body there would read the media disk and reach the network for every
+     * embedded image just to name a file.
+     *
+     * It loses nothing. The transform is deterministic, so identical content
+     * yields identical markup, and OgImageService::DESIGN_VERSION covers the
+     * transform itself changing. Embedded images are covered by their src:
+     * uploads are stored under a per-upload hash name, so replacing a page's
+     * image changes the src, and an external src is the identity of the image
+     * it points at. The digest is conservative in the other direction — an edit
+     * that does not reach the visible body still redraws the card — which costs
+     * one render.
+     */
+    private function contentDigest(): string
+    {
+        if ($this->content === null) {
+            return '';
+        }
+
+        return hash('xxh128', is_string($this->content)
+            ? $this->content
+            : (string) json_encode($this->content, JSON_UNESCAPED_UNICODE | JSON_PARTIAL_OUTPUT_ON_ERROR));
     }
 
     private static function url(string $host, string $path): string
