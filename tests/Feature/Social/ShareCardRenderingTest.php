@@ -131,6 +131,15 @@ function countCardInkRuns(GdImage $image, float $top, float $bottom, int $thresh
     return $runs;
 }
 
+/** A one-paragraph TipTap document, for pages whose body is the point. */
+function tipTapDocumentOf(string $text): array
+{
+    return [
+        'type' => 'doc',
+        'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => $text]]]],
+    ];
+}
+
 /** A page whose title is the shaping probe: three words, fifteen letters. */
 function probePage(): Page
 {
@@ -145,28 +154,58 @@ it('shapes the page title with the vendored Arabic face rather than falling back
     // "علوم الحاسب الآلي" is fifteen letters that the face joins into eight
     // runs: ع-ل-و + م, ا + ل-ح-ا + س-ب, ا + ل-آ + ل-ي. Drawn as one box per
     // character it would be fifteen, and the wide card's brand rule adds one to
-    // either count. Measured: 8 on the wide card and 7 on the square one when
-    // the text is shaped, 16 and 15 when it is not. The ceiling sits between
-    // the two rather than on either, so it is structural rather than a metric
-    // that drifts with a font update.
+    // either count. Measured: 8 on both cards when the text is shaped, 16 and
+    // 15 when it is not. The ceiling sits between the two rather than on
+    // either, so it is structural rather than a metric that drifts with a font
+    // update — but the BAND is not: it is where each layout currently puts its
+    // headline, and it moves when the layout does. The two canaries above are
+    // the layout-independent guards; this one is what proves the card itself
+    // draws shaped Arabic.
     expect(countCardInkRuns(renderShareCard(probePage(), $type), $top, $bottom))
         ->toBeLessThanOrEqual(12);
 })->with([
-    // The band each layout puts its headline in.
-    'link preview card' => [OgImageService::TYPE_OG, 0.34, 0.50],
-    'bot card' => [OgImageService::TYPE_BOT, 0.39, 0.54],
+    'link preview card' => [OgImageService::TYPE_OG, 0.21, 0.32],
+    'bot card' => [OgImageService::TYPE_BOT, 0.13, 0.22],
 ]);
 
+it('has Arabic coverage at all, which is the canary that survives a change of fallback', function () {
+    // Two different strings of the same length, drawn through the real script.
+    // Tofu draws every uncovered character as the SAME box, so the two PNGs
+    // come back byte-identical exactly when Arabic coverage is gone, and differ
+    // whenever any registered face can draw it.
+    //
+    // This one asks nothing about WHICH face answers, which is what makes it
+    // the portable check: the probe below can only tell the site face from the
+    // fallback while the fallback happens to be a different, Arabic-covering
+    // face, and that is a property of the font registry rather than of the
+    // engine.
+    $draw = fn (string $text): string => app(TakumiRenderer::class)->render(
+        '<style>body{margin:0;background:#000;display:flex}</style>'
+        ."<div style=\"width:400px;height:100px;display:flex;align-items:center;padding:0 16px;direction:rtl;font-family:'IBM Plex Sans Arabic';font-size:44px;color:#fff\">{$text}</div>",
+        400,
+        scale: 1.0,
+    );
+
+    expect($draw('بببببب'))->not->toBe($draw('تتتتتت'));
+});
+
 it('draws in the site face rather than the fallback the engine would reach for', function () {
-    // The run count above catches a script with no Arabic coverage at all. It
-    // cannot catch the likelier accident: the site face dropping out of
+    // The canary above catches a registry with no Arabic in it at all. This
+    // catches the likelier accident: the SITE face dropping out of
     // scripts/takumi-render.mjs's registry while DejaVu Sans Mono stays. DejaVu
     // covers and joins Arabic, so the cards still come out shaped — in a
-    // monospace face, a fifth wider, nothing like the site.
+    // monospace face, a fifth wider, nothing like the site — and no coverage
+    // check can see that.
     //
     // So ask the engine directly. Two renders of the same string in the two
     // families differ only while both are registered; with the site face gone
     // they resolve to the same fallback and come back byte-identical.
+    //
+    // It holds while the fallback is a DIFFERENT face that also covers Arabic,
+    // which is exactly today's registry. If DejaVu ever leaves, or an unknown
+    // family starts resolving against the registered pool instead of a built-in
+    // fallback (as it does on the sibling project), this stops discriminating
+    // and the canary above is what remains.
     $draw = fn (string $family): string => app(TakumiRenderer::class)->render(
         '<style>body{margin:0;background:#000;display:flex}</style>'
         ."<div style=\"width:600px;height:120px;display:flex;align-items:center;padding:0 20px;direction:rtl;font-family:'{$family}';font-size:48px;color:#fff\">علوم الحاسب</div>",
@@ -201,11 +240,36 @@ it('renders the link preview card at the size the meta tags promise', function (
         ->assertSee('property="og:image:type" content="image/png"', false);
 });
 
-it('renders the bot card as a square twice the size it is designed at', function () {
-    $image = renderShareCard(probePage(), OgImageService::TYPE_BOT);
+it('grows the bot card with the page instead of cropping it to a box', function () {
+    $service = app(OgImageService::class);
 
-    expect(imagesx($image))->toBe(1440)
-        ->and(imagesy($image))->toBe(1440);
+    $short = imagecreatefromstring(file_get_contents($service->generatePageScreenshot(
+        PageFactory::new()->make(['slug' => '/qasir', 'title' => 'صفحة قصيرة', 'html_content' => 'سطر واحد.']),
+        OgImageService::TYPE_BOT,
+    )));
+
+    $long = imagecreatefromstring(file_get_contents($service->generatePageScreenshot(
+        PageFactory::new()->make([
+            'slug' => '/taweel',
+            'title' => 'صفحة طويلة',
+            'html_content' => tipTapDocumentOf(str_repeat('فقرة تشرح تفصيلًا من تفاصيل الصفحة. ', 60)),
+        ]),
+        OgImageService::TYPE_BOT,
+    )));
+
+    // Width is fixed and doubled; height is the page's.
+    expect(imagesx($short))->toBe(1440)
+        ->and(imagesx($long))->toBe(1440);
+
+    // The floor keeps a one-line page a poster rather than a strip...
+    expect(imagesy($short))->toBe(1440);
+
+    // ...and a page with more to say gets more card, which is the whole reason
+    // this one is not a fixed box.
+    expect(imagesy($long))->toBeGreaterThan(imagesy($short) + 900);
+
+    // Bounded, though: Telegram is being handed this as a photo.
+    expect(imagesy($long))->toBeLessThan(6000);
 });
 
 it('draws the page onto the card rather than an empty frame', function (string $type) {
@@ -221,6 +285,150 @@ it('draws the page onto the card rather than an empty frame', function (string $
     // the stylesheet leaves the text but takes all of these with it.
     expect(countCardPixelsNear($image, '38a7bb'))->toBeGreaterThan(200);
 })->with([OgImageService::TYPE_OG, OgImageService::TYPE_BOT]);
+
+/**
+ * A renderer that keeps the markup it was handed instead of drawing it.
+ *
+ * The pixels are covered by the tests above; what this one is for is the wiring
+ * between the page and the template — that the content reached the card at all,
+ * and in the shape the card's stylesheet knows how to draw.
+ */
+function capturingRenderer(): TakumiRenderer
+{
+    return new class extends TakumiRenderer
+    {
+        public string $captured = '';
+
+        public function render(string $html, int $width, ?int $height = null, ?int $minHeight = null, float $scale = 2.0, string $lang = 'ar'): string
+        {
+            $this->captured = $html;
+
+            $pixel = imagecreatetruecolor(1, 1);
+            ob_start();
+            imagepng($pixel);
+
+            return (string) ob_get_clean();
+        }
+    };
+}
+
+/** A page carrying one of everything the transformer has to handle. */
+function richPage(int $paragraphs = 1): Page
+{
+    $blocks = [
+        ['type' => 'heading', 'attrs' => ['level' => 2], 'content' => [['type' => 'text', 'text' => 'توزيع الدرجات']]],
+        ['type' => 'bulletList', 'content' => [
+            ['type' => 'listItem', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'الاختبار الأول عشرون درجة.']]]]],
+        ]],
+        ['type' => 'table', 'content' => [
+            ['type' => 'tableRow', 'content' => [
+                ['type' => 'tableHeader', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'البند']]]]],
+                ['type' => 'tableHeader', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'الدرجة']]]]],
+            ]],
+        ]],
+        ['type' => 'paragraph', 'content' => [[
+            'type' => 'image',
+            'attrs' => ['src' => 'data:image/png;base64,'.base64_encode(cardSamplePng()), 'alt' => 'رسم بياني'],
+        ]]],
+    ];
+
+    for ($index = 0; $index < $paragraphs; $index++) {
+        $blocks[] = ['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => str_repeat('نص يشرح تفاصيل التوزيع. ', 20)]]];
+    }
+
+    return PageFactory::new()->make([
+        'slug' => '/allwaeh/tozee-aldrjat',
+        'title' => 'توزيع الدرجات',
+        'html_content' => ['type' => 'doc', 'content' => $blocks],
+    ]);
+}
+
+/** A real PNG for the pages that embed one. */
+function cardSamplePng(): string
+{
+    $image = imagecreatetruecolor(240, 120);
+    imagefilledrectangle($image, 0, 0, 240, 120, imagecolorallocate($image, 41, 130, 135));
+
+    ob_start();
+    imagepng($image);
+    $bytes = (string) ob_get_clean();
+    imagedestroy($image);
+
+    return $bytes;
+}
+
+it('draws the page"s own content, not just its title', function () {
+    $renderer = capturingRenderer();
+    $this->instance(TakumiRenderer::class, $renderer);
+
+    app(OgImageService::class)->generatePageScreenshot(richPage(), OgImageService::TYPE_BOT);
+
+    // The screenshot this card replaced carried the page. So does this one: the
+    // heading, the list, the table and the picture all reach the template, in
+    // the vocabulary resources/views/social/content-style.blade.php styles.
+    expect($renderer->captured)
+        ->toContain('<div class="c-h2">توزيع الدرجات</div>')
+        ->toContain('class="c-li"')
+        ->toContain('class="c-table"')
+        ->toContain('<img src="data:image/png;base64,');
+});
+
+it('styles the page"s content with the shared vocabulary, not just draws it', function () {
+    $image = renderShareCard(PageFactory::new()->make([
+        'slug' => '/allwaeh/tozee-aldrjat',
+        'title' => 'توزيع الدرجات',
+        'html_content' => ['type' => 'doc', 'content' => [
+            ['type' => 'table', 'content' => [
+                ['type' => 'tableRow', 'content' => [
+                    ['type' => 'tableHeader', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'البند']]]]],
+                    ['type' => 'tableHeader', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'الدرجة']]]]],
+                ]],
+                ['type' => 'tableRow', 'content' => [
+                    ['type' => 'tableCell', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => 'الأول']]]]],
+                    ['type' => 'tableCell', 'content' => [['type' => 'paragraph', 'content' => [['type' => 'text', 'text' => '٢٠']]]]],
+                ]],
+            ]],
+        ]],
+    ]), OgImageService::TYPE_BOT);
+
+    // The tinted header row of a table — a colour only
+    // resources/views/social/content-style.blade.php paints, and one no `<table>`
+    // would produce on its own, since the engine does not lay tables out at all.
+    // Losing that partial leaves the page's words on the card with none of the
+    // shape that makes them readable, which no "did the text arrive" check can
+    // see.
+    expect(countCardPixelsNear($image, '293b42', tolerance: 6))->toBeGreaterThan(1000);
+});
+
+it('says so on the bot card when it stops short of the page', function () {
+    $renderer = capturingRenderer();
+    $this->instance(TakumiRenderer::class, $renderer);
+    $service = app(OgImageService::class);
+
+    $service->generatePageScreenshot(richPage(paragraphs: 1), OgImageService::TYPE_BOT);
+
+    expect($renderer->captured)->not->toContain('تابع القراءة في الموقع');
+
+    $service->generatePageScreenshot(richPage(paragraphs: 40), OgImageService::TYPE_BOT);
+
+    // A page longer than the budget ends with an invitation rather than with a
+    // sentence that simply stops.
+    expect($renderer->captured)->toContain('تابع القراءة في الموقع');
+});
+
+it('keeps the link preview card off the page"s images', function () {
+    $renderer = capturingRenderer();
+    $this->instance(TakumiRenderer::class, $renderer);
+
+    app(OgImageService::class)->generatePageScreenshot(richPage(), OgImageService::TYPE_OG);
+
+    // Four visible lines is no place for a picture, and this card is drawn
+    // inside a crawler's request — an image budget is what would let it wait on
+    // somebody else's server. The picture is named instead.
+    expect($renderer->captured)
+        ->not->toContain('<img src="data:image/png;base64,')
+        ->toContain('<div class="c-chip">صورة: رسم بياني</div>');
+});
 
 it('draws each of the page"s own words onto the card', function (array $overrides) {
     $base = [

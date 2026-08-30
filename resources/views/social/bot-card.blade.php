@@ -1,32 +1,40 @@
 {{--
-    The square card the Telegram bot sends above a page's reply. 720 × 720 CSS
-    pixels, rendered at 2x by App\Services\OgImageService through
-    App\Support\TakumiRenderer.
+    The card the Telegram bot sends above a page's reply. 720 CSS pixels wide
+    and as tall as the page needs, rendered at 2x by App\Services\OgImageService
+    through App\Support\TakumiRenderer.
 
-    It replaces the screenshot of the page the bot used to attach. A screenshot
-    of a documentation page is unreadable at Telegram's thumbnail size and the
-    reply's caption already carries the page's text, so what the image is for is
-    recognition: whose site this is, which section, and which page.
+    It replaces the screenshot of the page the bot used to attach, and it has to
+    do the screenshot's actual job: a reader in a group opens this instead of
+    the page, so the body below is the page's own content — headings, lists,
+    tables, code and images — rewritten into the engine's vocabulary by
+    App\Support\SocialCardContent, inside the same frame the wide card uses.
 
-    Centred rather than the wide card's start-aligned layout, because this one is
-    seen as a square thumbnail in a busy group before it is ever tapped.
+    Height follows the content, exactly as the quiz card's does, which is why
+    this template has no `height`. Two things keep that bounded: the character
+    and image budgets in OgImageService::CARDS, which decide where the text
+    stops and put the «تابع القراءة في الموقع» line at the end when it did, and
+    the `max-height` on .content below, which is the backstop for the one thing
+    a character count cannot predict — how tall an image turns out to be.
 
-    The engine is not a browser, and the shapes this file keeps to are the ones
-    documented on resources/views/quiz/question-image.blade.php — flex only, no
-    inline <svg>, no `text-overflow`, and every parent of a bolder run left at
-    weight 400. The palette below is shared by hand with social/og-card.blade
+    The `min-height` on .body is what a short page gets: a card that is still a
+    poster rather than a strip, with the footer at the bottom where it belongs.
+    It is on an inner element on purpose — the engine ignores a `min-height` on
+    the root while it measures, so the floor is asked for here AND passed to the
+    renderer, and the two have to agree.
+
+    The rest of the engine's shapes are documented on
+    resources/views/quiz/question-image.blade.php and on the content partial
+    included below. The palette is shared by hand with social/og-card.blade
     (the wide link-preview card); change the two together.
-
-    Nothing here declares @font-face: scripts/takumi-render.mjs registers the
-    faces. The file still opens in a browser as-is, which is how to preview a
-    change.
 
     @var string      $title        Page title, already trimmed to this card's budget.
     @var string|null $section      Parent page's title, drawn as a pill; omitted when null.
-    @var string      $description  Two or three sentences, already trimmed.
+    @var string      $description  Fallback prose for a page with no content of its own.
+    @var string      $body         The page's content as card markup; empty when the page has none.
+    @var bool        $truncated    Whether the body stops short of the page.
     @var string      $url          Host and path, no scheme.
     @var string      $logo         data: URI for the site mark.
-    @var string      $siteName     The site's own name, drawn under the mark.
+    @var string      $siteName     The site's own name, drawn beside the mark.
 --}}
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -46,6 +54,18 @@
             --primary: #38a7bb;
             --primary-soft: rgba(56, 167, 187, 0.14);
             --hairline: rgba(255, 255, 255, 0.1);
+            --code-bg: #0c1017;
+
+            /* The content vocabulary at this card's scale. Bigger than the wide
+               card's: this one is read, not glanced at, and Telegram scales a
+               tall photo down to the width of a phone. */
+            --c-size: 22px;
+            --c-size-h2: 28px;
+            --c-size-h3: 24px;
+            --c-size-code: 19px;
+            --c-size-small: 19px;
+            --c-line: 1.75;
+            --c-gap: 14px;
         }
 
         html {
@@ -54,7 +74,6 @@
 
         body {
             width: 720px;
-            height: 720px;
             display: flex;
             flex-direction: column;
             background:
@@ -78,23 +97,31 @@
             flex: 1;
             display: flex;
             flex-direction: column;
+            gap: 20px;
+            padding: 38px 44px 34px;
+            /* Matches the floor OgImageService passes the renderer, minus the
+               edge above. Change the two together. */
+            min-height: 712px;
+            min-width: 0;
+        }
+
+        .header {
+            display: flex;
             align-items: center;
             justify-content: space-between;
-            text-align: center;
-            padding: 46px 54px 42px;
+            gap: 16px;
         }
 
         .brand {
             display: flex;
-            flex-direction: column;
             align-items: center;
-            gap: 12px;
+            gap: 13px;
         }
 
         .brand-mark {
-            width: 76px;
-            height: 76px;
-            border-radius: 23px;
+            width: 52px;
+            height: 52px;
+            border-radius: 16px;
             background: linear-gradient(140deg, var(--primary), #22707f);
             display: flex;
             align-items: center;
@@ -104,63 +131,69 @@
         .brand-name {
             font-size: 22px;
             font-weight: 600;
-            color: var(--muted);
-            line-height: 1.4;
-        }
-
-        .main {
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 18px;
-            padding: 20px 0;
+            line-height: 1.35;
+            max-width: 330px;
         }
 
         .section {
-            font-size: 20px;
+            font-size: 19px;
             font-weight: 600;
             color: var(--primary);
             background: var(--primary-soft);
             border: 1px solid rgba(56, 167, 187, 0.3);
             border-radius: 999px;
-            padding: 8px 20px;
+            padding: 7px 17px;
             line-height: 1.35;
-            /* A long section name wraps inside the pill instead of being
-               ellipsized: the engine answers `text-overflow: ellipsis` by
-               drawing the ellipsis and nothing else, and trimmed to one line
-               (OgImageService::CARDS) so the middle's height stays the sum the
-               720px box was budgeted against. */
-            max-width: 470px;
+            /* Trimmed to one line rather than wrapped: the engine answers
+               `text-overflow: ellipsis` by drawing the ellipsis and nothing
+               else. */
+            max-width: 300px;
         }
 
-        /* 44px over three lines is the tallest this card's middle may grow:
-           the brand block, the footer and the worst-case description are
-           measured against the 720px box, and OgImageService::CARDS trims the
-           title to the 62 characters that fit in those three lines. Change the
-           pair together. */
         .title {
-            font-size: 44px;
+            font-size: 40px;
             font-weight: 700;
             line-height: 1.4;
         }
 
-        .description {
-            font-size: 21px;
-            line-height: 1.7;
-            color: var(--muted);
+        .content {
+            /* grow, never shrink, size from the content: the card's height is
+               the content's, and `flex: 1` alone would instead squeeze a long
+               page into whatever `min-height` left over. */
+            flex: 1 0 auto;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            /* The backstop, not the budget: the text is already cut to size in
+               PHP, and this catches the case that cannot be counted — a tall
+               image landing at the end. Whatever it clips, the line below has
+               already told the reader to go and read the rest. */
+            max-height: 2400px;
+            overflow: hidden;
+        }
+
+        .more {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 19px;
+            color: var(--primary);
+        }
+
+        .more-rule {
+            flex: 1;
+            height: 1px;
+            background: var(--hairline);
         }
 
         .footer {
             display: flex;
-            flex-direction: column;
             align-items: center;
-            gap: 8px;
-            width: 100%;
-            padding-top: 20px;
+            justify-content: space-between;
+            gap: 16px;
+            padding-top: 18px;
             border-top: 1px solid var(--hairline);
-            font-size: 18px;
+            font-size: 19px;
             color: var(--muted);
         }
 
@@ -172,31 +205,46 @@
             direction: ltr;
             color: var(--primary);
             font-weight: 500;
-            font-size: 20px;
         }
+
+@include('social.content-style')
     </style>
 </head>
 <body>
     <div class="edge"></div>
 
     <div class="body">
-        <div class="brand">
-            <span class="brand-mark"><img src="{{ $logo }}" width="44" height="44" alt=""></span>
-            {{-- The home card's headline IS the site name; printing it in the
-                 wordmark as well would say it twice. --}}
-            @if ($siteName !== $title)
-                <span class="brand-name">{{ $siteName }}</span>
-            @endif
-        </div>
+        <div class="header">
+            <div class="brand">
+                <span class="brand-mark"><img src="{{ $logo }}" width="31" height="31" alt=""></span>
+                {{-- The home card's headline IS the site name; printing it in the
+                     wordmark as well would say it twice. --}}
+                @if ($siteName !== $title)
+                    <span class="brand-name">{{ $siteName }}</span>
+                @endif
+            </div>
 
-        <div class="main">
             @if (filled($section))
                 <span class="section">{{ $section }}</span>
             @endif
-
-            <div class="title">{{ $title }}</div>
-            <div class="description">{{ $description }}</div>
         </div>
+
+        <div class="title">{{ $title }}</div>
+
+        <div class="content">
+            @if (filled($body))
+                <div class="c-body">{!! $body !!}</div>
+            @else
+                <div class="c-body"><div class="c-p">{{ $description }}</div></div>
+            @endif
+        </div>
+
+        @if ($truncated)
+            <div class="more">
+                <span>تابع القراءة في الموقع</span>
+                <span class="more-rule"></span>
+            </div>
+        @endif
 
         <div class="footer">
             <span class="url">{{ $url }}</span>
