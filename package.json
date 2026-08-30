@@ -32,6 +32,8 @@
         "@inertiajs/vue3": "^2.0.0",
         "@saad5400/ai-kit": "github:Saad5400/ai-kit#semver:^0.9.0",
         "@tailwindcss/vite": "^4.1.11",
+        "@takumi-rs/core": "^2.9.2",
+        "@takumi-rs/helpers": "^2.9.2",
         "@tanstack/vue-table": "^8.21.3",
         "@tiptap/core": "^2.8.0",
         "@tiptap/extension-image": "^2.27.1",
