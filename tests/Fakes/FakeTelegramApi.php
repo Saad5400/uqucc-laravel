@@ -121,6 +121,8 @@ class FakeTelegramApi extends Api
     {
         $this->stoppedPolls[] = $params;
 
+        $this->failWhenMissing($params, 'Bad Request: message to stop not found');
+
         $counts = $this->pollResults[(int) ($params['message_id'] ?? 0)] ?? [];
 
         return new \Telegram\Bot\Objects\Poll([

@@ -10,6 +10,7 @@ use App\Http\Controllers\Manage\DailyQuizController;
 use App\Http\Controllers\Manage\DashboardController;
 use App\Http\Controllers\Manage\GroupSupervisorController;
 use App\Http\Controllers\Manage\LoginController;
+use App\Http\Controllers\Manage\OpinionPollController;
 use App\Http\Controllers\Manage\PageAuthoringController;
 use App\Http\Controllers\Manage\PageAuthorsController;
 use App\Http\Controllers\Manage\PageChangeRequestController;
@@ -91,6 +92,15 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::post('/quiz/quizzes', [DailyQuizController::class, 'store'])->name('quiz.quizzes.store');
         Route::put('/quiz/quizzes/{quiz}', [DailyQuizController::class, 'update'])->name('quiz.quizzes.update');
         Route::delete('/quiz/quizzes/{quiz}', [DailyQuizController::class, 'destroy'])->name('quiz.quizzes.destroy');
+
+        Route::get('/polls', [OpinionPollController::class, 'index'])->name('polls.index');
+        Route::put('/polls/settings', [OpinionPollController::class, 'updateSettings'])->name('polls.settings.update');
+        Route::post('/polls', [OpinionPollController::class, 'store'])->name('polls.store');
+        Route::post('/polls/generate', [OpinionPollController::class, 'generate'])->name('polls.generate');
+        Route::put('/polls/{poll}', [OpinionPollController::class, 'update'])->name('polls.update');
+        Route::delete('/polls/{poll}', [OpinionPollController::class, 'destroy'])->name('polls.destroy');
+        Route::post('/polls/{poll}/post', [OpinionPollController::class, 'post'])->name('polls.post');
+        Route::post('/polls/{poll}/close', [OpinionPollController::class, 'close'])->name('polls.close');
 
         Route::get('/telegram-chats', [TelegramChatSettingController::class, 'index'])->name('telegram-chats.index');
         Route::put('/telegram-chats/{chat}', [TelegramChatSettingController::class, 'update'])->name('telegram-chats.update');

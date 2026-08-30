@@ -61,6 +61,34 @@ Schedule::command('quiz:post')
     ->withoutOverlapping(10)
     ->runInBackground();
 
+// The opinion poll's own authoring pass, half an hour after the quiz's so the
+// two never contend for the authoring model. A day that already has a poll —
+// hand-written or generated — is skipped, so this only ever fills gaps.
+Schedule::command('poll:generate')
+    ->dailyAt('05:30')
+    ->withoutOverlapping(60)
+    ->runInBackground();
+
+// Safety net for the 05:30 run, on the same reasoning as the quiz's: one
+// command invocation can exhaust its attempts on a bad night, and this still
+// lands hours before posting so admins keep their review window. A no-op on
+// every normal day.
+Schedule::command('poll:generate')
+    ->dailyAt('11:30')
+    ->withoutOverlapping(60)
+    ->runInBackground();
+
+// The whole opinion-poll clock in one entry: it closes a poll whose day is up
+// (announcing the result) and posts today's when its moment arrives, authoring
+// one on the spot if the two generation passes above left the day empty. Runs
+// every minute for the same reason `quiz:post` does — the posting time is a
+// setting a single day can override (see
+// App\Services\OpinionPoll\OpinionPollSchedule).
+Schedule::command('poll:post')
+    ->everyMinute()
+    ->withoutOverlapping(10)
+    ->runInBackground();
+
 // Thursday evening, after the new week's first question went out at 16:00 and
 // the outgoing week's last one (Wednesday's) stopped taking votes with it.
 // The command only sends a message — the weekly board is summed from the

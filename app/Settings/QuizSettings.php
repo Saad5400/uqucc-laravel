@@ -2,7 +2,7 @@
 
 namespace App\Settings;
 
-use App\Services\Quiz\QuizTarget;
+use App\Services\Telegram\ChatTarget;
 use Spatie\LaravelSettings\Settings;
 
 class QuizSettings extends Settings
@@ -49,10 +49,10 @@ class QuizSettings extends Settings
     /**
      * The configured destinations as parsed chat/topic targets.
      *
-     * @return array<int, QuizTarget>
+     * @return array<int, ChatTarget>
      */
     public function targets(): array
     {
-        return array_map(QuizTarget::parse(...), array_values($this->chat_ids));
+        return ChatTarget::parseAll($this->chat_ids);
     }
 }
