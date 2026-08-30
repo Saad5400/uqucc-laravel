@@ -90,7 +90,7 @@ describe('team administration', function () {
     it('lets a group admin create a team', function () {
         $fake = runTeamsUpdate(teamsGroupMessage('فريق جديد العابدية'), [TEAMS_ADMIN_ID => 'administrator']);
 
-        expect($fake->allTexts())->toContain('✅ تم إنشاء فريق «العابدية».'."\n".'ينضم له الأعضاء بإرسال: انضم العابدية')
+        expect($fake->allTexts())->toContain('✅ تم إنشاء فريق «العابدية».'."\n".'ينضم له الأعضاء بإرسال «انضم» ثم الضغط على اسم الفريق.')
             ->and(TelegramTeam::findByName(TEAMS_CHAT_ID, 'العابدية'))->not->toBeNull();
     });
 

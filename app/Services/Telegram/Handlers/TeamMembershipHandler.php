@@ -69,7 +69,7 @@ class TeamMembershipHandler extends BaseTeamHandler
         [$teams, $missing] = $this->resolveTeams($chatId, $names);
 
         if ($missing !== []) {
-            $this->replyHtml($message, 'الفرق التالية غير موجودة: '.$this->joinNames($missing)."\nاعرض الفرق المتاحة بالأمر: الفرق");
+            $this->replyHtml($message, 'الفرق التالية غير موجودة: '.$this->joinNames($missing)."\nأرسل «انضم» لاختيار فرقك من الأزرار.");
 
             return;
         }
