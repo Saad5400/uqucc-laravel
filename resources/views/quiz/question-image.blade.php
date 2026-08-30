@@ -1,22 +1,28 @@
 {{--
-    The daily question rendered as a shareable card, screenshotted to an image
-    by App\Services\Quiz\QuizImageRenderer. Everything is inlined and the fonts
-    arrive as data URIs ($fontFaceCss) so the headless browser needs no network
-    or app context. The authored $questionHtml is already sanitized to a small
-    tag vocabulary (App\Support\QuizContentHtml), so it is printed unescaped.
+    The daily question rendered as a shareable card, rasterized by
+    App\Services\Quiz\QuizImageRenderer through App\Support\TakumiRenderer —
+    the Takumi engine lays this markup out directly, so there is no browser and
+    no network here. The faces are registered by scripts/takumi-render.mjs
+    rather than declared with @font-face; everything else is ordinary CSS and
+    this file still opens in a browser as-is, which is how to preview a change.
+
+    Takumi has no inline-<svg> parser and no emoji font is vendored, so the
+    footer's down-arrow arrives as a data-URI <img> ($arrowIcon) instead of the
+    "⬇️" character it used to be.
+
+    The authored $questionHtml is already sanitized to a small tag vocabulary
+    (App\Support\QuizContentHtml), so it is printed unescaped.
 
     @var string      $questionHtml  Sanitized HTML fragment: the preamble + question.
     @var array       $options       The four plain-text answer options, in order.
     @var string|null $topic         Topic label, shown as a pill; omitted when null.
-    @var string      $fontFaceCss   @font-face rules with base64 woff2 data URIs.
+    @var string      $arrowIcon     data: URI for the footer's down arrow.
 --}}
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="utf-8">
     <style>
-        {!! $fontFaceCss !!}
-
         * {
             margin: 0;
             padding: 0;
@@ -41,6 +47,13 @@
 
         body {
             width: 900px;
+            /* Matches the 600px viewport the browser screenshotted full-page:
+               the card grows with the question but never comes out shorter.
+               This declaration is for the browser preview only — the rendered
+               image gets the same floor from QuizImageRenderer::MIN_HEIGHT,
+               because Takumi sizes an image from its content and does not read
+               a `min-height` while doing it. Change the two together. */
+            min-height: 600px;
             display: flex;
             justify-content: center;
             align-items: flex-start;
@@ -101,16 +114,23 @@
             border: 1px solid rgba(56, 167, 187, 0.28);
             padding: 8px 18px;
             border-radius: 999px;
-            white-space: nowrap;
+            /* A long topic wraps inside the pill rather than being ellipsized:
+               Takumi answers `text-overflow: ellipsis` by drawing the ellipsis
+               and nothing else, so a truncating pill would come out empty. The
+               names are teacher-written and unbounded, so the width cap stays
+               and the second line is the pressure valve. */
             max-width: 380px;
-            overflow: hidden;
-            text-overflow: ellipsis;
         }
 
         .content {
             font-size: 30px;
             line-height: 1.95;
-            font-weight: 500;
+            /* 400, not the 500 the browser drew, and deliberately: Takumi lets
+               an inline run keep its own weight only while its parent sits at
+               the default, so a 500 here would flatten every <strong> in the
+               question back into the body text. Emphasis is load-bearing in a
+               question; half a weight step of body text is not. */
+            font-weight: 400;
         }
 
         .content p {
@@ -156,6 +176,11 @@
             padding: 2px 8px;
             font-size: 0.86em;
             unicode-bidi: isolate;
+            /* Takumi draws inline runs as text, not as boxes, so the chip above
+               it survives only in a browser preview. The tint is what actually
+               separates an inline `code` from the prose around it in the image
+               — and it is the one inline property the engine does honour. */
+            color: #a8dbe6;
         }
 
         .content ul,
@@ -205,6 +230,17 @@
             min-width: 0;
         }
 
+        .footer-hint {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .footer-arrow {
+            width: 22px;
+            height: 22px;
+        }
+
         .footer {
             display: flex;
             align-items: center;
@@ -243,7 +279,7 @@
         </div>
 
         <div class="footer">
-            <span>اختر رقم إجابتك في التصويت بالأسفل ⬇️</span>
+            <span class="footer-hint">اختر رقم إجابتك في التصويت بالأسفل <img class="footer-arrow" src="{{ $arrowIcon }}" width="22" height="22" alt=""></span>
             <span>دليل طالب كلية الحاسبات · أم القرى</span>
         </div>
     </div>

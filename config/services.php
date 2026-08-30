@@ -49,6 +49,23 @@ return [
         'node_modules_path' => env('NODE_PATH'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Takumi image renderer
+    |--------------------------------------------------------------------------
+    |
+    | The cards App\Support\TakumiRenderer draws are laid out by a Node script
+    | (scripts/takumi-render.mjs). Only the interpreter is configurable, and
+    | only because the deployment image installs Node through Nix and PHP-FPM
+    | does not always see it on PATH — the same NODE_BINARY Browsershot uses.
+    | Everything else the render needs (the fonts, the packages) is in the repo.
+    |
+    */
+
+    'takumi' => [
+        'node_binary' => env('NODE_BINARY', 'node'),
+    ],
+
     'google_analytics' => [
         'id' => env('GOOGLE_ANALYTICS_ID', 'G-D6V76T469N'),
     ],
