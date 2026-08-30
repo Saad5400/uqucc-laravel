@@ -67,7 +67,12 @@ class Page extends Model implements Sortable
     }
 
     /**
-     * Clear screenshot cache for this specific page
+     * Drop this page's rendered share cards.
+     *
+     * Belt and braces since the cards became content-addressed: an edit that
+     * changes what a card says already lands on a different file. This is what
+     * deletes the superseded one, and what covers an edit whose effect on the
+     * card is indirect.
      */
     public function clearScreenshotCache(): void
     {

@@ -26,7 +26,6 @@
         "predis/predis": "^2.0",
         "saad/ai-kit": "^0.10.0",
         "smalot/pdfparser": "^2.12",
-        "spatie/browsershot": "^5.2",
         "spatie/eloquent-sortable": "^4.5",
         "spatie/laravel-activitylog": "^4.10",
         "spatie/laravel-permission": "^6.24",
