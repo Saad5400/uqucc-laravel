@@ -3,11 +3,11 @@
 namespace App\Ai\Tools;
 
 use App\Ai\Tools\Concerns\GatedByAiSettings;
+use App\Support\HijriDate;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Carbon\Exceptions\InvalidFormatException;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
-use IntlDateFormatter;
 use Laravel\Ai\Contracts\Tool;
 use Laravel\Ai\Tools\Request;
 use Stringable;
@@ -144,15 +144,7 @@ class DateTimeTool implements Tool
 
     private function hijri(CarbonInterface $moment): string
     {
-        $formatter = new IntlDateFormatter(
-            'ar_SA@calendar=islamic-umalqura',
-            IntlDateFormatter::LONG,
-            IntlDateFormatter::NONE,
-            $moment->getTimezone()->getName(),
-            IntlDateFormatter::TRADITIONAL,
-        );
-
-        return (string) $formatter->format($moment);
+        return HijriDate::longArabic($moment);
     }
 
     private function parse(string $value): ?CarbonImmutable

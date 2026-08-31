@@ -2,7 +2,7 @@
 
 namespace App\Services\Telegram;
 
-use ArPHP\I18N\Arabic;
+use App\Support\HijriDate;
 use Carbon\Carbon;
 
 class ContentParser
@@ -231,10 +231,8 @@ class ContentParser
         // Format Gregorian date as YYYY-MM-DD
         $gregorianFormatted = sprintf('%04d-%02d-%02d', $year, $month, $day);
 
-        // Convert to Hijri using Umm Al Qura calendar
-        $arabic = new Arabic;
-        $arabic->setDateMode(1); // Hijri mode
-        $hijriFormatted = $arabic->date('Y-m-d', $date->timestamp);
+        // Convert to Hijri using the Umm Al Qura calendar (Saudi Arabia's official one)
+        $hijriFormatted = HijriDate::numeric($date);
 
         // Build formatted date: Day [Hijri] [Gregorian] [Countdown]
         $formattedDate = "{$dayName} [{$hijriFormatted}هـ] [{$gregorianFormatted}مـ]";

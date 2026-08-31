@@ -59,7 +59,7 @@
                 <div class="rounded-lg bg-card p-4 shadow-md">
                     <p class="!my-0 text-base">
                         موعد المكافأة القادمة:
-                        <strong class="text-primary">{{ formatDate(nextPaymentDate) }}</strong>
+                        <strong class="text-primary">{{ formatHijriDate(nextPaymentDate) }}</strong>
                     </p>
                 </div>
             </template>
@@ -81,7 +81,8 @@ import PageHeader from '@/components/page/PageHeader.vue';
 import RichContentRenderer from '@/components/RichContentRenderer.vue';
 import SeoHead, { type SeoData } from '@/components/SeoHead.vue';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { RIYADH_TIMEZONE, calculateNextPaymentDate, calculateTimeLeft, isToday, type TimeLeft } from '@/lib/calculators/reward';
+import { calculateNextPaymentDate, calculateTimeLeft, isToday, type TimeLeft } from '@/lib/calculators/reward';
+import { formatHijriDate } from '@/lib/formatters';
 import { onMounted, onUnmounted, ref } from 'vue';
 
 defineOptions({
@@ -100,17 +101,6 @@ interface Props {
 withDefaults(defineProps<Props>(), {
     hasContent: false,
 });
-
-const formatDate = (date: Date): string => {
-    // Convert UTC date to display in Riyadh timezone and Hijri calendar
-    return date.toLocaleDateString('ar-SA-u-ca-islamic', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        weekday: 'long',
-        timeZone: RIYADH_TIMEZONE,
-    });
-};
 
 // Initialize with server-side values using UTC
 const paymentDate = calculateNextPaymentDate();
