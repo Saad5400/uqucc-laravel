@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { arabicDigits } from '@/lib/arabic';
+import type { JoinRequest, StudentDetails } from '@/lib/joinMessage';
 import { MessagesSquare } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
@@ -211,6 +212,33 @@ const sectionOptions: Option[] = [
     { value: 'men', label: 'شطر الطلاب' },
     { value: 'women', label: 'شطر الطالبات' },
 ];
+
+/* ------------------------------------------------------------------ */
+/* The message each step hands to WhatsApp or Telegram                 */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The same four answers, in the form the join message writes them. Built here
+ * because this is where the labels live: a step below knows its supervisors,
+ * not what the student picked two steps up.
+ */
+const studentDetails = computed<StudentDetails>(() => ({
+    cohort: cohortLabel.value,
+    section: sectionOptions.find((option) => option.value === section.value)?.label ?? '',
+    major: majorLabel.value,
+    branch: branchOption.value?.label ?? '',
+}));
+
+/**
+ * The request each step drafts, short of who it is addressed to — the step
+ * completes it with whichever supervisor the student ends up tapping.
+ *
+ * The group is named the way it is asked for in a sentence: «القروب العام» is a
+ * name already, «علوم الحاسب» is a programme and needs the word.
+ */
+const generalJoin = computed<Omit<JoinRequest, 'supervisor'>>(() => ({ ...studentDetails.value, group: 'القروب العام' }));
+
+const programmeJoin = computed<Omit<JoinRequest, 'supervisor'>>(() => ({ ...studentDetails.value, group: `قروب ${majorLabel.value}` }));
 </script>
 
 <template>
@@ -350,6 +378,7 @@ const sectionOptions: Option[] = [
                         purpose="لكل طلاب كلية الحاسبات بالدفعة"
                         :subtitle="cohortLabel"
                         :section="generalSection"
+                        :join="generalJoin"
                         :open="openStep === GENERAL_STEP"
                         @toggle="toggleStep(GENERAL_STEP)"
                     >
@@ -365,6 +394,7 @@ const sectionOptions: Option[] = [
                         purpose="لطلاب تخصصك في دفعتك وفرعك"
                         :subtitle="programmeSubtitle"
                         :section="programmeSection"
+                        :join="programmeJoin"
                         :open="openStep === PROGRAMME_STEP"
                         @toggle="toggleStep(PROGRAMME_STEP)"
                     >

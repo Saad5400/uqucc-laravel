@@ -11,6 +11,7 @@
  */
 import { Badge } from '@/components/ui/badge';
 import { arabicDigits, arabicSupervisors } from '@/lib/arabic';
+import type { JoinRequest } from '@/lib/joinMessage';
 import { ChevronDown } from 'lucide-vue-next';
 import { computed } from 'vue';
 import SupervisorHero from './SupervisorHero.vue';
@@ -26,6 +27,8 @@ const props = defineProps<{
     subtitle?: string;
     /** The supervisors of this group who serve the student's section, or `null` if there are none. */
     section: GroupSection | null;
+    /** The message this step drafts, short of the supervisor who is tapped. */
+    join: Omit<JoinRequest, 'supervisor'>;
     open: boolean;
 }>();
 
@@ -80,8 +83,8 @@ const showBody = computed(() => props.open || isUnavailable.value);
 
         <div v-if="showBody" class="space-y-2 border-t border-border p-4">
             <template v-if="section">
-                <SupervisorHero :section="section" />
-                <SupervisorRoster :section="section" />
+                <SupervisorHero :section="section" :join="join" />
+                <SupervisorRoster :section="section" :join="join" />
             </template>
 
             <p v-else class="px-2 py-4 text-center text-sm text-muted-foreground">
