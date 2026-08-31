@@ -26,6 +26,7 @@ class CohortFactory extends Factory
             'requirements' => ['صورة من البوابة الأكاديمية', 'اسم التخصص', 'رقم الدفعة'],
             'is_active' => true,
             'is_featured' => false,
+            'shows_major_groups' => true,
         ];
     }
 
@@ -39,6 +40,12 @@ class CohortFactory extends Factory
     public function inactive(): static
     {
         return $this->state(fn (array $attributes) => ['is_active' => false]);
+    }
+
+    /** An intake joined through its general group alone, with the programme step off. */
+    public function withoutMajorGroups(): static
+    {
+        return $this->state(fn (array $attributes) => ['shows_major_groups' => false]);
     }
 
     /** An intake with no join checklist. */

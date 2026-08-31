@@ -38,6 +38,7 @@ class UpdateCohortRequest extends FormRequest
             'requirements.*' => ['nullable', 'string', 'max:255'],
             'is_active' => ['sometimes', 'boolean'],
             'is_featured' => ['sometimes', 'boolean'],
+            'shows_major_groups' => ['sometimes', 'boolean'],
         ];
     }
 
@@ -62,6 +63,7 @@ class UpdateCohortRequest extends FormRequest
             'requirements.*.max' => 'يجب ألا يتجاوز الشرط ٢٥٥ حرفاً.',
             'is_active.boolean' => 'حالة العرض غير صالحة.',
             'is_featured.boolean' => 'حالة الإبراز غير صالحة.',
+            'shows_major_groups.boolean' => 'حالة عرض قروبات التخصصات غير صالحة.',
         ];
     }
 }

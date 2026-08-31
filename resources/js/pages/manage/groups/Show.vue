@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { useSortableList } from '@/composables/useSortableList';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { ArrowRight, CheckCircle2, ExternalLink, MessagesSquare, Pencil, Plus, Star, TriangleAlert } from 'lucide-vue-next';
+import { ArrowRight, CheckCircle2, ExternalLink, EyeOff, MessagesSquare, Pencil, Plus, Star, TriangleAlert } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
 defineOptions({ layout: ManageLayout });
@@ -110,11 +110,20 @@ function deleteGroup(group: GroupRow): void {
                 <Star aria-hidden="true" />
                 الدفعة المستجدة
             </Badge>
+            <Badge v-if="!cohort.shows_major_groups" variant="outline">
+                <EyeOff aria-hidden="true" />
+                بدون قروبات التخصصات
+            </Badge>
             <Badge v-if="isUnreachable" variant="destructive">
                 <TriangleAlert aria-hidden="true" />
                 لا يوجد مشرف متاح
             </Badge>
         </div>
+
+        <p v-if="!cohort.shows_major_groups" class="text-sm text-muted-foreground">
+            خطوة قروب التخصص مخفية في صفحة القروبات، فينضم الطالب للقروب العام وحده. القروبات أدناه ومشرفوها محفوظة كما هي، وتعود للظهور بتفعيل «عرض
+            قروبات التخصصات» من «تعديل بيانات الدفعة».
+        </p>
 
         <p v-if="isUnreachable" class="text-sm text-muted-foreground">
             الدفعة معروضة لكن لا يوجد فيها مشرف متاح، فلن يجد الزائر من يراسله. فعّل أحد المشرفين أو أضف مشرفاً جديداً.

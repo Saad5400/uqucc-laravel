@@ -26,6 +26,7 @@ const form = useForm<{
     requirements: string[];
     is_active: boolean;
     is_featured: boolean;
+    shows_major_groups: boolean;
 }>({
     name: '',
     description: '',
@@ -33,6 +34,7 @@ const form = useForm<{
     requirements: [],
     is_active: true,
     is_featured: false,
+    shows_major_groups: true,
 });
 
 watch(open, (isOpen) => {
@@ -44,6 +46,7 @@ watch(open, (isOpen) => {
         form.requirements = [...(props.cohort?.requirements ?? [])];
         form.is_active = props.cohort?.is_active ?? true;
         form.is_featured = props.cohort?.is_featured ?? false;
+        form.shows_major_groups = props.cohort?.shows_major_groups ?? true;
     }
 });
 
@@ -130,6 +133,17 @@ function submit(): void {
                         <p class="text-xs text-muted-foreground">تظهر أولاً وتُفتح تلقائياً للزائر. عادةً الدفعة التي تستقبل المستجدين الآن.</p>
                     </div>
                     <Switch id="cohort-featured" :model-value="form.is_featured" @update:model-value="form.is_featured = $event" />
+                </div>
+
+                <div class="flex items-start justify-between gap-4 rounded-lg border border-border p-3">
+                    <div class="space-y-1">
+                        <Label for="cohort-major-groups">عرض قروبات التخصصات</Label>
+                        <p class="text-xs text-muted-foreground">
+                            أوقفه لتُخفى خطوة قروب التخصص من صفحة القروبات، فينضم الطالب للقروب العام وحده. القروبات ومشرفوها تبقى كما هي، وقائمة
+                            التخصصات تبقى في النموذج.
+                        </p>
+                    </div>
+                    <Switch id="cohort-major-groups" :model-value="form.shows_major_groups" @update:model-value="form.shows_major_groups = $event" />
                 </div>
 
                 <DialogFooter>

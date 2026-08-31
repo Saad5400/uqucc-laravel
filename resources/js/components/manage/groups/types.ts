@@ -6,6 +6,8 @@ export interface CohortRow {
     requirements: string[];
     is_active: boolean;
     is_featured: boolean;
+    /** When off, the public page drops the per-major step and the intake is joined through its general group alone. */
+    shows_major_groups: boolean;
     groups_count: number;
     supervisors_count: number;
     available_supervisors_count: number;

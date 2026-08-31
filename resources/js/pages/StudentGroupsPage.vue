@@ -65,6 +65,14 @@ function distinctBy(
 
 const programmeGroups = computed(() => (activeCohort.value?.groups ?? []).filter((group) => !group.is_general));
 
+/**
+ * Whether this batch publishes a programme step at all. Turned off in the panel
+ * for a batch that is joined through its general group alone; the programme
+ * groups still ship, so the «التخصص» field below keeps its options and the join
+ * message still names the programme — only the step disappears.
+ */
+const showsProgrammeStep = computed(() => activeCohort.value?.shows_major_groups ?? true);
+
 /** The one list published to the whole batch, whatever anyone is studying. */
 const globalGroup = computed(() => (activeCohort.value?.groups ?? []).find((group) => group.is_general) ?? null);
 
@@ -167,7 +175,7 @@ const programmeSection = computed(() => sectionOf(programmeGroup.value));
  * an unavailable group has nothing to fold away and explains itself in place,
  * so it must not sit there holding the open slot.
  */
-const firstStep = computed(() => (generalSection.value ? GENERAL_STEP : PROGRAMME_STEP));
+const firstStep = computed(() => (generalSection.value || !showsProgrammeStep.value ? GENERAL_STEP : PROGRAMME_STEP));
 
 /** `null` follows the sequence; a name is the step the student opened; `''` is all folded away. */
 const openedStep = ref<string | null>(null);
@@ -368,7 +376,7 @@ const programmeJoin = computed<Omit<JoinRequest, 'supervisor'>>(() => ({ ...stud
                     <span class="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
                         {{ arabicDigits(3) }}
                     </span>
-                    <h2 class="m-0 text-lg font-bold">انضم للقروبات</h2>
+                    <h2 class="m-0 text-lg font-bold">{{ showsProgrammeStep ? 'انضم للقروبات' : 'انضم للقروب' }}</h2>
                 </div>
 
                 <div class="space-y-3">
@@ -383,12 +391,16 @@ const programmeJoin = computed<Omit<JoinRequest, 'supervisor'>>(() => ({ ...stud
                         @toggle="toggleStep(GENERAL_STEP)"
                     >
                         <template #empty>
-                            <span v-if="!globalGroup">لا يوجد قروب عام لهذه الدفعة — اكتفِ بقروب تخصصك.</span>
+                            <!-- With the programme step off there is nothing else to fall back on,
+                                 so «اكتفِ بقروب تخصصك» would point at a step that is not there. -->
+                            <span v-if="!globalGroup && !showsProgrammeStep">لا يوجد قروب معلن لهذه الدفعة حالياً. جرّب زيارة الصفحة لاحقاً.</span>
+                            <span v-else-if="!globalGroup">لا يوجد قروب عام لهذه الدفعة — اكتفِ بقروب تخصصك.</span>
                             <span v-else>لا يوجد مشرف متاح في القروب العام حالياً. جرّب زيارة الصفحة لاحقاً.</span>
                         </template>
                     </JoinStep>
 
                     <JoinStep
+                        v-if="showsProgrammeStep"
                         :order="2"
                         :title="majorLabel"
                         purpose="لطلاب تخصصك في دفعتك وفرعك"

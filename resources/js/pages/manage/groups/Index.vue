@@ -17,6 +17,7 @@ import {
     ArrowUp,
     ChevronLeft,
     EllipsisVertical,
+    EyeOff,
     GripVertical,
     MessagesSquare,
     Pencil,
@@ -186,6 +187,10 @@ function deleteCohort(): void {
                     <Badge v-else-if="!cohort.available_supervisors_count" variant="destructive">
                         <TriangleAlert aria-hidden="true" />
                         بلا مشرف متاح
+                    </Badge>
+                    <Badge v-if="!cohort.shows_major_groups" variant="outline" title="خطوة قروب التخصص مخفية عن الزوار في هذه الدفعة">
+                        <EyeOff aria-hidden="true" />
+                        بدون قروبات التخصصات
                     </Badge>
                 </div>
                 <p class="text-xs text-muted-foreground tabular-nums">

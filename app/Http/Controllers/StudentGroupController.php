@@ -79,6 +79,7 @@ class StudentGroupController extends Controller
                     'note' => $cohort->note,
                     'requirements' => array_values(array_filter($cohort->requirements ?? [])),
                     'is_featured' => $cohort->is_featured,
+                    'shows_major_groups' => $cohort->shows_major_groups,
                     'groups' => $cohort->groups
                         ->map(fn (StudentGroup $group) => $this->presentGroup($group))
                         ->values()
