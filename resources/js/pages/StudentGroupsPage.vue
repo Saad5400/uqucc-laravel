@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import GroupAnswer from '@/components/groups/GroupAnswer.vue';
 import JoinChecklist from '@/components/groups/JoinChecklist.vue';
-import type { Cohort, StudentGroup } from '@/components/groups/types';
+import JoinStep from '@/components/groups/JoinStep.vue';
+import { sectionFor, type Cohort, type GroupSection, type StudentGroup } from '@/components/groups/types';
 import DocsLayout from '@/components/layout/DocsLayout.vue';
 import PageHeader from '@/components/page/PageHeader.vue';
 import RichContentRenderer from '@/components/RichContentRenderer.vue';
@@ -10,7 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { arabicDigits } from '@/lib/arabic';
-import type { StudentDetails } from '@/lib/joinMessage';
+import type { JoinRequest, StudentDetails } from '@/lib/joinMessage';
 import { MessagesSquare } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
@@ -142,6 +142,43 @@ const branchesOfferingMajor = computed(() =>
 );
 
 /* ------------------------------------------------------------------ */
+/* Joining: two groups, one after the other                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The two groups used to sit side by side as twin cards, and students read that
+ * as a choice — «why are there two, which one is mine?». They are not a choice:
+ * everyone joins both, and the general group comes first. So they are an ordered
+ * sequence with exactly one step open at a time, opening on the general group.
+ */
+const GENERAL_STEP = 'general';
+const PROGRAMME_STEP = 'programme';
+
+/** Only the supervisors of the student's own section can answer them. */
+function sectionOf(group: StudentGroup | null): GroupSection | null {
+    return group && section.value ? sectionFor(group, section.value) : null;
+}
+
+const generalSection = computed(() => sectionOf(globalGroup.value));
+const programmeSection = computed(() => sectionOf(programmeGroup.value));
+
+/**
+ * The step that opens itself: the general group, unless this batch has none —
+ * an unavailable group has nothing to fold away and explains itself in place,
+ * so it must not sit there holding the open slot.
+ */
+const firstStep = computed(() => (generalSection.value ? GENERAL_STEP : PROGRAMME_STEP));
+
+/** `null` follows the sequence; a name is the step the student opened; `''` is all folded away. */
+const openedStep = ref<string | null>(null);
+
+const openStep = computed(() => (openedStep.value === null ? firstStep.value : openedStep.value || null));
+
+function toggleStep(step: string): void {
+    openedStep.value = openStep.value === step ? '' : step;
+}
+
+/* ------------------------------------------------------------------ */
 /* Folding step 1                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -157,6 +194,8 @@ const selectorOpen = ref(true);
  * is something to show. «تغيير» reopens it.
  */
 watch([cohortId, section, branch, major], () => {
+    openedStep.value = null;
+
     if (section.value !== null && major.value !== null) {
         selectorOpen.value = false;
     }
@@ -174,10 +213,14 @@ const sectionOptions: Option[] = [
     { value: 'women', label: 'شطر الطالبات' },
 ];
 
+/* ------------------------------------------------------------------ */
+/* The message each step hands to WhatsApp or Telegram                 */
+/* ------------------------------------------------------------------ */
+
 /**
  * The same four answers, in the form the join message writes them. Built here
- * because this is where the labels live: the cards below know a group and a
- * supervisor, not what the student picked two steps up.
+ * because this is where the labels live: a step below knows its supervisors,
+ * not what the student picked two steps up.
  */
 const studentDetails = computed<StudentDetails>(() => ({
     cohort: cohortLabel.value,
@@ -185,6 +228,17 @@ const studentDetails = computed<StudentDetails>(() => ({
     major: majorLabel.value,
     branch: branchOption.value?.label ?? '',
 }));
+
+/**
+ * The request each step drafts, short of who it is addressed to — the step
+ * completes it with whichever supervisor the student ends up tapping.
+ *
+ * The group is named the way it is asked for in a sentence: «القروب العام» is a
+ * name already, «علوم الحاسب» is a programme and needs the word.
+ */
+const generalJoin = computed<Omit<JoinRequest, 'supervisor'>>(() => ({ ...studentDetails.value, group: 'القروب العام' }));
+
+const programmeJoin = computed<Omit<JoinRequest, 'supervisor'>>(() => ({ ...studentDetails.value, group: `قروب ${majorLabel.value}` }));
 </script>
 
 <template>
@@ -307,36 +361,42 @@ const studentDetails = computed<StudentDetails>(() => ({
                 </div>
             </section>
 
-            <!-- 3 · both groups, side by side: joining one is not joining -->
+            <!-- 3 · the two groups as a sequence, never as a pair of options:
+                 stacked (side-by-side reads as «pick one»), numbered, one open at a time. -->
             <section v-if="hasAnswered" class="space-y-4">
                 <div class="flex items-center gap-3">
                     <span class="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-sm font-bold text-primary-foreground">
                         {{ arabicDigits(3) }}
                     </span>
-                    <h2 class="m-0 text-lg font-bold">راسل مشرفي القروبين</h2>
+                    <h2 class="m-0 text-lg font-bold">انضم للقروبات</h2>
                 </div>
 
-                <!-- items-start so an empty slot (a batch with no global group) does not stretch to match a filled one -->
-                <div class="grid items-start gap-4 md:grid-cols-2">
-                    <GroupAnswer
+                <div class="space-y-3">
+                    <JoinStep
+                        :order="1"
                         title="القروب العام"
-                        :subtitle="activeCohort?.name"
-                        :group="globalGroup"
-                        :section-key="section"
-                        :student="studentDetails"
+                        purpose="لكل طلاب كلية الحاسبات بالدفعة"
+                        :subtitle="cohortLabel"
+                        :section="generalSection"
+                        :join="generalJoin"
+                        :open="openStep === GENERAL_STEP"
+                        @toggle="toggleStep(GENERAL_STEP)"
                     >
                         <template #empty>
                             <span v-if="!globalGroup">لا يوجد قروب عام لهذه الدفعة — اكتفِ بقروب تخصصك.</span>
                             <span v-else>لا يوجد مشرف متاح في القروب العام حالياً. جرّب زيارة الصفحة لاحقاً.</span>
                         </template>
-                    </GroupAnswer>
+                    </JoinStep>
 
-                    <GroupAnswer
+                    <JoinStep
+                        :order="2"
                         :title="majorLabel"
+                        purpose="لطلاب تخصصك في دفعتك وفرعك"
                         :subtitle="programmeSubtitle"
-                        :group="programmeGroup"
-                        :section-key="section"
-                        :student="studentDetails"
+                        :section="programmeSection"
+                        :join="programmeJoin"
+                        :open="openStep === PROGRAMME_STEP"
+                        @toggle="toggleStep(PROGRAMME_STEP)"
                     >
                         <template #empty>
                             <span v-if="!programmeGroup && branchesOfferingMajor.length" class="block space-y-3">
@@ -356,7 +416,7 @@ const studentDetails = computed<StudentDetails>(() => ({
                             <span v-else-if="!programmeGroup">«{{ majorLabel }}» ليس له قروب في هذه الدفعة.</span>
                             <span v-else>لا يوجد مشرف من شطرك في هذا القروب حالياً.</span>
                         </template>
-                    </GroupAnswer>
+                    </JoinStep>
                 </div>
             </section>
         </div>
