@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { arabicDigits } from '@/lib/arabic';
+import type { StudentDetails } from '@/lib/joinMessage';
 import { MessagesSquare } from 'lucide-vue-next';
 import { computed, ref, watch } from 'vue';
 
@@ -172,6 +173,18 @@ const sectionOptions: Option[] = [
     { value: 'men', label: 'شطر الطلاب' },
     { value: 'women', label: 'شطر الطالبات' },
 ];
+
+/**
+ * The same four answers, in the form the join message writes them. Built here
+ * because this is where the labels live: the cards below know a group and a
+ * supervisor, not what the student picked two steps up.
+ */
+const studentDetails = computed<StudentDetails>(() => ({
+    cohort: cohortLabel.value,
+    section: sectionOptions.find((option) => option.value === section.value)?.label ?? '',
+    major: majorLabel.value,
+    branch: branchOption.value?.label ?? '',
+}));
 </script>
 
 <template>
@@ -305,14 +318,26 @@ const sectionOptions: Option[] = [
 
                 <!-- items-start so an empty slot (a batch with no global group) does not stretch to match a filled one -->
                 <div class="grid items-start gap-4 md:grid-cols-2">
-                    <GroupAnswer title="القروب العام" :subtitle="activeCohort?.name" :group="globalGroup" :section-key="section">
+                    <GroupAnswer
+                        title="القروب العام"
+                        :subtitle="activeCohort?.name"
+                        :group="globalGroup"
+                        :section-key="section"
+                        :student="studentDetails"
+                    >
                         <template #empty>
                             <span v-if="!globalGroup">لا يوجد قروب عام لهذه الدفعة — اكتفِ بقروب تخصصك.</span>
                             <span v-else>لا يوجد مشرف متاح في القروب العام حالياً. جرّب زيارة الصفحة لاحقاً.</span>
                         </template>
                     </GroupAnswer>
 
-                    <GroupAnswer :title="majorLabel" :subtitle="programmeSubtitle" :group="programmeGroup" :section-key="section">
+                    <GroupAnswer
+                        :title="majorLabel"
+                        :subtitle="programmeSubtitle"
+                        :group="programmeGroup"
+                        :section-key="section"
+                        :student="studentDetails"
+                    >
                         <template #empty>
                             <span v-if="!programmeGroup && branchesOfferingMajor.length" class="block space-y-3">
                                 <span class="block">«{{ majorLabel }}» ليس له قروب في هذا الفرع. متاح في:</span>

@@ -10,6 +10,7 @@
  */
 import { Badge } from '@/components/ui/badge';
 import { arabicSupervisors } from '@/lib/arabic';
+import type { JoinRequest, StudentDetails } from '@/lib/joinMessage';
 import { computed } from 'vue';
 import SupervisorHero from './SupervisorHero.vue';
 import SupervisorRoster from './SupervisorRoster.vue';
@@ -21,9 +22,20 @@ const props = defineProps<{
     group: StudentGroup | null;
     /** `null` until the student says which section they are in. */
     sectionKey: string | null;
+    /** What they answered in step 1, for the message the buttons below write. */
+    student: StudentDetails;
 }>();
 
 const section = computed(() => (props.group && props.sectionKey ? sectionFor(props.group, props.sectionKey) : null));
+
+/**
+ * «القروب العام» is a name already; a programme group is stored as bare
+ * «علوم الحاسب», which needs the word to read as a list in a sentence.
+ */
+const groupLabel = computed(() => (props.group === null ? '' : props.group.is_general ? props.group.name : `قروب ${props.group.name}`));
+
+/** Everything the message needs except who it is addressed to. */
+const join = computed<Omit<JoinRequest, 'supervisor'>>(() => ({ ...props.student, group: groupLabel.value }));
 </script>
 
 <template>
@@ -37,8 +49,8 @@ const section = computed(() => (props.group && props.sectionKey ? sectionFor(pro
         </header>
 
         <template v-if="section">
-            <SupervisorHero :section="section" />
-            <SupervisorRoster :section="section" />
+            <SupervisorHero :section="section" :join="join" />
+            <SupervisorRoster :section="section" :join="join" />
         </template>
 
         <p v-else class="rounded-xl border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">

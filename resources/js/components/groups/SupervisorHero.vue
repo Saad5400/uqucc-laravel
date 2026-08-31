@@ -11,13 +11,17 @@
  */
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { buildJoinMessage, withPrefilledMessage, type JoinRequest } from '@/lib/joinMessage';
 import { pickAnother } from '@/lib/rotation';
 import { MessageCircle, RefreshCw, Send } from 'lucide-vue-next';
 import { computed, onMounted, ref, watch } from 'vue';
-import { contactLabel, initialOf, type GroupSection, type GroupSupervisor } from './types';
+import { handOffTo } from './handoff';
+import { contactLabel, initialOf, type GroupSection, type GroupSupervisor, type SupervisorContact } from './types';
 
 const props = defineProps<{
     section: GroupSection;
+    /** The join request this card writes, once a supervisor is picked for it. */
+    join: Omit<JoinRequest, 'supervisor'>;
 }>();
 
 const picked = ref<GroupSupervisor | null>(null);
@@ -45,6 +49,15 @@ watch(
 );
 
 const iconFor = (kind: string) => (kind === 'whatsapp' ? MessageCircle : Send);
+
+/**
+ * The message is written once the supervisor is known — it opens with their
+ * name — so it is rebuilt by every re-roll, and the buttons carry the current
+ * draft rather than one left over from the name before.
+ */
+const message = computed(() => (picked.value === null ? '' : buildJoinMessage({ ...props.join, supervisor: picked.value.name })));
+
+const hrefFor = (contact: SupervisorContact) => withPrefilledMessage(contact.url, message.value);
 </script>
 
 <template>
@@ -77,17 +90,20 @@ const iconFor = (kind: string) => (kind === 'whatsapp' ? MessageCircle : Send);
                             v-for="(contact, index) in picked.contacts"
                             :key="contact.kind"
                             as="a"
-                            :href="contact.url"
+                            :href="hrefFor(contact)"
                             target="_blank"
                             rel="noopener noreferrer"
                             size="lg"
                             :variant="index === 0 ? 'default' : 'outline'"
                             class="w-full"
                             :aria-label="`مراسلة ${picked.name} على ${contactLabel(contact.kind)}`"
+                            @click="handOffTo(contact, message)"
                         >
                             <component :is="iconFor(contact.kind)" />
                             راسل {{ picked.name }} على {{ contactLabel(contact.kind) }}
                         </Button>
+
+                        <p class="text-xs leading-relaxed text-muted-foreground">كتبنا لك الرسالة — أرفق صورة القبول معها قبل الإرسال.</p>
                     </div>
                 </div>
 

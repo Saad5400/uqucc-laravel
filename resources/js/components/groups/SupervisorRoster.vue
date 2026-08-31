@@ -9,17 +9,26 @@
 import { Button } from '@/components/ui/button';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { arabicSupervisors } from '@/lib/arabic';
+import { buildJoinMessage, withPrefilledMessage, type JoinRequest } from '@/lib/joinMessage';
 import { ChevronDown, MessageCircle, Send } from 'lucide-vue-next';
 import { ref } from 'vue';
-import { contactLabel, initialOf, type GroupSection } from './types';
+import { handOffTo } from './handoff';
+import { contactLabel, initialOf, type GroupSection, type GroupSupervisor, type SupervisorContact } from './types';
 
-defineProps<{
+const props = defineProps<{
     section: GroupSection;
+    /** The join request, completed with whichever supervisor is tapped here. */
+    join: Omit<JoinRequest, 'supervisor'>;
 }>();
+
+/** Same draft the hero writes — picking from the list must not cost the message. */
+const messageFor = (supervisor: GroupSupervisor) => buildJoinMessage({ ...props.join, supervisor: supervisor.name });
 
 const open = ref(false);
 
 const iconFor = (kind: string) => (kind === 'whatsapp' ? MessageCircle : Send);
+
+const hrefFor = (contact: SupervisorContact, supervisor: GroupSupervisor) => withPrefilledMessage(contact.url, messageFor(supervisor));
 </script>
 
 <template>
@@ -49,11 +58,12 @@ const iconFor = (kind: string) => (kind === 'whatsapp' ? MessageCircle : Send);
                             <a
                                 v-for="contact in supervisor.contacts"
                                 :key="contact.kind"
-                                :href="contact.url"
+                                :href="hrefFor(contact, supervisor)"
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 class="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
                                 :aria-label="`مراسلة ${supervisor.name} على ${contactLabel(contact.kind)}`"
+                                @click="handOffTo(contact, messageFor(supervisor))"
                             >
                                 <component :is="iconFor(contact.kind)" class="size-4 shrink-0" />
                                 <bdi dir="ltr" class="hidden md:inline">{{ contact.handle }}</bdi>
