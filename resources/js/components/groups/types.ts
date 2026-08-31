@@ -38,6 +38,8 @@ export interface Cohort {
     note: string | null;
     requirements: string[];
     is_featured: boolean;
+    /** When off, the programme step is not offered — this intake is joined through its general group alone. */
+    shows_major_groups: boolean;
     groups: StudentGroup[];
 }
 

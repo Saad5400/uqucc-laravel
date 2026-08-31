@@ -197,6 +197,29 @@ describe('update', function () {
             ->requirements->toBe($cohort->requirements);
     });
 
+    it('turns the programme step off without touching the groups behind it', function () {
+        $cohort = CohortFactory::new()->create();
+        $general = StudentGroupFactory::new()->forCohort($cohort)->general()->create();
+        $programme = StudentGroupFactory::new()->forCohort($cohort)->create();
+
+        $this->actingAs($this->admin)
+            ->put("/manage/cohorts/{$cohort->id}", ['shows_major_groups' => false])
+            ->assertSessionHasNoErrors();
+
+        expect($cohort->fresh()->shows_major_groups)->toBeFalse()
+            ->and(StudentGroup::query()->whereKey([$general->id, $programme->id])->count())->toBe(2);
+    });
+
+    it('turns the programme step back on', function () {
+        $cohort = CohortFactory::new()->withoutMajorGroups()->create();
+
+        $this->actingAs($this->admin)
+            ->put("/manage/cohorts/{$cohort->id}", ['shows_major_groups' => true])
+            ->assertSessionHasNoErrors();
+
+        expect($cohort->fresh()->shows_major_groups)->toBeTrue();
+    });
+
     it('rejects blanking the name', function () {
         $cohort = CohortFactory::new()->create();
 

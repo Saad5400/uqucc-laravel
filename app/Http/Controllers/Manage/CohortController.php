@@ -174,6 +174,7 @@ class CohortController extends Controller
             'requirements' => array_values($cohort->requirements ?? []),
             'is_active' => $cohort->is_active,
             'is_featured' => $cohort->is_featured,
+            'shows_major_groups' => $cohort->shows_major_groups,
             'groups_count' => $groups->count(),
             'supervisors_count' => (int) $groups->sum('supervisors_count'),
             'available_supervisors_count' => (int) $groups->sum('available_supervisors_count'),
@@ -189,7 +190,7 @@ class CohortController extends Controller
      */
     private function attributesFrom(array $validated): array
     {
-        $attributes = array_intersect_key($validated, array_flip(['name', 'description', 'note', 'is_active', 'is_featured']));
+        $attributes = array_intersect_key($validated, array_flip(['name', 'description', 'note', 'is_active', 'is_featured', 'shows_major_groups']));
 
         if (array_key_exists('requirements', $validated)) {
             $requirements = array_values(array_filter(

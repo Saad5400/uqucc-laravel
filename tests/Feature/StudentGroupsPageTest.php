@@ -48,6 +48,25 @@ it('puts the featured intake first, whatever its order column says', function ()
     );
 });
 
+it('tells the page an intake is joined through its general group alone, keeping the programme groups', function () {
+    $cohort = CohortFactory::new()->withoutMajorGroups()->create();
+    StudentGroupFactory::new()->forCohort($cohort)->general()->create();
+    StudentGroupFactory::new()->forCohort($cohort)->create();
+
+    // The flag is the only thing that changes: the programme group still ships,
+    // so the «التخصص» field keeps its options and the join message its wording.
+    $this->get('/qroubat')->assertInertia(fn (Assert $page) => $page
+        ->where('cohorts.0.shows_major_groups', false)
+        ->count('cohorts.0.groups', 2)
+    );
+});
+
+it('publishes the programme step by default', function () {
+    CohortFactory::new()->create();
+
+    $this->get('/qroubat')->assertInertia(fn (Assert $page) => $page->where('cohorts.0.shows_major_groups', true));
+});
+
 it('ships the intake prose every one of its groups shares', function () {
     CohortFactory::new()->create([
         'name' => 'دفعة ٤٨',

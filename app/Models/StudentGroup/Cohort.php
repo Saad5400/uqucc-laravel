@@ -24,6 +24,11 @@ use Spatie\EloquentSortable\SortableTrait;
  * `is_featured` marks the intake the page opens on — the one currently taking
  * newcomers. Older intakes stay reachable behind their own tab rather than
  * being deleted, because students who missed the announcement still need them.
+ *
+ * `shows_major_groups` turns the per-programme step off on the public page for
+ * an intake that is joined through its general group alone. The programme
+ * groups and their supervisors are kept intact — the page just stops offering
+ * them, so the setting is reversible without re-entering anything.
  */
 class Cohort extends Model implements Sortable
 {
@@ -67,6 +72,7 @@ class Cohort extends Model implements Sortable
         'requirements',
         'is_active',
         'is_featured',
+        'shows_major_groups',
         'order',
     ];
 
@@ -76,6 +82,7 @@ class Cohort extends Model implements Sortable
             'requirements' => 'array',
             'is_active' => 'boolean',
             'is_featured' => 'boolean',
+            'shows_major_groups' => 'boolean',
             'order' => 'integer',
         ];
     }
@@ -102,7 +109,7 @@ class Cohort extends Model implements Sortable
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logOnly(['name', 'description', 'note', 'requirements', 'is_active', 'is_featured', 'order'])
+            ->logOnly(['name', 'description', 'note', 'requirements', 'is_active', 'is_featured', 'shows_major_groups', 'order'])
             ->logOnlyDirty()
             ->dontSubmitEmptyLogs();
     }
