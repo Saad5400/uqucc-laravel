@@ -94,3 +94,22 @@ const fullDateFormatter = new Intl.DateTimeFormat('ar', { year: 'numeric', month
 export function formatFullDate(date: Date): string {
     return fullDateFormatter.format(date);
 }
+
+/**
+ * Umm al-Qura (أم القرى) — the Hijri calendar Saudi Arabia officially runs on.
+ * Always name it explicitly: the plain `islamic` calendar is an astronomical
+ * simulation that disagrees with Umm al-Qura on roughly half of all days, and
+ * `islamic-civil` drifts by up to two days.
+ */
+const hijriDateFormatter = new Intl.DateTimeFormat('ar-SA-u-ca-islamic-umalqura', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'Asia/Riyadh',
+});
+
+/** A Date → its Umm al-Qura date in Riyadh ("الأحد، ١٦ ربيع الآخر ١٤٤٨ هـ"). */
+export function formatHijriDate(date: Date): string {
+    return hijriDateFormatter.format(date);
+}
