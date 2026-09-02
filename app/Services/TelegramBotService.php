@@ -42,8 +42,10 @@ class TelegramBotService
                 $updates = $this->telegram->getUpdates([
                     'offset' => $offset,
                     'timeout' => 30,
-                    // Explicit so poll_answer (excluded by some defaults) is
-                    // delivered — the daily quiz scores votes from it.
+                    // Explicit so poll_answer and chat_member (both excluded by
+                    // the default set) are delivered — the daily quiz scores votes
+                    // from poll_answer, and invite-link attribution needs the
+                    // chat_member update that names the link a member joined by.
                     'allowed_updates' => json_encode([
                         'message',
                         'edited_message',
@@ -51,6 +53,7 @@ class TelegramBotService
                         'edited_channel_post',
                         'callback_query',
                         'poll_answer',
+                        'chat_member',
                     ]),
                 ]);
 

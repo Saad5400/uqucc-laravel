@@ -2,8 +2,9 @@
 
 namespace App\Services\Telegram\Handlers;
 
-use Telegram\Bot\Objects\Message;
+use App\Services\Telegram\InviteTracker;
 use Telegram\Bot\Exceptions\TelegramSDKException;
+use Telegram\Bot\Objects\Message;
 
 class InviteLinkHandler extends BaseHandler
 {
@@ -29,8 +30,9 @@ class InviteLinkHandler extends BaseHandler
         $chatType = $message->getChat()->getType();
 
         // Check if this is a group chat
-        if (!in_array($chatType, ['group', 'supergroup'])) {
-            $this->replyAndDelete($message, "هذا الأمر يعمل فقط في المجموعات");
+        if (! in_array($chatType, ['group', 'supergroup'])) {
+            $this->replyAndDelete($message, 'هذا الأمر يعمل فقط في المجموعات');
+
             return;
         }
 
@@ -55,24 +57,45 @@ class InviteLinkHandler extends BaseHandler
                 $canInvite = $chatMember->canInviteUsers ?? false;
             }
 
-            if (!$canInvite) {
-                $this->replyAndDelete($message, "ليس لديك صلاحية لاستخدام هذا الأمر. يجب أن تكون مديراً مع صلاحية دعوة المستخدمين");
+            if (! $canInvite) {
+                $this->replyAndDelete($message, 'ليس لديك صلاحية لاستخدام هذا الأمر. يجب أن تكون مديراً مع صلاحية دعوة المستخدمين');
+
                 return;
             }
+
+            // Get user info
+            $user = $message->getFrom();
+            $username = $user->getUsername() ?? $user->getFirstName() ?? 'المستخدم';
+            $chatTitle = $message->getChat()->getTitle() ?? 'المجموعة';
+
+            // Name the link after its requester. Telegram shows the name in the
+            // group's own invite-link admin view, so attribution survives even
+            // outside our database — the field caps at 32 characters.
+            $linkName = mb_substr('دعوة '.$username, 0, 32);
 
             // Create a one-time invite link
             $inviteLink = $this->telegram->createChatInviteLink([
                 'chat_id' => $chatId,
+                'name' => $linkName,
                 'member_limit' => 1, // Only one user can use this link
                 'creates_join_request' => false, // Direct join without approval
             ]);
 
             $linkUrl = $inviteLink->getInviteLink();
 
-            // Get user info
-            $user = $message->getFrom();
-            $username = $user->getUsername() ?? $user->getFirstName() ?? "المستخدم";
-            $chatTitle = $message->getChat()->getTitle() ?? 'المجموعة';
+            app(InviteTracker::class)->recordLink(
+                chatId: $chatId,
+                chatTitle: $message->getChat()->getTitle(),
+                inviteLink: $linkUrl,
+                creator: [
+                    'id' => $userId,
+                    'username' => $user->getUsername(),
+                    'first_name' => $user->getFirstName(),
+                    'last_name' => $user->getLastName(),
+                ],
+                linkName: $linkName,
+                memberLimit: 1,
+            );
 
             // Send the link privately to the user
             try {
@@ -82,7 +105,7 @@ class InviteLinkHandler extends BaseHandler
                 ]);
 
                 // Confirm in group that link was sent
-                $displayUsername = $user->getUsername() ? '@' . $user->getUsername() : $username;
+                $displayUsername = $user->getUsername() ? '@'.$user->getUsername() : $username;
                 $confirmationMessage = $this->telegram->sendMessage([
                     'chat_id' => $chatId,
                     'text' => "✅ تم إرسال رابط دعوة خاص إلى {$displayUsername} في الرسائل الخاصة",
@@ -95,22 +118,21 @@ class InviteLinkHandler extends BaseHandler
             } catch (TelegramSDKException $e) {
                 $errorMsg = strtolower($e->getMessage());
                 if (strpos($errorMsg, 'forbidden') !== false || strpos($errorMsg, 'blocked') !== false) {
-                    $this->replyAndDelete($message, "لا يمكنني إرسال رسالة خاصة لك. تأكد من أنك بدأت محادثة مع البوت أولاً بإرسال /start");
+                    $this->replyAndDelete($message, 'لا يمكنني إرسال رسالة خاصة لك. تأكد من أنك بدأت محادثة مع البوت أولاً بإرسال /start');
                 } else {
-                    $this->replyAndDelete($message, "حدث خطأ في إرسال الرابط: " . $e->getMessage());
+                    $this->replyAndDelete($message, 'حدث خطأ في إرسال الرابط: '.$e->getMessage());
                 }
             }
 
         } catch (TelegramSDKException $e) {
             $errorMsg = strtolower($e->getMessage());
             if (strpos($errorMsg, 'not enough rights') !== false || strpos($errorMsg, 'administrator') !== false) {
-                $this->replyAndDelete($message, "البوت يحتاج صلاحيات إدارية لإنشاء روابط الدعوة");
+                $this->replyAndDelete($message, 'البوت يحتاج صلاحيات إدارية لإنشاء روابط الدعوة');
             } else {
-                $this->replyAndDelete($message, "حدث خطأ في التحقق من الصلاحيات: " . $e->getMessage());
+                $this->replyAndDelete($message, 'حدث خطأ في التحقق من الصلاحيات: '.$e->getMessage());
             }
         } catch (\Exception $e) {
-            $this->replyAndDelete($message, "حدث خطأ غير متوقع: " . $e->getMessage());
+            $this->replyAndDelete($message, 'حدث خطأ غير متوقع: '.$e->getMessage());
         }
     }
 }
-

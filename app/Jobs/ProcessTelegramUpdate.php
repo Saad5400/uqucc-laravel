@@ -28,6 +28,7 @@ use App\Services\Telegram\Handlers\TeamMentionHandler;
 use App\Services\Telegram\Handlers\TruthTableHandler;
 use App\Services\Telegram\Handlers\UquccListHandler;
 use App\Services\Telegram\Handlers\UquccSearchHandler;
+use App\Services\Telegram\InviteTracker;
 use App\Services\Telegram\PageReplyComposer;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
@@ -93,6 +94,22 @@ class ProcessTelegramUpdate implements ShouldQueue
      */
     protected function processUpdate(Api $telegram, Update $update): void
     {
+        // Handle membership changes (join/leave). Telegram only delivers these
+        // when `chat_member` is in allowed_updates, and they are the only place
+        // the invite link a member joined through is reported.
+        if (isset($this->updateData['chat_member'])) {
+            try {
+                app(InviteTracker::class)->recordChatMemberUpdate($this->updateData['chat_member']);
+            } catch (\Exception $e) {
+                Log::error('Telegram chat member error', [
+                    'message' => $e->getMessage(),
+                    'file' => $e->getFile().':'.$e->getLine(),
+                ]);
+            }
+
+            return;
+        }
+
         // Handle quiz poll votes (non-anonymous quiz polls report each vote
         // as a poll_answer update carrying the voter and chosen option)
         $pollAnswer = $update->getPollAnswer();
