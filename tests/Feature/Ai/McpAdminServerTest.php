@@ -105,6 +105,7 @@ it('lists all unified admin actions for an authorized moderator', function () {
         'reingest_corpus_document',
         'author_page_from_document',
         'get_analytics',
+        'get_invite_analytics',
         'get_ai_usage',
         'list_activity_log',
         'site_overview',
@@ -380,6 +381,39 @@ it('summarizes analytics as readable text', function () {
     $text = adminResultText(postJson('/mcp/admin', adminRpc('get_analytics'))->assertOk());
 
     expect($text)->toContain('إحصاءات الموقع');
+});
+
+it('names the admin whose invite link a member joined through', function () {
+    Passport::actingAs(makeUser('admin'));
+
+    $link = App\Models\TelegramInviteLink::query()->create([
+        'chat_id' => -100123,
+        'invite_link' => 'https://t.me/+one',
+        'creator_telegram_user_id' => 42,
+        'creator_username' => 'admin1',
+        'creator_name' => 'أحمد',
+        'member_limit' => 1,
+        'joins_count' => 1,
+    ]);
+
+    App\Models\TelegramInviteLinkJoin::query()->create([
+        'telegram_invite_link_id' => $link->id,
+        'chat_id' => $link->chat_id,
+        'invite_link' => $link->invite_link,
+        'creator_telegram_user_id' => 42,
+        'joiner_telegram_user_id' => 901,
+        'joiner_username' => 'sara_q',
+        'joiner_name' => 'سارة',
+        'source' => 'invite_link',
+        'joined_at' => now(),
+    ]);
+
+    $leaderboard = adminResultText(postJson('/mcp/admin', adminRpc('get_invite_analytics'))->assertOk());
+    $lookup = adminResultText(postJson('/mcp/admin', adminRpc('get_invite_analytics', ['member' => '@sara_q']))->assertOk());
+
+    expect($leaderboard)->toContain('أحمد')
+        ->and($lookup)->toContain('سارة')
+        ->and($lookup)->toContain('أحمد');
 });
 
 it('gates the activity log behind view-activity-logs', function () {

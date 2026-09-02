@@ -4,6 +4,7 @@ namespace App\Ai\Admin\Actions;
 
 use App\Ai\Admin\Actions\Analytics\GetAiUsageAction;
 use App\Ai\Admin\Actions\Analytics\GetAnalyticsAction;
+use App\Ai\Admin\Actions\Analytics\GetInviteAnalyticsAction;
 use App\Ai\Admin\Actions\Analytics\ListActivityLogAction;
 use App\Ai\Admin\Actions\Corpus\AuthorPageFromDocumentAction;
 use App\Ai\Admin\Actions\Corpus\GetCorpusDocumentAction;
@@ -116,6 +117,7 @@ class AdminActionRegistry
         AuthorPageFromDocumentAction::class,
         // Analytics / audit
         GetAnalyticsAction::class,
+        GetInviteAnalyticsAction::class,
         GetAiUsageAction::class,
         ListActivityLogAction::class,
         // System / context
