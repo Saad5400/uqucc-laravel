@@ -39,6 +39,7 @@ interface RequestRow {
     username: string | null;
     name: string | null;
     requests: number;
+    before_tracking: number;
     last_used_at: string | null;
 }
 
@@ -231,7 +232,8 @@ const maxJoins = computed(() => Math.max(1, ...props.leaderboard.map((row) => ro
             <section class="rounded-lg border border-border bg-card p-4">
                 <h2 class="mb-1 font-semibold">طلبات الرابط (كل التاريخ)</h2>
                 <p class="mb-3 text-xs text-muted-foreground">
-                    عدّاد استخدام أمر «رابط» منذ إطلاقه — يقيس الطلبات لا الانضمامات، وهو كل ما يتوفّر عمّا قبل بدء التتبّع.
+                    عدّاد استخدام أمر «رابط» منذ إطلاقه — يقيس الطلبات لا الانضمامات، ويشمل المحاولات المرفوضة لعدم الصلاحية. وهو كل ما يتوفّر عمّا
+                    قبل بدء تتبّع الانضمامات.
                 </p>
 
                 <Deferred data="preTrackingRequests">
@@ -245,8 +247,14 @@ const maxJoins = computed(() => Math.max(1, ...props.leaderboard.map((row) => ro
                         <li v-for="row in preTrackingRequests" :key="row.telegram_user_id" class="flex items-center justify-between gap-3 py-2">
                             <div class="min-w-0 space-y-0.5">
                                 <p class="truncate text-sm font-medium">{{ displayName(row) }}</p>
-                                <p v-if="row.last_used_at" class="text-xs text-muted-foreground" :title="formatDateTime(row.last_used_at)">
-                                    آخر طلب {{ formatRelativeTime(row.last_used_at) }}
+                                <p class="text-xs text-muted-foreground">
+                                    <span v-if="row.before_tracking">
+                                        منها <span dir="ltr" class="tabular-nums">{{ formatNumber(row.before_tracking) }}</span> قبل بدء التتبّع
+                                    </span>
+                                    <span v-if="row.before_tracking && row.last_used_at"> · </span>
+                                    <span v-if="row.last_used_at" :title="formatDateTime(row.last_used_at)">
+                                        آخر طلب {{ formatRelativeTime(row.last_used_at) }}
+                                    </span>
                                 </p>
                             </div>
                             <Badge variant="secondary" class="shrink-0 tabular-nums" dir="ltr">{{ formatNumber(row.requests) }}</Badge>

@@ -122,6 +122,7 @@ it('shows the historic رابط request counts alongside tracked joins', functio
         ->assertJsonPath('props.preTrackingRequests.0.telegram_user_id', '42')
         ->assertJsonPath('props.preTrackingRequests.0.username', 'admin1')
         ->assertJsonPath('props.preTrackingRequests.0.requests', 18)
+        ->assertJsonPath('props.preTrackingRequests.0.before_tracking', 17)
         ->assertJsonPath('props.recentJoins.0.joiner_telegram_user_id', '901')
         ->assertJsonPath('props.recentJoins.0.inviter_telegram_user_id', '42');
 });

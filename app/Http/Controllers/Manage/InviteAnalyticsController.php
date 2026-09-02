@@ -231,15 +231,31 @@ class InviteAnalyticsController extends Controller
     }
 
     /**
-     * Link requests recorded by the command counter before join tracking
-     * existed. These count requests, not joins — kept visible so the history
-     * that predates the tracker is not mistaken for zero activity.
+     * Every «رابط» use the command counter has ever seen, per requester.
      *
-     * @return list<array{telegram_user_id: string, username: string|null, name: string|null, requests: int, last_used_at: string|null}>
+     * The counter predates join tracking and counts requests, not joins — it
+     * also counts attempts that were refused for lack of permission, so the
+     * "before tracking" figure is an upper bound: total uses minus the links
+     * actually stored since the tracker went live.
+     *
+     * @return list<array{
+     *     telegram_user_id: string,
+     *     username: string|null,
+     *     name: string|null,
+     *     requests: int,
+     *     before_tracking: int,
+     *     last_used_at: string|null,
+     * }>
      */
     protected function preTrackingRequests(?int $chatId): array
     {
         $identities = $this->identities();
+
+        $tracked = TelegramInviteLink::query()
+            ->selectRaw('creator_telegram_user_id, COUNT(*) as links_total')
+            ->when($chatId, fn ($query) => $query->where('chat_id', $chatId))
+            ->groupBy('creator_telegram_user_id')
+            ->pluck('links_total', 'creator_telegram_user_id');
 
         return BotCommandStat::query()
             ->where('command_name', 'رابط')
@@ -253,6 +269,7 @@ class InviteAnalyticsController extends Controller
                 'username' => $identities[(int) $row->telegram_user_id]['username'] ?? null,
                 'name' => $identities[(int) $row->telegram_user_id]['name'] ?? null,
                 'requests' => (int) $row->requests,
+                'before_tracking' => max(0, (int) $row->requests - (int) ($tracked[$row->telegram_user_id] ?? 0)),
                 'last_used_at' => $row->last_used_at ? Carbon::parse($row->last_used_at)->toISOString() : null,
             ])
             ->all();
