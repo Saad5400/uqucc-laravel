@@ -18,8 +18,8 @@
 
     The rest of the engine's shapes are documented on
     resources/views/quiz/question-image.blade.php and on the content partial
-    included below. The palette is shared by hand with social/bot-card.blade
-    (the tall one the Telegram bot sends); change the two together.
+    included below. The palette is shared by hand with quiz/question-image.blade
+    (the quiz card the Telegram bot posts); change the two together.
 
     Nothing here declares @font-face: scripts/takumi-render.mjs registers the
     faces. The file still opens in a browser as-is, which is how to preview a

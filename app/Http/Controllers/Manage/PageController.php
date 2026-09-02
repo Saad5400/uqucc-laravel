@@ -123,7 +123,6 @@ class PageController extends Controller
                 'quick_response_auto_extract_buttons' => $page->quick_response_auto_extract_buttons,
                 'quick_response_auto_extract_attachments' => $page->quick_response_auto_extract_attachments,
                 'quick_response_send_link' => $page->quick_response_send_link,
-                'quick_response_send_screenshot' => $page->quick_response_send_screenshot,
                 'quick_response_message' => $page->quick_response_message,
                 'quick_response_buttons' => $page->quick_response_buttons ?? [],
                 'quick_response_attachments' => $page->quick_response_attachments ?? [],

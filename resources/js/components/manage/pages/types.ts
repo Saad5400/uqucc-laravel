@@ -61,7 +61,6 @@ export interface PageWorkspace {
     quick_response_auto_extract_buttons: boolean;
     quick_response_auto_extract_attachments: boolean;
     quick_response_send_link: boolean;
-    quick_response_send_screenshot: boolean;
     /** Always an HTML string (frozen contract — the bot consumes it as HTML). */
     quick_response_message: string | null;
     quick_response_buttons: QuickResponseButton[];

@@ -23,19 +23,13 @@ const form = useForm<{
     parent_id: number | null;
     icon: string;
     hidden: boolean;
-    hidden_from_bot: boolean;
     hidden_from_ai: boolean;
-    smart_search: boolean;
-    requires_prefix: boolean;
 }>({
     slug: props.page.slug,
     parent_id: props.page.parent_id,
     icon: props.page.icon ?? '',
     hidden: props.page.hidden,
-    hidden_from_bot: props.page.hidden_from_bot,
     hidden_from_ai: props.page.hidden_from_ai,
-    smart_search: props.page.smart_search,
-    requires_prefix: props.page.requires_prefix,
 });
 
 const isDirty = computed(() => form.isDirty);
@@ -53,19 +47,13 @@ onMounted(() => {
 
 const urlPreview = computed(() => `${origin.value}${form.slug}`);
 
-const toggles: { field: 'hidden' | 'hidden_from_bot' | 'hidden_from_ai' | 'smart_search' | 'requires_prefix'; label: string; description: string }[] = [
-    { field: 'hidden', label: 'مخفي', description: 'إخفاء الصفحة من الموقع الإلكتروني.' },
-    { field: 'hidden_from_bot', label: 'مخفي من البوت', description: 'إخفاء الصفحة من بوت تيليجرام.' },
+/** The website and AI switches; the bot's own live in the Telegram tab beside the rest of its settings. */
+const toggles: { field: 'hidden' | 'hidden_from_ai'; label: string; description: string }[] = [
+    { field: 'hidden', label: 'مخفي من الموقع', description: 'الصفحة لا تظهر في الموقع ولا يعمل رابطها.' },
     {
         field: 'hidden_from_ai',
         label: 'مخفي من المساعد الذكي',
         description: 'إخفاء الصفحة من قاعدة معرفة المساعد الذكي، فلا يعتمد عليها في إجاباته في الموقع والبوت.',
-    },
-    { field: 'smart_search', label: 'البحث الذكي', description: 'عند التفعيل، يمكن العثور على الصفحة بالبحث في أي جزء من العنوان.' },
-    {
-        field: 'requires_prefix',
-        label: 'يتطلب كلمة «دليل»',
-        description: 'عند التفعيل، يجب على المستخدم كتابة «دليل» قبل اسم الصفحة للعثور عليها في البوت.',
     },
 ];
 

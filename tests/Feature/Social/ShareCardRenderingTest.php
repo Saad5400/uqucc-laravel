@@ -165,7 +165,6 @@ it('shapes the page title with the vendored Arabic face rather than falling back
         ->toBeLessThanOrEqual(12);
 })->with([
     'link preview card' => [OgImageService::TYPE_OG, 0.21, 0.32],
-    'bot card' => [OgImageService::TYPE_BOT, 0.13, 0.22],
 ]);
 
 it('has Arabic coverage at all, which is the canary that survives a change of fallback', function () {
@@ -240,38 +239,6 @@ it('renders the link preview card at the size the meta tags promise', function (
         ->assertSee('property="og:image:type" content="image/png"', false);
 });
 
-it('grows the bot card with the page instead of cropping it to a box', function () {
-    $service = app(OgImageService::class);
-
-    $short = imagecreatefromstring(file_get_contents($service->generatePageScreenshot(
-        PageFactory::new()->make(['slug' => '/qasir', 'title' => 'صفحة قصيرة', 'html_content' => 'سطر واحد.']),
-        OgImageService::TYPE_BOT,
-    )));
-
-    $long = imagecreatefromstring(file_get_contents($service->generatePageScreenshot(
-        PageFactory::new()->make([
-            'slug' => '/taweel',
-            'title' => 'صفحة طويلة',
-            'html_content' => tipTapDocumentOf(str_repeat('فقرة تشرح تفصيلًا من تفاصيل الصفحة. ', 60)),
-        ]),
-        OgImageService::TYPE_BOT,
-    )));
-
-    // Width is fixed and doubled; height is the page's.
-    expect(imagesx($short))->toBe(1440)
-        ->and(imagesx($long))->toBe(1440);
-
-    // The floor keeps a one-line page a poster rather than a strip...
-    expect(imagesy($short))->toBe(1440);
-
-    // ...and a page with more to say gets more card, which is the whole reason
-    // this one is not a fixed box.
-    expect(imagesy($long))->toBeGreaterThan(imagesy($short) + 900);
-
-    // Bounded, though: Telegram is being handed this as a photo.
-    expect(imagesy($long))->toBeLessThan(6000);
-});
-
 it('draws the page onto the card rather than an empty frame', function (string $type) {
     $image = renderShareCard(probePage(), $type);
 
@@ -284,7 +251,7 @@ it('draws the page onto the card rather than an empty frame', function (string $
     // --primary: the brand rule, the mark's badge and the section pill. Losing
     // the stylesheet leaves the text but takes all of these with it.
     expect(countCardPixelsNear($image, '38a7bb'))->toBeGreaterThan(200);
-})->with([OgImageService::TYPE_OG, OgImageService::TYPE_BOT]);
+})->with([OgImageService::TYPE_OG]);
 
 /**
  * A renderer that keeps the markup it was handed instead of drawing it.
@@ -361,16 +328,16 @@ it('draws the page"s own content, not just its title', function () {
     $renderer = capturingRenderer();
     $this->instance(TakumiRenderer::class, $renderer);
 
-    app(OgImageService::class)->generatePageScreenshot(richPage(), OgImageService::TYPE_BOT);
+    app(OgImageService::class)->generatePageScreenshot(richPage(), OgImageService::TYPE_OG);
 
-    // The screenshot this card replaced carried the page. So does this one: the
-    // heading, the list, the table and the picture all reach the template, in
-    // the vocabulary resources/views/social/content-style.blade.php styles.
+    // A card of title-and-description was less than the screenshot it replaced;
+    // this one carries the page: the heading, the list and the table all reach
+    // the template, in the vocabulary resources/views/social/content-style.blade.php
+    // styles.
     expect($renderer->captured)
         ->toContain('<div class="c-h2">توزيع الدرجات</div>')
         ->toContain('class="c-li"')
-        ->toContain('class="c-table"')
-        ->toContain('<img src="data:image/png;base64,');
+        ->toContain('class="c-table"');
 });
 
 it('styles the page"s content with the shared vocabulary, not just draws it', function () {
@@ -389,7 +356,7 @@ it('styles the page"s content with the shared vocabulary, not just draws it', fu
                 ]],
             ]],
         ]],
-    ]), OgImageService::TYPE_BOT);
+    ]), OgImageService::TYPE_OG);
 
     // The tinted header row of a table — a colour only
     // resources/views/social/content-style.blade.php paints, and one no `<table>`
@@ -398,22 +365,6 @@ it('styles the page"s content with the shared vocabulary, not just draws it', fu
     // shape that makes them readable, which no "did the text arrive" check can
     // see.
     expect(countCardPixelsNear($image, '293b42', tolerance: 6))->toBeGreaterThan(1000);
-});
-
-it('says so on the bot card when it stops short of the page', function () {
-    $renderer = capturingRenderer();
-    $this->instance(TakumiRenderer::class, $renderer);
-    $service = app(OgImageService::class);
-
-    $service->generatePageScreenshot(richPage(paragraphs: 1), OgImageService::TYPE_BOT);
-
-    expect($renderer->captured)->not->toContain('تابع القراءة في الموقع');
-
-    $service->generatePageScreenshot(richPage(paragraphs: 40), OgImageService::TYPE_BOT);
-
-    // A page longer than the budget ends with an invitation rather than with a
-    // sentence that simply stops.
-    expect($renderer->captured)->toContain('تابع القراءة في الموقع');
 });
 
 it('keeps the link preview card off the page"s images', function () {
@@ -475,16 +426,16 @@ it('reuses the rendered file until the card would say something else', function 
     $service = app(OgImageService::class);
     $page = PageFactory::new()->create(['slug' => '/allwaeh', 'title' => 'اللوائح']);
 
-    expect($service->hasPageScreenshot($page, OgImageService::TYPE_BOT))->toBeFalse();
+    expect($service->hasPageScreenshot($page, OgImageService::TYPE_OG))->toBeFalse();
 
-    $first = $service->generatePageScreenshot($page, OgImageService::TYPE_BOT);
+    $first = $service->generatePageScreenshot($page, OgImageService::TYPE_OG);
 
-    expect($service->hasPageScreenshot($page, OgImageService::TYPE_BOT))->toBeTrue()
-        ->and($service->generatePageScreenshot($page, OgImageService::TYPE_BOT))->toBe($first);
+    expect($service->hasPageScreenshot($page, OgImageService::TYPE_OG))->toBeTrue()
+        ->and($service->generatePageScreenshot($page, OgImageService::TYPE_OG))->toBe($first);
 
     $page->title = 'اللوائح والأنظمة';
 
-    $second = $service->generatePageScreenshot($page, OgImageService::TYPE_BOT);
+    $second = $service->generatePageScreenshot($page, OgImageService::TYPE_OG);
 
     // A new title is a new card, at a new URL — nothing had to be cleared for
     // that to happen — and the superseded file does not survive the edit.
@@ -496,19 +447,19 @@ it('names a card file so the cleanup command can find its cache key back', funct
     $page = PageFactory::new()->create(['slug' => '/allwaeh/alghyab', 'title' => 'الغياب']);
     $service = app(OgImageService::class);
 
-    $filename = basename($service->generatePageScreenshot($page, OgImageService::TYPE_BOT));
+    $filename = basename($service->generatePageScreenshot($page, OgImageService::TYPE_OG));
 
     // `storage:cleanup --screenshots` reads "{type}_{identifier}.png" back into
     // "screenshot:{type}:{identifier}" and deletes any file whose key is gone.
     // If the two shapes ever drift, that command silently deletes every live
     // card instead of the orphans.
-    expect($filename)->toMatch('/^bot_.+\.png$/');
+    expect($filename)->toMatch('/^og_.+\.png$/');
 
-    $identifier = substr($filename, strlen('bot_'), -strlen('.png'));
+    $identifier = substr($filename, strlen('og_'), -strlen('.png'));
 
-    expect(config('app-cache.keys.screenshot').':bot:'.$identifier)
-        ->toBe($service->getPageCacheKey($page, OgImageService::TYPE_BOT))
-        ->and(cache()->has($service->getPageCacheKey($page, OgImageService::TYPE_BOT)))->toBeTrue();
+    expect(config('app-cache.keys.screenshot').':og:'.$identifier)
+        ->toBe($service->getPageCacheKey($page, OgImageService::TYPE_OG))
+        ->and(cache()->has($service->getPageCacheKey($page, OgImageService::TYPE_OG)))->toBeTrue();
 });
 
 it('gives a route with no page behind it the site"s own card', function () {
@@ -557,7 +508,7 @@ it('answers 500 rather than a broken image when a card cannot be drawn', functio
         ->once();
 });
 
-it('lets a failed card out of the bot"s hands instead of sending a reply without one', function () {
+it('lets a failed card out to its caller instead of swallowing it', function () {
     $this->instance(TakumiRenderer::class, new class extends TakumiRenderer
     {
         public function render(string $html, int $width, ?int $height = null, ?int $minHeight = null, float $scale = 2.0, string $lang = 'ar'): string
@@ -567,10 +518,10 @@ it('lets a failed card out of the bot"s hands instead of sending a reply without
     });
 
     // The other half of the pair above, and the reason the service catches
-    // nothing itself: the bot's page reply is the image, so a failure has to
-    // reach the handler.
+    // nothing itself: the caller decides what a missing card costs — the OG
+    // controller answers 500, a preview being worth less than a page.
     expect(fn (): string => app(OgImageService::class)->generatePageScreenshot(
         PageFactory::new()->make(['slug' => '/allwaeh', 'title' => 'اللوائح']),
-        OgImageService::TYPE_BOT,
+        OgImageService::TYPE_OG,
     ))->toThrow(RuntimeException::class);
 });
