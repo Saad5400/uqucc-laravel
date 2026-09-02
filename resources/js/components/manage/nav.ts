@@ -10,6 +10,7 @@ import {
     Settings,
     Sparkles,
     Trophy,
+    UserPlus,
     Users,
     UsersRound,
 } from 'lucide-vue-next';
@@ -36,6 +37,7 @@ export const manageNavItems: ManageNavItem[] = [
     { title: 'مستندات الذكاء الاصطناعي', href: '/manage/corpus', icon: FileUp },
     { title: 'ذكاء بوت التليجرام', href: '/manage/telegram-chats', icon: Bot },
     { title: 'فرق التليجرام', href: '/manage/telegram-teams', icon: UsersRound },
+    { title: 'روابط الدعوة', href: '/manage/invites', icon: UserPlus },
     { title: 'سؤال اليوم', href: '/manage/quiz', icon: Trophy },
     { title: 'سجل النشاط', href: '/manage/activity', icon: Activity, permission: 'view-activity-logs' },
     { title: 'الإعدادات', href: '/manage/settings', icon: Settings },

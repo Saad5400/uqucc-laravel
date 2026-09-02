@@ -9,6 +9,7 @@ use App\Http\Controllers\Manage\CorpusDocumentController;
 use App\Http\Controllers\Manage\DailyQuizController;
 use App\Http\Controllers\Manage\DashboardController;
 use App\Http\Controllers\Manage\GroupSupervisorController;
+use App\Http\Controllers\Manage\InviteAnalyticsController;
 use App\Http\Controllers\Manage\LoginController;
 use App\Http\Controllers\Manage\PageAuthoringController;
 use App\Http\Controllers\Manage\PageAuthorsController;
@@ -91,6 +92,8 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::post('/quiz/quizzes', [DailyQuizController::class, 'store'])->name('quiz.quizzes.store');
         Route::put('/quiz/quizzes/{quiz}', [DailyQuizController::class, 'update'])->name('quiz.quizzes.update');
         Route::delete('/quiz/quizzes/{quiz}', [DailyQuizController::class, 'destroy'])->name('quiz.quizzes.destroy');
+
+        Route::get('/invites', [InviteAnalyticsController::class, 'index'])->name('invites.index');
 
         Route::get('/telegram-chats', [TelegramChatSettingController::class, 'index'])->name('telegram-chats.index');
         Route::put('/telegram-chats/{chat}', [TelegramChatSettingController::class, 'update'])->name('telegram-chats.update');
