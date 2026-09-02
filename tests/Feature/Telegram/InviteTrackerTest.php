@@ -61,14 +61,31 @@ it('ignores membership changes that are not joins', function () {
         ->and(TelegramInviteLinkJoin::count())->toBe(0);
 });
 
-it('records a join through a link the bot never created, using the link creator', function () {
+it('records a join through a link an admin made by hand, using the link creator', function () {
     $join = (new InviteTracker)->recordChatMemberUpdate(chatMemberUpdate([
-        'invite_link' => ['invite_link' => 'https://t.me/+manual', 'creator' => ['id' => 99]],
+        'invite_link' => ['invite_link' => 'https://t.me/+manual', 'creator' => ['id' => 99, 'is_bot' => false]],
     ]));
 
     expect($join->creator_telegram_user_id)->toBe(99)
         ->and($join->telegram_invite_link_id)->toBeNull()
         ->and(TelegramInviteLink::count())->toBe(0);
+});
+
+it('never credits the bot itself for an untracked link it created', function () {
+    $join = (new InviteTracker)->recordChatMemberUpdate(chatMemberUpdate([
+        'invite_link' => ['invite_link' => 'https://t.me/+older', 'creator' => ['id' => 7912800477, 'is_bot' => true]],
+    ]));
+
+    expect($join->creator_telegram_user_id)->toBeNull()
+        ->and($join->source)->toBe('invite_link');
+});
+
+it('stores the join time in the application timezone', function () {
+    $join = (new InviteTracker)->recordChatMemberUpdate(chatMemberUpdate(['date' => 1_756_000_000]));
+
+    expect($join->joined_at->timestamp)->toBe(1_756_000_000)
+        ->and($join->joined_at->format('Y-m-d H:i'))
+        ->toBe(\Illuminate\Support\Carbon::createFromTimestamp(1_756_000_000, config('app.timezone'))->format('Y-m-d H:i'));
 });
 
 it('records joins with no invite link and does not attribute them', function () {

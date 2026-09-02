@@ -80,21 +80,31 @@ class InviteTracker
         }
 
         $inviteLinkUrl = $link['invite_link'] ?? null;
+        // Telegram sends a Unix timestamp; without the app timezone it lands
+        // three hours behind every other timestamp in the database.
+        $joinedAt = Carbon::createFromTimestamp((int) ($chatMember['date'] ?? time()), config('app.timezone'));
         $tracked = $inviteLinkUrl
             ? TelegramInviteLink::query()->where('invite_link', $inviteLinkUrl)->first()
             : null;
 
-        // Links created outside the bot still carry their Telegram-side creator,
-        // so they are attributed too — just without a stored request behind them.
-        $creatorTelegramId = $tracked?->creator_telegram_user_id
-            ?? (isset($link['creator']['id']) ? (int) $link['creator']['id'] : null);
+        // A link the bot made is credited to whoever asked for it, never to the
+        // bot itself: Telegram names the bot as creator of every link it made,
+        // so an untracked bot link (one from before this tracking existed) has
+        // no admin behind it and stays unattributed. Links an admin created by
+        // hand do carry their real creator, and are attributed to them.
+        $linkCreator = $link['creator'] ?? null;
+        $creatorTelegramId = $tracked?->creator_telegram_user_id;
+
+        if ($creatorTelegramId === null && $linkCreator !== null && ! ($linkCreator['is_bot'] ?? false)) {
+            $creatorTelegramId = isset($linkCreator['id']) ? (int) $linkCreator['id'] : null;
+        }
 
         try {
             $join = TelegramInviteLinkJoin::query()->updateOrCreate(
                 [
                     'chat_id' => (int) ($chat['id'] ?? 0),
                     'joiner_telegram_user_id' => $joinerId,
-                    'joined_at' => Carbon::createFromTimestamp((int) ($chatMember['date'] ?? time())),
+                    'joined_at' => $joinedAt,
                 ],
                 [
                     'telegram_invite_link_id' => $tracked?->id,
