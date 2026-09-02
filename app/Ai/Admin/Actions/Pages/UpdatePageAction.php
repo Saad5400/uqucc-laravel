@@ -34,7 +34,7 @@ class UpdatePageAction extends AdminAction
         'hidden' => 'الإخفاء من الموقع',
         'hidden_from_bot' => 'الإخفاء من البوت',
         'hidden_from_ai' => 'الإخفاء من الذكاء الاصطناعي',
-        'smart_search' => 'البحث الذكي',
+        'smart_search' => 'الرد على أي رسالة تتضمن العنوان',
         'requires_prefix' => 'اشتراط كلمة «دليل»',
     ];
 
@@ -152,7 +152,7 @@ class UpdatePageAction extends AdminAction
             'hidden' => $schema->boolean()->description('Whether the page is hidden from the website.'),
             'hidden_from_bot' => $schema->boolean()->description('Whether the page is hidden from the Telegram bot.'),
             'hidden_from_ai' => $schema->boolean()->description('Whether the page is hidden from the AI assistant.'),
-            'smart_search' => $schema->boolean()->description('Whether the page is included in smart search.'),
+            'smart_search' => $schema->boolean()->description('Whether the Telegram bot replies with this page to ANY message that contains its title, not only to a lookup of it.'),
             'requires_prefix' => $schema->boolean()->description('Whether the Telegram bot only surfaces this page when the message carries the guide keyword prefix.'),
         ];
     }

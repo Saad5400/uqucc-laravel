@@ -4,7 +4,6 @@ namespace App\Jobs;
 
 use App\Services\Logic\TruthTableGenerator;
 use App\Services\Logic\TruthTableImageRenderer;
-use App\Services\OgImageService;
 use App\Services\QuickResponseService;
 use App\Services\Quiz\QuizAnswerRecorder;
 use App\Services\Telegram\ContentParser;
@@ -29,7 +28,7 @@ use App\Services\Telegram\Handlers\TeamMentionHandler;
 use App\Services\Telegram\Handlers\TruthTableHandler;
 use App\Services\Telegram\Handlers\UquccListHandler;
 use App\Services\Telegram\Handlers\UquccSearchHandler;
-use App\Services\TipTapContentExtractor;
+use App\Services\Telegram\PageReplyComposer;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -156,7 +155,7 @@ class ProcessTelegramUpdate implements ShouldQueue
             new LoginHandler($telegram),
             new PageManagementHandler($telegram, app(ContentParser::class)),
             new EditLinkHandler($telegram),
-            new UquccSearchHandler($telegram, app(QuickResponseService::class), app(TipTapContentExtractor::class), app(OgImageService::class)),
+            new UquccSearchHandler($telegram, app(QuickResponseService::class), app(PageReplyComposer::class)),
             new UquccListHandler($telegram),
             new PythonExecutionHandler($telegram),
             new JavaExecutionHandler($telegram),

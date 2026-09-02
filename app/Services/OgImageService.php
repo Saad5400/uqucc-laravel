@@ -46,13 +46,11 @@ use RuntimeException;
  */
 class OgImageService
 {
-    public const TYPE_BOT = 'bot';
-
     public const TYPE_OG = 'og';
 
     /**
-     * The two cards: the template that draws each, its size in CSS pixels, and
-     * how much text it has room for.
+     * The card: the template that draws it, its size in CSS pixels, and how much
+     * text it has room for.
      *
      * Every `limits` number is a line count in disguise: the frame is a fixed
      * box and the engine will happily paint a fourth line of a three-line title
@@ -76,17 +74,6 @@ class OgImageService
             // image budget is what would let it wait on somebody else's server.
             // Its four visible lines are no place for a picture anyway.
             'content' => ['characters' => 340, 'images' => 0, 'width' => 636],
-        ],
-        self::TYPE_BOT => [
-            'view' => 'social.bot-card',
-            'width' => 720,
-            // Height follows the content, exactly as the quiz card's does: a
-            // page reply is READ in the group, and a fixed box would either
-            // crop a long page or pad a short one.
-            'height' => null,
-            'minHeight' => 720,
-            'limits' => ['title' => 80, 'description' => 200, 'section' => 30, 'url' => 46],
-            'content' => ['characters' => 2200, 'images' => 4, 'width' => 632],
         ],
     ];
 
@@ -144,7 +131,7 @@ class OgImageService
      * filename carries the card's fingerprint, so an edited page leaves its
      * previous card behind and they would otherwise pile up one per edit.
      */
-    public function generatePageScreenshot(Page $page, string $type = self::TYPE_BOT): string
+    public function generatePageScreenshot(Page $page, string $type = self::TYPE_OG): string
     {
         $card = SocialCard::forPage($page, $this->host());
         $slug = $this->normalizeSlug($page->slug);
@@ -165,7 +152,7 @@ class OgImageService
      * is actually a wait — which there now rarely is, a card being about a
      * second of layout rather than a browser start-up.
      */
-    public function hasPageScreenshot(Page $page, string $type = self::TYPE_BOT): bool
+    public function hasPageScreenshot(Page $page, string $type = self::TYPE_OG): bool
     {
         $card = SocialCard::forPage($page, $this->host());
 
@@ -199,20 +186,20 @@ class OgImageService
      * braces rather than the mechanism — a card whose content changed has a
      * different key already — but it is what deletes the superseded file.
      */
-    public function getPageCacheKey(Page $page, string $type = self::TYPE_BOT): string
+    public function getPageCacheKey(Page $page, string $type = self::TYPE_OG): string
     {
         return $this->cacheKey($type, $this->identifier($this->normalizeSlug($page->slug), SocialCard::forPage($page, $this->host())));
     }
 
     /**
-     * Forget both of a page's cards.
+     * Forget a page's card.
      */
     public function clearPageCache(Page $page): void
     {
         $card = SocialCard::forPage($page, $this->host());
         $slug = $this->normalizeSlug($page->slug);
 
-        foreach ([self::TYPE_BOT, self::TYPE_OG] as $type) {
+        foreach ([self::TYPE_OG] as $type) {
             Cache::forget($this->cacheKey($type, $this->identifier($slug, $card)));
 
             $path = $this->pathFor($type, $slug, $card);

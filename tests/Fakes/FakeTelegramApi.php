@@ -27,6 +27,24 @@ class FakeTelegramApi extends Api
     public array $sentPhotos = [];
 
     /** @var array<int, array<string, mixed>> */
+    public array $sentDocuments = [];
+
+    /** @var array<int, array<string, mixed>> */
+    public array $sentMediaGroups = [];
+
+    /** @var array<int, array<string, mixed>> */
+    public array $deletedMessages = [];
+
+    /**
+     * Errors the next sendMessage() calls should fail with, in order; a null
+     * entry lets that call through. Empty once consumed, so the calls after
+     * the queue succeed.
+     *
+     * @var array<int, string|null>
+     */
+    public array $sendMessageFailures = [];
+
+    /** @var array<int, array<string, mixed>> */
     public array $sentPolls = [];
 
     /** @var array<int, array<string, mixed>> */
@@ -94,6 +112,14 @@ class FakeTelegramApi extends Api
 
     public function sendMessage(array $params): Message
     {
+        if ($this->sendMessageFailures !== []) {
+            $error = array_shift($this->sendMessageFailures);
+
+            if ($error !== null) {
+                throw new \RuntimeException($error);
+            }
+        }
+
         $this->sentMessages[] = $params;
 
         return new Message(['message_id' => ++$this->nextMessageId, 'chat' => ['id' => $params['chat_id'] ?? 0]]);
@@ -104,6 +130,27 @@ class FakeTelegramApi extends Api
         $this->sentPhotos[] = $params;
 
         return new Message(['message_id' => ++$this->nextMessageId, 'chat' => ['id' => $params['chat_id'] ?? 0]]);
+    }
+
+    public function sendDocument(array $params): Message
+    {
+        $this->sentDocuments[] = $params;
+
+        return new Message(['message_id' => ++$this->nextMessageId, 'chat' => ['id' => $params['chat_id'] ?? 0]]);
+    }
+
+    public function sendMediaGroup(array $params): Message
+    {
+        $this->sentMediaGroups[] = $params;
+
+        return new Message(['message_id' => ++$this->nextMessageId, 'chat' => ['id' => $params['chat_id'] ?? 0]]);
+    }
+
+    public function deleteMessage(array $params): bool
+    {
+        $this->deletedMessages[] = $params;
+
+        return true;
     }
 
     public function sendPoll(array $params): Message
