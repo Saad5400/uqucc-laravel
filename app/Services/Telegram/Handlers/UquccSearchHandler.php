@@ -204,12 +204,21 @@ class UquccSearchHandler extends BaseHandler
     {
         // Get the resolved content (auto-extracted or custom)
         $resolvedContent = $this->resolveQuickResponseContent($page);
-        $replyMarkup = $this->buildReplyMarkup($page, $resolvedContent['buttons']);
+        $childLinks = $this->childPageLinks($page);
+        $replyMarkup = $this->buildReplyMarkup($page, $resolvedContent['buttons'], $childLinks);
 
         // Check if there are attachments
         $attachments = collect($resolvedContent['attachments'])
             ->filter()
             ->values();
+
+        // A section page — no text of its own, only sub-pages — used to fall
+        // through to the share card, which had nothing to show but the title.
+        // Its reply is the list of sub-pages instead: an intro line above the
+        // keyboard whose buttons open each page on the website.
+        if ($attachments->isEmpty() && blank($resolvedContent['message']) && $childLinks !== []) {
+            $resolvedContent['message'] = $this->buildCatalogIntro($page, count($childLinks));
+        }
 
         if ($attachments->isNotEmpty()) {
             // Send attachments with text as caption (shorter limit)
@@ -427,15 +436,106 @@ class UquccSearchHandler extends BaseHandler
     }
 
     /**
+     * How many sub-pages get a button of their own before the rest are folded
+     * into one «show all» button that opens the section on the website.
+     */
+    protected const MAX_CHILD_BUTTONS = 10;
+
+    /**
+     * The sub-pages a reply may link to: visible in the bot AND on the website,
+     * since the button is a URL and a hidden page's URL 404s.
+     *
+     * @return array<int, array{text: string, url: string}>
+     */
+    protected function childPageLinks(Page $page): array
+    {
+        return $page->children()
+            ->visible()
+            ->visibleInBot()
+            ->get(['id', 'slug', 'title'])
+            ->map(fn (Page $child): array => [
+                'text' => (string) $child->title,
+                'url' => url($child->slug),
+            ])
+            ->all();
+    }
+
+    /**
+     * Keyboard rows for the sub-pages: one full-width button each, so an Arabic
+     * title is read rather than clipped, capped at MAX_CHILD_BUTTONS with a
+     * «show all» button to the section page when there are more.
+     *
+     * @param  array<int, array{text: string, url: string}>  $childLinks
+     * @return array<int, array<int, array{text: string, url: string}>>
+     */
+    protected function childPageRows(Page $page, array $childLinks): array
+    {
+        $rows = array_map(
+            static fn (array $link): array => [$link],
+            array_slice($childLinks, 0, self::MAX_CHILD_BUTTONS),
+        );
+
+        if (count($childLinks) > self::MAX_CHILD_BUTTONS && ! $page->hidden) {
+            $rows[] = [[
+                'text' => 'عرض كل الصفحات ('.count($childLinks).')',
+                'url' => url($page->slug),
+            ]];
+        }
+
+        return $rows;
+    }
+
+    /**
+     * The message a section page sends above its sub-page buttons.
+     */
+    protected function buildCatalogIntro(Page $page, int $childCount): string
+    {
+        $title = $this->escapeHtml((string) $page->title);
+
+        $count = match (true) {
+            $childCount === 1 => 'صفحة واحدة',
+            $childCount === 2 => 'صفحتين',
+            $childCount <= 10 => "{$childCount} صفحات",
+            default => "{$childCount} صفحة",
+        };
+
+        return "<b>{$title}</b>\n\nيضم هذا القسم {$count}، اختر واحدة من الأزرار:";
+    }
+
+    /**
      * Build the inline keyboard markup for buttons.
      *
      * @param  Page  $page  The page (for context)
      * @param  array  $buttonsData  The resolved buttons array
+     * @param  array<int, array{text: string, url: string}>  $childLinks  Sub-pages to link below the content buttons
      */
-    protected function buildReplyMarkup(Page $page, array $buttonsData): ?string
+    protected function buildReplyMarkup(Page $page, array $buttonsData, array $childLinks = []): ?string
+    {
+        $keyboard = [
+            ...$this->contentButtonRows($buttonsData),
+            ...$this->childPageRows($page, $childLinks),
+        ];
+
+        if ($keyboard === []) {
+            return null;
+        }
+
+        // The SDK expects reply_markup to be a JSON-encoded string, not an array
+        return json_encode([
+            'inline_keyboard' => $keyboard,
+        ]);
+    }
+
+    /**
+     * Keyboard rows for the page's own buttons, grouped by their declared size.
+     *
+     * @param  array  $buttonsData  The resolved buttons array
+     * @return array<int, array<int, array{text: string, url: string}>>
+     */
+    protected function contentButtonRows(array $buttonsData): array
     {
         if (empty($buttonsData)) {
-            return null;
+            return [];
         }
 
         $buttons = collect($buttonsData)
@@ -459,20 +559,11 @@ class UquccSearchHandler extends BaseHandler
             ->all();
 
         if (empty($buttons)) {
-            return null;
+            return [];
         }
 
         // Group buttons by size to create rows
-        $keyboard = $this->groupButtonsBySize($buttons);
-
-        if (empty($keyboard)) {
-            return null;
-        }
-
-        // The SDK expects reply_markup to be a JSON-encoded string, not an array
-        return json_encode([
-            'inline_keyboard' => $keyboard,
-        ]);
+        return $this->groupButtonsBySize($buttons);
     }
 
     protected function sendScreenshotWithText(Message $message, Page $page, string $caption, ?string $replyMarkup = null): void
