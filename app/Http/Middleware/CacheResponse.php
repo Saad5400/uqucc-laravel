@@ -6,6 +6,7 @@ use App\Support\CacheFlusher;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Vite;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
@@ -80,10 +81,25 @@ class CacheResponse
      */
     protected function getCacheKey(Request $request): string
     {
-        $url = $request->fullUrl();
-        $isInertia = $request->header('X-Inertia') ? ':inertia' : '';
+        return self::keyFor($request->fullUrl(), (bool) $request->header('X-Inertia'));
+    }
 
-        return config('app-cache.keys.response_cache', 'response_cache').':'.md5($url.$isInertia);
+    /**
+     * The cache key for one cacheable URL.
+     *
+     * The stored HTML embeds the hashed asset URLs of the build it was
+     * rendered against, so a deploy that ships a new build leaves every cached
+     * page pointing at files that no longer exist on disk — the page renders,
+     * its JS and CSS 404, and the site looks dead until the TTL runs out.
+     * Folding the manifest hash into the key retires the whole family on its
+     * own the moment a new build lands, so no deploy step can forget to.
+     */
+    public static function keyFor(string $url, bool $isInertia = false): string
+    {
+        $prefix = config('app-cache.keys.response_cache', 'response_cache');
+        $build = Vite::manifestHash() ?? '';
+
+        return $prefix.':'.md5($url.($isInertia ? ':inertia' : '').'|'.$build);
     }
 
     /**
@@ -202,11 +218,9 @@ class CacheResponse
      */
     public static function clearUrl(string $url): void
     {
-        $prefix = config('app-cache.keys.response_cache', 'response_cache');
-
         // Clear both regular and Inertia versions
-        Cache::forget($prefix.':'.md5($url));
-        Cache::forget($prefix.':'.md5($url.':inertia'));
+        Cache::forget(self::keyFor($url));
+        Cache::forget(self::keyFor($url, true));
     }
 
     /**
