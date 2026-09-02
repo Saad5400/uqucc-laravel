@@ -126,3 +126,58 @@ it('shows the historic رابط request counts alongside tracked joins', functio
         ->assertJsonPath('props.recentJoins.0.joiner_telegram_user_id', '901')
         ->assertJsonPath('props.recentJoins.0.inviter_telegram_user_id', '42');
 });
+
+describe('member lookup', function () {
+    beforeEach(function () {
+        $this->link = inviteLink(42, 'https://t.me/+one', 'admin1', joins: 2);
+
+        $joined = inviteJoin($this->link, 901);
+        $joined->update(['joiner_username' => 'sara_q', 'joiner_name' => 'سارة']);
+
+        $other = inviteJoin(inviteLink(43, 'https://t.me/+two', 'admin2'), 902);
+        $other->update(['joiner_username' => 'omar', 'joiner_name' => 'عمر']);
+    });
+
+    function lookup(array $extra = []): \Illuminate\Testing\TestResponse
+    {
+        test()->actingAs(test()->admin)->get('/manage/invites')->assertOk();
+
+        return test()->actingAs(test()->admin)->get('/manage/invites?'.http_build_query($extra), [
+            'X-Inertia' => 'true',
+            'X-Inertia-Version' => \Inertia\Inertia::getVersion(),
+            'X-Inertia-Partial-Component' => 'manage/invites/Index',
+            'X-Inertia-Partial-Data' => 'recentJoins',
+        ]);
+    }
+
+    it('finds the admin who invited a member searched by username', function () {
+        lookup(['q' => 'sara_q'])
+            ->assertOk()
+            ->assertJsonCount(1, 'props.recentJoins')
+            ->assertJsonPath('props.recentJoins.0.joiner_username', 'sara_q')
+            ->assertJsonPath('props.recentJoins.0.inviter_username', 'admin1');
+    });
+
+    it('finds a member by display name, ignoring a leading @', function () {
+        lookup(['q' => '@سارة'])
+            ->assertJsonCount(1, 'props.recentJoins')
+            ->assertJsonPath('props.recentJoins.0.inviter_telegram_user_id', '42');
+    });
+
+    it('finds a member by their numeric telegram id', function () {
+        lookup(['q' => '902'])
+            ->assertJsonCount(1, 'props.recentJoins')
+            ->assertJsonPath('props.recentJoins.0.inviter_username', 'admin2');
+    });
+
+    it('lists everyone an admin brought in when the admin is searched', function () {
+        inviteJoin($this->link, 903);
+
+        lookup(['q' => 'admin1'])
+            ->assertJsonCount(2, 'props.recentJoins');
+    });
+
+    it('returns nothing for a member nobody recorded', function () {
+        lookup(['q' => 'ghost'])->assertJsonCount(0, 'props.recentJoins');
+    });
+});

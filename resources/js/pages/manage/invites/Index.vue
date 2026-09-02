@@ -3,6 +3,7 @@ import EmptyState from '@/components/manage/EmptyState.vue';
 import ManageLayout from '@/components/manage/ManageLayout.vue';
 import PageHeader from '@/components/manage/PageHeader.vue';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDateTime, formatNumber, formatRelativeTime } from '@/lib/formatters';
@@ -44,7 +45,7 @@ interface RequestRow {
 }
 
 const props = defineProps<{
-    filters: { period: string; chat: string | null };
+    filters: { period: string; chat: string | null; q: string };
     chats: { chat_id: string; title: string | null }[];
     stats: {
         joins: number;
@@ -64,6 +65,7 @@ const ALL = 'all';
 
 const period = ref(props.filters.period);
 const chat = ref(props.filters.chat ?? ALL);
+const search = ref(props.filters.q);
 
 const periodLabels: Record<string, string> = {
     '24h': 'آخر ٢٤ ساعة',
@@ -78,13 +80,29 @@ const sourceLabels: Record<string, string> = {
     self: 'انضم مباشرة',
 };
 
-watch([period, chat], ([nextPeriod, nextChat]) => {
+function reload(): void {
     router.get(
         '/manage/invites',
-        { period: nextPeriod, ...(nextChat === ALL ? {} : { chat: nextChat }) },
+        {
+            period: period.value,
+            ...(chat.value === ALL ? {} : { chat: chat.value }),
+            ...(search.value.trim() === '' ? {} : { q: search.value.trim() }),
+        },
         { preserveState: true, preserveScroll: true, replace: true },
     );
+}
+
+watch([period, chat], reload);
+
+/** Typing a member's name should not fire a request per keystroke. */
+let searchTimer: ReturnType<typeof setTimeout> | undefined;
+
+watch(search, () => {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(reload, 300);
 });
+
+const isSearching = computed(() => props.filters.q.trim() !== '');
 
 const tiles = computed(() => [
     {
@@ -125,6 +143,14 @@ const maxJoins = computed(() => Math.max(1, ...props.leaderboard.map((row) => ro
 
     <div class="space-y-6">
         <div class="flex flex-wrap items-center gap-2">
+            <Input
+                v-model="search"
+                type="search"
+                placeholder="ابحث باسم العضو أو معرّفه لمعرفة من دعاه…"
+                class="w-full sm:max-w-sm"
+                aria-label="البحث عن عضو أو مشرف"
+            />
+
             <Select v-model="period">
                 <SelectTrigger class="w-40" aria-label="الفترة الزمنية">
                     <SelectValue placeholder="الفترة" />
@@ -199,8 +225,14 @@ const maxJoins = computed(() => Math.max(1, ...props.leaderboard.map((row) => ro
 
         <div class="grid gap-4 lg:grid-cols-2">
             <section class="rounded-lg border border-border bg-card p-4">
-                <h2 class="mb-1 font-semibold">آخر الانضمامات</h2>
-                <p class="mb-3 text-xs text-muted-foreground">أحدث ١٠٠ انضمام، بغضّ النظر عن الفترة المختارة.</p>
+                <h2 class="mb-1 font-semibold">{{ isSearching ? 'نتائج البحث' : 'آخر الانضمامات' }}</h2>
+                <p class="mb-3 text-xs text-muted-foreground">
+                    {{
+                        isSearching
+                            ? `كل من يطابق «${filters.q}» — عضوًا كان أو مشرفًا دعا غيره، حتى ١٠٠ نتيجة.`
+                            : 'أحدث ١٠٠ انضمام، بغضّ النظر عن الفترة المختارة.'
+                    }}
+                </p>
 
                 <Deferred data="recentJoins">
                     <template #fallback>
@@ -212,12 +244,21 @@ const maxJoins = computed(() => Math.max(1, ...props.leaderboard.map((row) => ro
                     <ul v-if="recentJoins?.length" class="divide-y divide-border">
                         <li v-for="join in recentJoins" :key="join.id" class="flex items-center justify-between gap-3 py-2">
                             <div class="min-w-0 space-y-0.5">
-                                <p class="truncate text-sm font-medium">{{ join.joiner }}</p>
+                                <p class="truncate text-sm font-medium">
+                                    {{ join.joiner }}
+                                    <span v-if="join.joiner_username" dir="ltr" class="text-xs font-normal text-muted-foreground">
+                                        @{{ join.joiner_username }}
+                                    </span>
+                                </p>
                                 <p class="truncate text-xs text-muted-foreground">
                                     <span v-if="join.inviter || join.inviter_telegram_user_id">
-                                        عبر رابط {{ join.inviter ?? join.inviter_telegram_user_id }}
+                                        دعاه {{ join.inviter ?? join.inviter_telegram_user_id }}
+                                        <span v-if="join.inviter_username && join.inviter" dir="ltr">(@{{ join.inviter_username }})</span>
                                     </span>
-                                    <span v-else>{{ sourceLabels[join.source] ?? join.source }}</span>
+                                    <span v-else>{{ sourceLabels[join.source] ?? join.source }} — بلا مشرف منسوب</span>
+                                </p>
+                                <p v-if="isSearching" dir="ltr" class="truncate text-xs text-muted-foreground tabular-nums">
+                                    {{ join.joiner_telegram_user_id }}
                                 </p>
                             </div>
                             <span v-if="join.joined_at" class="shrink-0 text-xs text-muted-foreground" :title="formatDateTime(join.joined_at)">
@@ -225,7 +266,9 @@ const maxJoins = computed(() => Math.max(1, ...props.leaderboard.map((row) => ro
                             </span>
                         </li>
                     </ul>
-                    <p v-else class="py-6 text-center text-sm text-muted-foreground">لم يُسجَّل أي انضمام بعد.</p>
+                    <p v-else class="py-6 text-center text-sm text-muted-foreground">
+                        {{ isSearching ? 'لا أحد يطابق هذا البحث بين الانضمامات المسجّلة.' : 'لم يُسجَّل أي انضمام بعد.' }}
+                    </p>
                 </Deferred>
             </section>
 

@@ -37,17 +37,19 @@ class InviteAnalyticsController extends Controller
             : 'all';
 
         $chatId = is_numeric($request->query('chat')) ? (int) $request->query('chat') : null;
+        $search = trim((string) $request->query('q'));
         $since = $this->since($period);
 
         return Inertia::render('manage/invites/Index', [
             'filters' => [
                 'period' => $period,
                 'chat' => $chatId === null ? null : (string) $chatId,
+                'q' => $search,
             ],
             'chats' => $this->chats(),
             'stats' => $this->stats($since, $chatId),
             'leaderboard' => $this->leaderboard($since, $chatId),
-            'recentJoins' => Inertia::defer(fn (): array => $this->recentJoins($chatId)),
+            'recentJoins' => Inertia::defer(fn (): array => $this->recentJoins($chatId, $search)),
             'preTrackingRequests' => Inertia::defer(fn (): array => $this->preTrackingRequests($chatId)),
         ]);
     }
@@ -187,6 +189,11 @@ class InviteAnalyticsController extends Controller
     /**
      * The most recent joins, each with the admin it is credited to.
      *
+     * With a search term this becomes the lookup the panel is asked for most:
+     * type a member's name, @username or numeric id and get back the admin
+     * whose link let them in. An inviter's name matches too, which turns the
+     * same box into "everyone this admin brought in".
+     *
      * @return list<array{
      *     id: int,
      *     joiner: string,
@@ -199,13 +206,14 @@ class InviteAnalyticsController extends Controller
      *     joined_at: string|null,
      * }>
      */
-    protected function recentJoins(?int $chatId): array
+    protected function recentJoins(?int $chatId, string $search = ''): array
     {
         $identities = $this->identities();
 
         return TelegramInviteLinkJoin::query()
             ->with('inviteLink:id,chat_title')
             ->when($chatId, fn ($query) => $query->where('chat_id', $chatId))
+            ->when($search !== '', fn ($query) => $this->applySearch($query, $search, $this->matchingInviterIds($search)))
             ->latest('joined_at')
             ->limit(100)
             ->get()
@@ -227,6 +235,47 @@ class InviteAnalyticsController extends Controller
                     'joined_at' => $join->joined_at?->toISOString(),
                 ];
             })
+            ->all();
+    }
+
+    /**
+     * Match a join by who joined — display name, @username or numeric id —
+     * or by the admin credited with it.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<TelegramInviteLinkJoin>  $query
+     * @param  list<int>  $inviterIds
+     */
+    protected function applySearch(\Illuminate\Database\Eloquent\Builder $query, string $search, array $inviterIds): void
+    {
+        $needle = '%'.mb_strtolower(ltrim($search, '@')).'%';
+
+        $query->where(function ($query) use ($needle, $inviterIds): void {
+            $query->whereRaw('LOWER(joiner_username) LIKE ?', [$needle])
+                ->orWhereRaw('LOWER(joiner_name) LIKE ?', [$needle])
+                ->orWhereRaw('CAST(joiner_telegram_user_id AS TEXT) LIKE ?', [$needle]);
+
+            if ($inviterIds !== []) {
+                $query->orWhereIn('creator_telegram_user_id', $inviterIds);
+            }
+        });
+    }
+
+    /**
+     * Telegram ids of the admins whose own name, username or id matches the term.
+     *
+     * @return list<int>
+     */
+    protected function matchingInviterIds(string $search): array
+    {
+        $needle = '%'.mb_strtolower(ltrim($search, '@')).'%';
+
+        return TelegramInviteLink::query()
+            ->whereRaw('LOWER(creator_username) LIKE ?', [$needle])
+            ->orWhereRaw('LOWER(creator_name) LIKE ?', [$needle])
+            ->orWhereRaw('CAST(creator_telegram_user_id AS TEXT) LIKE ?', [$needle])
+            ->distinct()
+            ->pluck('creator_telegram_user_id')
+            ->map(fn ($id): int => (int) $id)
             ->all();
     }
 
