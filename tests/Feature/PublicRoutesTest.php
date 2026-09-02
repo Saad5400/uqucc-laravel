@@ -1,8 +1,12 @@
 <?php
 
+use App\Http\Middleware\CacheResponse;
 use App\Models\User;
 use Database\Factories\PageFactory;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Vite;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 
 it('renders the welcome page when no homepage exists', function () {
@@ -186,4 +190,29 @@ it('serves cached responses to guests on repeated visits', function () {
 
     $second->assertOk();
     $second->assertHeader('X-Cache', 'HIT');
+});
+
+it('retires cached responses as soon as a new build lands', function () {
+    // A cached page hard-codes the hashed asset URLs of the build that rendered
+    // it. Ship a new build and those files are gone, so the HTML must not
+    // outlive its manifest — same URL, new manifest, different key.
+    $directory = 'build-'.Str::random(8);
+    $manifest = public_path($directory.'/manifest.json');
+    File::ensureDirectoryExists(public_path($directory));
+    Vite::useBuildDirectory($directory);
+
+    File::put($manifest, '{"resources/js/app.ts":{"file":"assets/app-old.js"}}');
+    $before = CacheResponse::keyFor('https://uqucc.test/altkhssat');
+
+    File::put($manifest, '{"resources/js/app.ts":{"file":"assets/app-new.js"}}');
+    $after = CacheResponse::keyFor('https://uqucc.test/altkhssat');
+
+    File::deleteDirectory(public_path($directory));
+
+    expect($after)->not->toBe($before);
+});
+
+it('separates the inertia and full-page caches for one url', function () {
+    expect(CacheResponse::keyFor('https://uqucc.test/altkhssat', true))
+        ->not->toBe(CacheResponse::keyFor('https://uqucc.test/altkhssat'));
 });
