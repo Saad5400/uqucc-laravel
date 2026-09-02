@@ -8,14 +8,28 @@ use App\Services\TipTapContentExtractor;
 use Telegram\Bot\Objects\Message;
 use Tests\Fakes\FakeTelegramApi;
 
+/**
+ * The handler with its card step recorded rather than drawn: what matters here
+ * is which reply shape a page takes and which buttons hang under it, not the
+ * pixels of the card.
+ */
 function searchHandler(FakeTelegramApi $api): UquccSearchHandler
 {
-    return new UquccSearchHandler(
-        $api,
-        app(QuickResponseService::class),
-        app(TipTapContentExtractor::class),
-        app(OgImageService::class),
-    );
+    return new class($api) extends UquccSearchHandler
+    {
+        /** @var array<int, array{page: int, caption: string, markup: ?string}> */
+        public array $cardReplies = [];
+
+        public function __construct(FakeTelegramApi $api)
+        {
+            parent::__construct($api, app(QuickResponseService::class), app(TipTapContentExtractor::class), app(OgImageService::class));
+        }
+
+        protected function sendScreenshotWithText(Message $message, Page $page, string $caption, ?string $replyMarkup = null): void
+        {
+            $this->cardReplies[] = ['page' => $page->id, 'caption' => $caption, 'markup' => $replyMarkup];
+        }
+    };
 }
 
 function pageLookupMessage(string $text): Message
@@ -44,28 +58,28 @@ function sectionPage(array $attributes = []): Page
 /**
  * @return array<int, array<int, array{text: string, url: string}>>
  */
-function keyboardOf(array $params): array
+function keyboardOf(?string $markup): array
 {
-    return json_decode($params['reply_markup'], true)['inline_keyboard'];
+    return json_decode((string) $markup, true)['inline_keyboard'];
 }
 
-it('answers a section page with its sub-pages as website buttons instead of a card', function () {
+it('keeps the card for a section page and hangs its sub-pages under it as website buttons', function () {
     $section = sectionPage();
     $first = Page::factory()->childOf($section)->create(['title' => 'هياكل البيانات', 'slug' => '/courses/data-structures', 'order' => 1]);
     $second = Page::factory()->childOf($section)->create(['title' => 'الخوارزميات', 'slug' => '/courses/algorithms', 'order' => 2]);
 
     $api = new FakeTelegramApi;
-    searchHandler($api)->handle(pageLookupMessage('المقررات'));
+    $handler = searchHandler($api);
+    $handler->handle(pageLookupMessage('المقررات'));
 
-    expect($api->sentPhotos)->toBeEmpty()
-        ->and($api->sentMessages)->toHaveCount(1);
+    expect($api->sentMessages)->toBeEmpty()
+        ->and($handler->cardReplies)->toHaveCount(1);
 
-    $sent = $api->sentMessages[0];
+    $card = $handler->cardReplies[0];
 
-    expect($sent['text'])->toContain('<b>المقررات</b>')
-        ->and($sent['text'])->toContain('اختر واحدة من الأزرار')
-        ->and($sent['parse_mode'])->toBe('HTML')
-        ->and(keyboardOf($sent))->toBe([
+    expect($card['page'])->toBe($section->id)
+        ->and($card['caption'])->toBe('📖 <a href="'.url($section->slug).'">المقررات</a>')
+        ->and(keyboardOf($card['markup']))->toBe([
             [['text' => 'هياكل البيانات', 'url' => url($first->slug)]],
             [['text' => 'الخوارزميات', 'url' => url($second->slug)]],
         ]);
@@ -78,9 +92,10 @@ it('never links a sub-page that is hidden from the website or from the bot', fun
     $shown = Page::factory()->childOf($section)->create(['title' => 'الظاهرة', 'order' => 3]);
 
     $api = new FakeTelegramApi;
-    searchHandler($api)->handle(pageLookupMessage('المقررات'));
+    $handler = searchHandler($api);
+    $handler->handle(pageLookupMessage('المقررات'));
 
-    expect(keyboardOf($api->sentMessages[0]))->toBe([
+    expect(keyboardOf($handler->cardReplies[0]['markup']))->toBe([
         [['text' => 'الظاهرة', 'url' => url($shown->slug)]],
     ]);
 });
@@ -97,13 +112,16 @@ it('appends the sub-page buttons below a content page\'s own buttons', function 
     $child = Page::factory()->childOf($section)->create(['title' => 'اللابتوب المناسب', 'slug' => '/technology/laptop']);
 
     $api = new FakeTelegramApi;
-    searchHandler($api)->handle(pageLookupMessage('التقنية'));
+    $handler = searchHandler($api);
+    $handler->handle(pageLookupMessage('التقنية'));
+
+    expect($handler->cardReplies)->toBeEmpty()
+        ->and($api->sentMessages)->toHaveCount(1);
 
     $sent = $api->sentMessages[0];
 
     expect($sent['text'])->toContain('كل ما يخص الأجهزة والبرامج.')
-        ->and($sent['text'])->not->toContain('اختر واحدة من الأزرار')
-        ->and(keyboardOf($sent))->toBe([
+        ->and(keyboardOf($sent['reply_markup']))->toBe([
             [['text' => 'متجر الجامعة', 'url' => 'https://store.example.com']],
             [['text' => 'اللابتوب المناسب', 'url' => url($child->slug)]],
         ]);
@@ -117,9 +135,10 @@ it('folds a long list of sub-pages into a show-all button that opens the section
     }
 
     $api = new FakeTelegramApi;
-    searchHandler($api)->handle(pageLookupMessage('المقررات'));
+    $handler = searchHandler($api);
+    $handler->handle(pageLookupMessage('المقررات'));
 
-    $keyboard = keyboardOf($api->sentMessages[0]);
+    $keyboard = keyboardOf($handler->cardReplies[0]['markup']);
 
     expect($keyboard)->toHaveCount(11)
         ->and($keyboard[0][0]['text'])->toBe('صفحة 1')
@@ -127,28 +146,15 @@ it('folds a long list of sub-pages into a show-all button that opens the section
         ->and($keyboard[10][0])->toBe(['text' => 'عرض كل الصفحات (12)', 'url' => url($section->slug)]);
 });
 
-it('leaves a leaf page without content on its old path', function () {
+it('sends a leaf page without content as a card with no keyboard, as before', function () {
     $leaf = sectionPage(['title' => 'صفحة فارغة', 'slug' => '/empty']);
 
     $api = new FakeTelegramApi;
-
-    $handler = new class($api) extends UquccSearchHandler
-    {
-        public array $screenshotCalls = [];
-
-        public function __construct(FakeTelegramApi $api)
-        {
-            parent::__construct($api, app(QuickResponseService::class), app(TipTapContentExtractor::class), app(OgImageService::class));
-        }
-
-        protected function sendScreenshotWithText(Message $message, Page $page, string $caption, ?string $replyMarkup = null): void
-        {
-            $this->screenshotCalls[] = ['page' => $page->id, 'markup' => $replyMarkup];
-        }
-    };
-
+    $handler = searchHandler($api);
     $handler->handle(pageLookupMessage('صفحة فارغة'));
 
     expect($api->sentMessages)->toBeEmpty()
-        ->and($handler->screenshotCalls)->toBe([['page' => $leaf->id, 'markup' => null]]);
+        ->and($handler->cardReplies)->toHaveCount(1)
+        ->and($handler->cardReplies[0]['page'])->toBe($leaf->id)
+        ->and($handler->cardReplies[0]['markup'])->toBeNull();
 });

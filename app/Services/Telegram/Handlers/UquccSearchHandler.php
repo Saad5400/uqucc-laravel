@@ -204,21 +204,14 @@ class UquccSearchHandler extends BaseHandler
     {
         // Get the resolved content (auto-extracted or custom)
         $resolvedContent = $this->resolveQuickResponseContent($page);
-        $childLinks = $this->childPageLinks($page);
-        $replyMarkup = $this->buildReplyMarkup($page, $resolvedContent['buttons'], $childLinks);
+        $contentRows = $this->contentButtonRows($resolvedContent['buttons']);
+        $childRows = $this->childPageRows($page, $this->childPageLinks($page));
+        $replyMarkup = $this->buildReplyMarkup([...$contentRows, ...$childRows]);
 
         // Check if there are attachments
         $attachments = collect($resolvedContent['attachments'])
             ->filter()
             ->values();
-
-        // A section page — no text of its own, only sub-pages — used to fall
-        // through to the share card, which had nothing to show but the title.
-        // Its reply is the list of sub-pages instead: an intro line above the
-        // keyboard whose buttons open each page on the website.
-        if ($attachments->isEmpty() && blank($resolvedContent['message']) && $childLinks !== []) {
-            $resolvedContent['message'] = $this->buildCatalogIntro($page, count($childLinks));
-        }
 
         if ($attachments->isNotEmpty()) {
             // Send attachments with text as caption (shorter limit)
@@ -228,8 +221,10 @@ class UquccSearchHandler extends BaseHandler
             // Send screenshot with custom content as caption (only if page is not hidden from website)
             $captionContent = $this->buildTextContent($page, $resolvedContent, isCaption: true);
             $this->sendScreenshotWithText($message, $page, $captionContent, $replyMarkup);
-        } elseif ($resolvedContent['message'] || $replyMarkup) {
-            // Send text message with optional buttons (full message limit)
+        } elseif ($resolvedContent['message'] || $contentRows !== []) {
+            // Send text message with optional buttons (full message limit).
+            // Sub-page buttons alone do not make a text reply: a page with
+            // nothing of its own still sends its card, with the buttons under it.
             $textContent = $this->buildTextContent($page, $resolvedContent, isCaption: false);
             $params = [
                 'chat_id' => $message->getChat()->getId(),
@@ -486,36 +481,12 @@ class UquccSearchHandler extends BaseHandler
     }
 
     /**
-     * The message a section page sends above its sub-page buttons.
-     */
-    protected function buildCatalogIntro(Page $page, int $childCount): string
-    {
-        $title = $this->escapeHtml((string) $page->title);
-
-        $count = match (true) {
-            $childCount === 1 => 'صفحة واحدة',
-            $childCount === 2 => 'صفحتين',
-            $childCount <= 10 => "{$childCount} صفحات",
-            default => "{$childCount} صفحة",
-        };
-
-        return "<b>{$title}</b>\n\nيضم هذا القسم {$count}، اختر واحدة من الأزرار:";
-    }
-
-    /**
-     * Build the inline keyboard markup for buttons.
+     * Build the inline keyboard markup from assembled rows.
      *
-     * @param  Page  $page  The page (for context)
-     * @param  array  $buttonsData  The resolved buttons array
-     * @param  array<int, array{text: string, url: string}>  $childLinks  Sub-pages to link below the content buttons
+     * @param  array<int, array<int, array{text: string, url: string}>>  $keyboard
      */
-    protected function buildReplyMarkup(Page $page, array $buttonsData, array $childLinks = []): ?string
+    protected function buildReplyMarkup(array $keyboard): ?string
     {
-        $keyboard = [
-            ...$this->contentButtonRows($buttonsData),
-            ...$this->childPageRows($page, $childLinks),
-        ];
-
         if ($keyboard === []) {
             return null;
         }
