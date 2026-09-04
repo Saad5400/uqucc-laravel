@@ -111,6 +111,7 @@ class OgImageService
         'adwat/hasbh-altahwel' => 'حاسبة التحويل',
         'adwat/jdwal-alsawab' => 'جداول الصواب',
         'adwat/sorh-albtaqa' => 'صورة البطاقة الجامعية',
+        'adwat/tahwel-alaadad' => 'تحويل الأعداد',
         'adwat/alkhosousieen' => 'المدرسون الخصوصيون',
         'qroubat' => 'قروبات الطلاب',
         'almosaed' => 'المساعد الذكي',

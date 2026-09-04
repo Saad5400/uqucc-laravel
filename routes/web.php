@@ -33,6 +33,7 @@ Route::middleware(CacheResponse::class)->group(function () {
     Route::get('/adwat/hasbh-altahwel', [ToolController::class, 'transferCalculator'])->name('tools.transfer-calculator');
     Route::get('/adwat/jdwal-alsawab', [ToolController::class, 'truthTable'])->name('tools.truth-table');
     Route::get('/adwat/sorh-albtaqa', [ToolController::class, 'studentPhoto'])->name('tools.student-photo');
+    Route::get('/adwat/tahwel-alaadad', [ToolController::class, 'baseConverter'])->name('tools.base-converter');
     Route::get('/adwat/alkhosousieen', [PrivateTutorController::class, 'index'])->name('tools.private-tutors');
 });
 
@@ -47,6 +48,11 @@ Route::get('/qroubat', [StudentGroupController::class, 'index'])
 Route::post('/adwat/jdwal-alsawab', [ToolController::class, 'generateTruthTable'])
     ->middleware('throttle:60,1')
     ->name('tools.truth-table.generate');
+
+// Number base conversion endpoint (JSON; used by the tool page) - rate limited, never cached
+Route::post('/adwat/tahwel-alaadad', [ToolController::class, 'convertBase'])
+    ->middleware('throttle:60,1')
+    ->name('tools.base-converter.convert');
 
 // AI corpus search endpoint (JSON; must come before catch-all route) - rate limited, never cached
 Route::get('/bahth', SearchController::class)
