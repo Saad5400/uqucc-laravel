@@ -142,6 +142,7 @@ class PageController extends Controller
             ])->values(),
             'parentOptions' => $this->flattenTree($livePagesByParent),
             'descendantIds' => $this->descendantIds($page->id, $allPages->groupBy('parent_id')),
+            'descendantCount' => count($this->descendantIds($page->id, $livePagesByParent)),
             'users' => User::query()->orderBy('name')->get(['id', 'name'])->map(fn (User $user) => [
                 'id' => $user->id,
                 'name' => $user->name,

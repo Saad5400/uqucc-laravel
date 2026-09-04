@@ -30,6 +30,8 @@ const props = defineProps<{
     authors: AuthorRow[];
     parentOptions: ParentOption[];
     descendantIds: number[];
+    /** Live (non-trashed) descendants — the delete confirmation quotes it. */
+    descendantCount: number;
     users: UserOption[];
     attachments: AttachmentInfo[];
     copilot: { enabled: boolean };
@@ -227,9 +229,7 @@ onUnmounted(() => {
             <ShieldCheck class="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden="true" />
             <p>
                 تعديلاتك على هذه الصفحة تُرسل للمراجعة ولا تظهر على الموقع إلا بعد اعتمادها.
-                <span v-if="review.has_pending" class="font-medium"
-                    >لديك تعديل بانتظار المراجعة، والحقول أدناه تعرض نسختك المقترحة لا المنشورة.</span
-                >
+                <span v-if="review.has_pending" class="font-medium">لديك تعديل بانتظار المراجعة، والحقول أدناه تعرض نسختك المقترحة لا المنشورة.</span>
             </p>
         </div>
 
@@ -308,6 +308,7 @@ onUnmounted(() => {
             :page="page"
             :parent-options="parentOptions"
             :descendant-ids="descendantIds"
+            :descendant-count="descendantCount"
         />
         <div v-show="activeTab === 'telegram'">
             <PageTelegramTab ref="telegramTab" :page="page" :attachments="attachments" :copilot-enabled="copilot.enabled" />
