@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\BaseConversionRequest;
 use App\Http\Requests\TruthTableRequest;
 use App\Models\Page;
 use App\Services\Logic\FormulaError;
 use App\Services\Logic\TruthTableGenerator;
+use App\Services\Numbers\BaseConversionError;
+use App\Services\Numbers\BaseConverter;
 use App\Support\Seo;
 use Illuminate\Http\JsonResponse;
 use Inertia\Inertia;
@@ -131,6 +134,42 @@ class ToolController extends Controller
         try {
             return response()->json($generator->generate($request->validated('formula'))->toArray());
         } catch (FormulaError $error) {
+            return response()->json(['message' => $error->getMessage()], 422);
+        }
+    }
+
+    /**
+     * Display the number base converter tool.
+     */
+    public function baseConverter(): Response
+    {
+        $page = Page::where('slug', '/adwat/tahwel-alaadad')
+            ->where('hidden', false)
+            ->first();
+
+        return Inertia::render('tools/BaseConverterPage', [
+            'page' => $page ? [
+                'html_content' => $page->html_content,
+                'title' => $page->title,
+            ] : null,
+            'hasContent' => $page && ! empty($page->html_content),
+            'seo' => $this->toolSeo($page, 'تحويل الأعداد', 'حوّل الأعداد بين الأنظمة (ثنائي، ثماني، عشري، ست عشري وأي أساس حتى ٣٦) مع شرح خطوة بخطوة لطريقة الحل — أداة لطلاب كلية الحاسبات بجامعة أم القرى.'),
+        ]);
+    }
+
+    /**
+     * Convert the submitted number between the two bases (JSON endpoint used
+     * by the base converter tool page).
+     */
+    public function convertBase(BaseConversionRequest $request, BaseConverter $converter): JsonResponse
+    {
+        try {
+            return response()->json($converter->convert(
+                $request->validated('number'),
+                (int) $request->validated('from_base'),
+                (int) $request->validated('to_base'),
+            )->toArray());
+        } catch (BaseConversionError $error) {
             return response()->json(['message' => $error->getMessage()], 422);
         }
     }

@@ -4,11 +4,14 @@ namespace App\Jobs;
 
 use App\Services\Logic\TruthTableGenerator;
 use App\Services\Logic\TruthTableImageRenderer;
+use App\Services\Numbers\BaseConversionImageRenderer;
+use App\Services\Numbers\BaseConverter;
 use App\Services\QuickResponseService;
 use App\Services\Quiz\QuizAnswerRecorder;
 use App\Services\Telegram\ContentParser;
 use App\Services\Telegram\Handlers\AiChatHandler;
 use App\Services\Telegram\Handlers\AiToggleHandler;
+use App\Services\Telegram\Handlers\BaseConversionHandler;
 use App\Services\Telegram\Handlers\EditLinkHandler;
 use App\Services\Telegram\Handlers\HelpHandler;
 use App\Services\Telegram\Handlers\InfoHandler;
@@ -177,6 +180,7 @@ class ProcessTelegramUpdate implements ShouldQueue
             new PythonExecutionHandler($telegram),
             new JavaExecutionHandler($telegram),
             new TruthTableHandler($telegram, app(TruthTableGenerator::class), app(TruthTableImageRenderer::class)),
+            new BaseConversionHandler($telegram, app(BaseConverter::class), app(BaseConversionImageRenderer::class)),
             new InfoHandler($telegram),
             new PrivateForwardHandler($telegram),
             new InviteLinkHandler($telegram),
