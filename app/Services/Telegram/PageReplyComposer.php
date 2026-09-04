@@ -11,10 +11,12 @@ use App\Support\TelegramHtml;
  *
  * A reply is one text message, read in a group, so it is shaped to be skimmed
  * and expanded rather than scrolled past: the page's title on top, linked to
- * the website; the page's content under it inside a collapsed quote that opens
- * on a tap; and a footer that says where the rest is when the message could
- * not carry it all. The page's links and sub-pages are buttons under the text,
- * and the page's few images go before it as an album.
+ * the website; the page's content under it, folded into a collapsed quote that
+ * opens on a tap when it is tall enough to bury the conversation and left
+ * plainly in the message when it is not; and a footer that says where the rest
+ * is when the message could not carry it all. The page's links and sub-pages
+ * are buttons under the text, and the page's few images go before it as an
+ * album.
  *
  * A page that is mostly pictures — a tutorial of screenshots — is the one case
  * the text cannot stand in for. Its reply keeps the text, drops the album, and
@@ -42,6 +44,19 @@ class PageReplyComposer
      * covers what it counts as two (an emoji) and this side counts as one.
      */
     private const MESSAGE_LIMIT = 4000;
+
+    /**
+     * Characters a line of a message holds on a phone before Telegram wraps
+     * it, for the estimate of how tall the content will be.
+     */
+    private const CHARS_PER_LINE = 40;
+
+    /**
+     * Lines the content may take before it is folded into a collapsed quote.
+     * Around four wrapping paragraphs — a message a reader takes in at once,
+     * with the group's conversation still visible under it.
+     */
+    private const MAX_UNQUOTED_LINES = 14;
 
     public function __construct(
         private readonly TipTapContentExtractor $extractor,
@@ -84,6 +99,7 @@ class PageReplyComposer
         $quoted = match (true) {
             $body === '' => null,
             str_contains($body, '<blockquote') => $body,
+            $this->displayLines($body) <= self::MAX_UNQUOTED_LINES => $body,
             default => '<blockquote expandable>'.$body.'</blockquote>',
         };
 
@@ -150,6 +166,26 @@ class PageReplyComposer
         $html = $this->cleanHtml($this->contentParser->processDates($message));
 
         return TelegramHtml::isBlank($html) ? '' : $html;
+    }
+
+    /**
+     * How many lines the content will take once Telegram has drawn it.
+     *
+     * Height, not length, is what makes content worth folding away: a wall of
+     * text pushes the group's conversation off the screen, while a few lines
+     * are read where they are and a quote would only put a tap in the way. So
+     * what gets counted is the lines the reader will see — the content's own,
+     * plus the ones wrapping adds to every line wider than a phone.
+     */
+    protected function displayLines(string $body): int
+    {
+        $lines = 0;
+
+        foreach (explode("\n", $body) as $line) {
+            $lines += max(1, (int) ceil(TelegramHtml::length($line) / self::CHARS_PER_LINE));
+        }
+
+        return $lines;
     }
 
     /**

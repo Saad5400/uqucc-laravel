@@ -25,6 +25,12 @@ function imageBlock(string $name): array
     return ['type' => 'image', 'attrs' => ['src' => "/storage/uploads/{$name}"]];
 }
 
+/** A document of `$count` lines, each short enough that Telegram draws it on one. */
+function shortLines(int $count): array
+{
+    return docOf(...array_map(fn (int $i): array => textBlock("سطر {$i}"), range(1, $count)));
+}
+
 /** A page whose reply is read straight from its content, the default for new pages. */
 function contentPage(array $attributes = []): Page
 {
@@ -38,16 +44,16 @@ function contentPage(array $attributes = []): Page
     ], $attributes))->fresh();
 }
 
-it('puts the linked title over the content in a collapsed quote', function () {
+it('puts the linked title over short content, with no quote in the way', function () {
     $page = contentPage();
 
     $reply = composeReply($page);
 
     expect($reply->text)->toBe(
         '<a href="'.url('/altkdyrat').'"><b>التقديرات</b></a>'
-        ."\n\n<blockquote expandable>الدرجات تُحسب من مئة.\n\nوالنجاح من ستين.</blockquote>"
+        ."\n\nالدرجات تُحسب من مئة.\n\nوالنجاح من ستين."
     )
-        ->and($reply->fallbackText)->toBe('<a href="'.url('/altkdyrat').'"><b>التقديرات</b></a>'."\n\nالدرجات تُحسب من مئة.\n\nوالنجاح من ستين.")
+        ->and($reply->fallbackText)->toBeNull()
         ->and($reply->attachments)->toBe([])
         ->and($reply->previewUrl)->toBeNull()
         ->and($reply->keyboard)->toBe([])
@@ -55,10 +61,45 @@ it('puts the linked title over the content in a collapsed quote', function () {
         ->and($reply->replyMarkup())->toBeNull();
 });
 
+it('folds content taller than a screenful into a collapsed quote', function () {
+    $reply = composeReply(contentPage(['html_content' => shortLines(20)]));
+
+    expect($reply->text)->toBe(
+        '<a href="'.url('/altkdyrat').'"><b>التقديرات</b></a>'
+        ."\n\n<blockquote expandable>".implode("\n\n", array_map(fn (int $i): string => "سطر {$i}", range(1, 20))).'</blockquote>'
+    )
+        ->and($reply->fallbackText)->toContain('سطر 1')
+        ->and($reply->fallbackText)->not->toContain('<blockquote');
+});
+
+it('leaves a few paragraphs of advice in the message, the way a person would send them', function () {
+    $reply = composeReply(contentPage(['html_content' => docOf(
+        textBlock('افهمي الفوكاب وحلي تمارين عليها بتلاقي تمارين بنفس الدرس وبرضو نهاية الكتاب فيه تمارين للفوكاب والقرامر'),
+        textBlock('وبكتاب النشاط كمان اهم شي تحلي اكثر عشان المعلومة تجلس ببالك'),
+        textBlock('خلصي من الفوكاب والقرامر لكل وحده وبعدها امسكي القطع واقرأيها عشان تدربي نفسك على القراءة واستخراج الحلول من القطع ولها تمارين بكتاب النشاط'),
+        textBlock('واخر شي الكتابة اتبعي الخطوات اللي بقريت رايتنق'),
+    )]));
+
+    expect($reply->text)->not->toContain('<blockquote')
+        ->and($reply->text)->toContain('واخر شي الكتابة')
+        ->and($reply->fallbackText)->toBeNull();
+});
+
+it('decides by height, counting the content\'s own lines and the ones wrapping adds', function (array $document, bool $folded) {
+    $reply = composeReply(contentPage(['html_content' => $document]));
+
+    expect(str_contains($reply->text, '<blockquote'))->toBe($folded);
+})->with([
+    'seven short lines' => [shortLines(7), false],
+    'eight short lines' => [shortLines(8), true],
+    'one paragraph wrapping to ten lines' => [docOf(textBlock(str_repeat('كلمة ', 80))), false],
+    'one paragraph wrapping past the screen' => [docOf(textBlock(str_repeat('كلمة ', 120))), true],
+]);
+
 it('leaves the title unlinked when the link is off or the page has no public URL', function (array $attributes) {
     $reply = composeReply(contentPage($attributes));
 
-    expect($reply->text)->toStartWith("<b>التقديرات</b>\n\n<blockquote")
+    expect($reply->text)->toStartWith("<b>التقديرات</b>\n\nالدرجات")
         ->and($reply->text)->not->toContain('<a ');
 })->with([
     'link switched off' => [['quick_response_send_link' => false]],
@@ -201,5 +242,6 @@ it('reads a legacy HTML page the way it reads an editor document', function () {
         'html_content' => '<h2>الشروط</h2><p>يلزم <strong>معدل</strong> لا يقل عن <em>٣</em>.</p><ul><li>الأول</li><li>الثاني</li></ul>',
     ]));
 
-    expect($reply->text)->toContain("<blockquote expandable><b>الشروط</b>\n\nيلزم <b>معدل</b> لا يقل عن <i>٣</i>.\n\n• الأول\n• الثاني</blockquote>");
+    expect($reply->text)->toContain("<b>الشروط</b>\n\nيلزم <b>معدل</b> لا يقل عن <i>٣</i>.\n\n• الأول\n• الثاني")
+        ->and($reply->text)->not->toContain('<blockquote');
 });
