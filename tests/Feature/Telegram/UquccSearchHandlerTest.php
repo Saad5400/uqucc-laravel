@@ -57,7 +57,7 @@ beforeEach(function () {
     Storage::fake(Disk::MEDIA);
 });
 
-it('answers a page title with one text message: quoted content, buttons under it, no preview', function () {
+it('answers a page title with one text message: the content, buttons under it, no preview', function () {
     $page = pageWithContent([textParagraph('كل ما يخص المقررات.')]);
     $child = Page::factory()->childOf($page)->create(['title' => 'الفيزياء', 'slug' => '/courses/physics']);
 
@@ -73,7 +73,8 @@ it('answers a page title with one text message: quoted content, buttons under it
     expect($sent['chat_id'])->toBe(-100200)
         ->and($sent['reply_to_message_id'])->toBe(20)
         ->and($sent['parse_mode'])->toBe('HTML')
-        ->and($sent['text'])->toContain('<blockquote expandable>كل ما يخص المقررات.</blockquote>')
+        ->and($sent['text'])->toContain('كل ما يخص المقررات.')
+        ->and($sent['text'])->not->toContain('<blockquote')
         ->and(json_decode($sent['link_preview_options'], true))->toBe(['is_disabled' => true])
         ->and(json_decode($sent['reply_markup'], true)['inline_keyboard'])->toBe([
             [['text' => 'الفيزياء', 'url' => url($child->slug)]],
@@ -139,7 +140,7 @@ it('lets Telegram draw the page preview for an image-heavy page and sends no alb
 });
 
 it('resends the reply unquoted when Telegram refuses the markup', function () {
-    pageWithContent([textParagraph('نص الصفحة')]);
+    pageWithContent(array_map(fn (int $i): array => textParagraph("نص الصفحة {$i}"), range(1, 20)));
 
     $api = new FakeTelegramApi;
     $api->sendMessageFailures = ["Bad Request: can't parse entities"];
@@ -148,7 +149,7 @@ it('resends the reply unquoted when Telegram refuses the markup', function () {
 
     expect($api->sentMessages)->toHaveCount(1)
         ->and($api->sentMessages[0]['text'])->not->toContain('<blockquote')
-        ->and($api->sentMessages[0]['text'])->toContain('نص الصفحة');
+        ->and($api->sentMessages[0]['text'])->toContain('نص الصفحة 1');
 });
 
 it('lets a failure through when there is no unquoted version to fall back to', function () {
