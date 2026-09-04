@@ -103,6 +103,71 @@ it('adds the binary grouping shortcut only when both bases are powers of two', f
     'octal to base nine' => [8, 9, false],
 ]);
 
+it('lays the expansion out as a table, dropping the value column below base ten', function () {
+    $hex = convertNumber('2AF', 16, 10)->steps[0];
+    $binary = convertNumber('1011', 2, 10)->steps[0];
+
+    expect($hex->columns)->toBe(['الرقم', 'قيمته', 'وزن المنزلة', 'الناتج'])
+        ->and($hex->rows[1])->toBe(['A', '10', '16^1 = 16', '160'])
+        // Below base ten a digit is already its own value, so the column that
+        // teaches «A = 10» would only be noise.
+        ->and($binary->columns)->toBe(['الرقم', 'وزن المنزلة', 'الناتج'])
+        ->and($binary->rows[0])->toBe(['1', '2^3 = 8', '8']);
+});
+
+it('lays the division ladder out as a table with the digit column last', function () {
+    $step = convertNumber('687', 10, 16)->steps[0];
+
+    expect($step->columns)->toBe(['العملية', 'ناتج القسمة', 'الباقي', 'الرقم ↑'])
+        ->and($step->rows)->toBe([
+            ['687 ÷ 16', '42', '15', 'F'],
+            ['42 ÷ 16', '2', '10', 'A'],
+            ['2 ÷ 16', '0', '2', '2'],
+        ])
+        ->and($step->keyColumn())->toBe(3);
+});
+
+it('lays the multiplication ladder out as a table', function () {
+    $step = convertNumber('13.375', 10, 2)->steps[1];
+
+    expect($step->columns)->toBe(['العملية', 'الناتج', 'الرقم ↓'])
+        ->and($step->rows)->toBe([
+            ['0.375 × 2', '0.75', '0'],
+            ['0.75 × 2', '1.5', '1'],
+            ['0.5 × 2', '1', '1'],
+        ]);
+});
+
+it('lays the grouping shortcut out as pairs of labelled strips', function () {
+    $steps = convertNumber('2AF', 16, 4)->steps;
+    $shortcut = end($steps);
+
+    expect($shortcut->layout)->toBe(App\Services\Numbers\ConversionStep::LAYOUT_STRIPS)
+        ->and($shortcut->columns)->toBe([])
+        ->and($shortcut->rows)->toBe([
+            ['الأساس 16', '2', 'A', 'F'],
+            ['بالثنائي', '0010', '1010', '1111'],
+            ['كل بتين', '10', '10', '10', '11', '11'],
+            ['الأساس 4', '2', '2', '2', '3', '3'],
+        ]);
+});
+
+it('pairs every strip row with one of the same length', function (int $from, int $to) {
+    $steps = convertNumber('2AF', $from, $to)->steps;
+    $rows = end($steps)->rows;
+
+    expect($rows)->not->toBeEmpty()
+        ->and(count($rows) % 2)->toBe(0);
+
+    foreach (array_chunk($rows, 2) as [$top, $bottom]) {
+        expect(count($top))->toBe(count($bottom));
+    }
+})->with([
+    'hex to binary' => [16, 2],
+    'hex to base four' => [16, 4],
+    'hex to octal' => [16, 8],
+]);
+
 it('says nothing was needed when the bases are identical', function () {
     $conversion = convertNumber('FF', 16, 16);
 

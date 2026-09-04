@@ -15,10 +15,18 @@
     RTL, while the arithmetic is machine text and sits in `dir="ltr"`
     monospace islands (docs/ux-principles.md).
 
-    @var \App\Services\Numbers\BaseConversion $conversion   The conversion and its steps.
+    Each step draws itself as what it is rather than as a paragraph of
+    arithmetic: a ladder is a table with its digit column tinted, and the
+    bit-grouping shortcut is each digit sitting on top of its own bits. The
+    monospace `lines` the steps also carry are for text-only surfaces (the
+    bot's fallback reply); nothing here uses them except the rare step that
+    has no table at all.
+
+    @var \App\Services\Numbers\BaseConversion $conversion    The conversion and its steps.
+    @var array                                $steps         One entry per step: ['step' => ConversionStep, 'widths' => list<int>].
     @var int                                  $valueFontSize Headline size in px, stepped down for long numbers.
-    @var bool                                 $showDecimal  Whether to repeat the base-10 value under the headline.
-    @var string                               $toolUrl      The web tool, printed in the footer.
+    @var bool                                 $showDecimal   Whether to repeat the base-10 value under the headline.
+    @var string                               $toolUrl       The web tool, printed in the footer.
 --}}
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -41,6 +49,7 @@
             --primary-soft: rgba(56, 167, 187, 0.14);
             --code-bg: #0c1017;
             --code-border: rgba(255, 255, 255, 0.08);
+            --row-border: rgba(255, 255, 255, 0.06);
         }
 
         html {
@@ -230,6 +239,142 @@
             padding-inline-start: 52px;
         }
 
+        /* The working, as a table. Column widths are computed in PHP
+           (BaseConversionImageRenderer::columnWidths) and written inline:
+           Takumi has no table layout and no auto-sizing to borrow, so the
+           columns line up because every cell in one is told the same width. */
+        .table {
+            display: flex;
+            flex-direction: column;
+            margin-inline-start: 52px;
+            background: var(--code-bg);
+            border: 1px solid var(--code-border);
+            border-radius: 14px;
+        }
+
+        .row {
+            display: flex;
+            flex-direction: row;
+            border-top: 1px solid var(--row-border);
+        }
+
+        .row-head {
+            border-top: none;
+            background: rgba(255, 255, 255, 0.035);
+        }
+
+        .cell {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 11px 12px;
+            font-family: 'DejaVu Sans Mono', monospace;
+            font-size: 20px;
+            color: #cfe6ec;
+        }
+
+        .cell-head {
+            font-family: 'IBM Plex Sans Arabic', sans-serif;
+            font-size: 17px;
+            font-weight: 600;
+            color: var(--muted);
+            padding: 10px 12px;
+        }
+
+        /* The column the answer is read out of. Tinting it is the one thing
+           that turns a grid of numbers into a story. The two radii keep the
+           tint inside the table's rounded corners — the engine does not clip
+           a child to its parent's radius, so the corners are cut here. */
+        .cell-key {
+            background: var(--primary-soft);
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        .cell-key-first {
+            border-top-right-radius: 13px;
+        }
+
+        .cell-key-last {
+            border-bottom-right-radius: 13px;
+        }
+
+        /* The bit-grouping shortcut: each cell stacked over what it becomes. */
+        .strips {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 10px;
+            margin-inline-start: 52px;
+        }
+
+        .strip {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .strip-labels {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .strip-label {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            height: 46px;
+            min-width: 118px;
+            font-size: 18px;
+            color: var(--muted);
+        }
+
+        .strip-cells {
+            display: flex;
+            flex-direction: row;
+            gap: 10px;
+        }
+
+        .strip-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .chip {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 46px;
+            padding: 0 14px;
+            border-radius: 12px;
+            background: var(--code-bg);
+            border: 1px solid var(--code-border);
+            font-family: 'DejaVu Sans Mono', monospace;
+            font-size: 21px;
+            color: #cfe6ec;
+        }
+
+        .chip-key {
+            background: var(--primary-soft);
+            border-color: rgba(56, 167, 187, 0.4);
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        .strip-arrow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 118px;
+            font-family: 'DejaVu Sans Mono', monospace;
+            font-size: 22px;
+            color: var(--muted);
+        }
+
+        /* The one step with no table of its own (identical bases). */
         .lines {
             display: flex;
             flex-direction: column;
@@ -248,9 +393,7 @@
             line-height: 1.5;
             color: #cfe6ec;
             /* The columns are aligned with spaces (BaseConverter::alignedLines),
-               so collapsing whitespace here would undo the alignment; pre-wrap
-               keeps it and still lets an over-long row wrap instead of
-               overflowing the card. */
+               so collapsing whitespace here would undo the alignment. */
             white-space: pre-wrap;
             word-break: break-all;
         }
@@ -312,7 +455,7 @@
         </div>
 
         <div class="steps">
-            @foreach ($conversion->steps as $step)
+            @foreach ($steps as ['step' => $step, 'widths' => $widths])
                 <div class="step">
                     <div class="step-header">
                         <span class="step-number">{{ $loop->iteration }}</span>
@@ -323,11 +466,61 @@
                         <span class="step-note">{{ $step->note }}</span>
                     @endif
 
-                    <div class="lines" dir="ltr">
-                        @foreach ($step->lines as $line)
-                            <span class="line">{{ $line }}</span>
-                        @endforeach
-                    </div>
+                    @if ($step->columns !== [])
+                        <div class="table" dir="ltr">
+                            <div class="row row-head">
+                                @foreach ($step->columns as $column => $header)
+                                    <span
+                                        class="cell cell-head @if ($column === $step->keyColumn()) cell-key cell-key-first @endif"
+                                        style="width: {{ $widths[$column] }}px"
+                                    >{{ $header }}</span>
+                                @endforeach
+                            </div>
+
+                            @foreach ($step->rows as $row)
+                                <div class="row">
+                                    @foreach ($row as $column => $cell)
+                                        <span
+                                            class="cell @if ($column === $step->keyColumn()) cell-key @if ($loop->parent->last) cell-key-last @endif @endif"
+                                            style="width: {{ $widths[$column] }}px"
+                                        >{{ $cell }}</span>
+                                    @endforeach
+                                </div>
+                            @endforeach
+                        </div>
+                    @elseif ($step->layout === \App\Services\Numbers\ConversionStep::LAYOUT_STRIPS)
+                        {{-- The strips come in pairs: a row of cells and what each
+                             becomes. The last pair's bottom row is the answer. --}}
+                        <div class="strips" dir="ltr">
+                            @foreach (array_chunk($step->rows, 2) as $pairIndex => [$top, $bottom])
+                                @if ($pairIndex > 0)
+                                    <span class="strip-arrow">↓</span>
+                                @endif
+
+                                <div class="strip">
+                                    <span class="strip-labels">
+                                        <span class="strip-label" dir="rtl">{{ $top[0] }}</span>
+                                        <span class="strip-label" dir="rtl">{{ $bottom[0] }}</span>
+                                    </span>
+
+                                    <span class="strip-cells">
+                                        @foreach (array_slice($top, 1) as $index => $cell)
+                                            <span class="strip-group">
+                                                <span class="chip">{{ $cell }}</span>
+                                                <span class="chip @if ($loop->parent->last) chip-key @endif">{{ $bottom[$index + 1] }}</span>
+                                            </span>
+                                        @endforeach
+                                    </span>
+                                </div>
+                            @endforeach
+                        </div>
+                    @else
+                        <div class="lines" dir="ltr">
+                            @foreach ($step->lines as $line)
+                                <span class="line">{{ $line }}</span>
+                            @endforeach
+                        </div>
+                    @endif
 
                     @if ($step->result)
                         <span class="step-result">{{ $step->result }}</span>

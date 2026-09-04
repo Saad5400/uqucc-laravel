@@ -121,7 +121,70 @@
 
                         <p v-if="step.note" class="!my-0 ps-10 text-sm text-muted-foreground">{{ step.note }}</p>
 
-                        <div dir="ltr" class="ms-10 overflow-x-auto rounded-lg border bg-muted/40 p-3">
+                        <!-- The working as a table, with the column the answer is read out of tinted -->
+                        <div v-if="step.columns.length" dir="ltr" class="ms-10 overflow-x-auto rounded-lg border">
+                            <table class="w-full border-collapse text-center font-mono text-sm tabular-nums">
+                                <thead>
+                                    <tr class="border-b bg-muted/50">
+                                        <th
+                                            v-for="(header, headerIndex) in step.columns"
+                                            :key="header"
+                                            class="border-e px-3 py-2 font-sans text-xs font-semibold whitespace-nowrap last:border-e-0"
+                                            :class="{ 'bg-primary/10 text-primary': headerIndex === step.columns.length - 1 }"
+                                        >
+                                            {{ header }}
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="(row, rowIndex) in step.rows" :key="rowIndex" class="border-b last:border-b-0">
+                                        <td
+                                            v-for="(cell, cellIndex) in row"
+                                            :key="cellIndex"
+                                            class="border-e px-3 py-1.5 whitespace-nowrap last:border-e-0"
+                                            :class="{ 'bg-primary/10 font-bold text-primary': cellIndex === row.length - 1 }"
+                                        >
+                                            {{ cell }}
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <!-- The bit-grouping shortcut: each cell stacked over what it becomes -->
+                        <div v-else-if="step.layout === 'strips'" dir="ltr" class="ms-10 space-y-2 overflow-x-auto">
+                            <template v-for="(pair, pairIndex) in stripPairs(step)" :key="pairIndex">
+                                <p v-if="pairIndex > 0" class="!my-0 ps-24 font-mono text-muted-foreground">↓</p>
+
+                                <div class="flex items-center gap-3">
+                                    <div dir="rtl" class="flex shrink-0 flex-col gap-1.5 text-xs text-muted-foreground">
+                                        <span class="flex h-9 w-20 items-center justify-end">{{ pair.top[0] }}</span>
+                                        <span class="flex h-9 w-20 items-center justify-end">{{ pair.bottom[0] }}</span>
+                                    </div>
+
+                                    <div class="flex gap-2">
+                                        <div v-for="(cell, cellIndex) in pair.top.slice(1)" :key="cellIndex" class="flex flex-col gap-1.5">
+                                            <span class="flex h-9 items-center justify-center rounded-md border bg-muted/40 px-3 font-mono text-sm">
+                                                {{ cell }}
+                                            </span>
+                                            <span
+                                                class="flex h-9 items-center justify-center rounded-md border px-3 font-mono text-sm"
+                                                :class="
+                                                    pairIndex === stripPairs(step).length - 1
+                                                        ? 'border-primary/40 bg-primary/10 font-bold text-primary'
+                                                        : 'bg-muted/40'
+                                                "
+                                            >
+                                                {{ pair.bottom[cellIndex + 1] }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+
+                        <!-- The one step with no table of its own (identical bases) -->
+                        <div v-else dir="ltr" class="ms-10 overflow-x-auto rounded-lg border bg-muted/40 p-3">
                             <div
                                 v-for="(line, lineIndex) in step.lines"
                                 :key="lineIndex"
@@ -201,7 +264,12 @@ withDefaults(defineProps<Props>(), {
 
 interface ConversionStep {
     title: string;
+    /** The working as monospace equations — drawn only by a step with no table. */
     lines: string[];
+    /** Table headers; empty when the step has no table. */
+    columns: string[];
+    rows: string[][];
+    layout: 'table' | 'strips';
     note: string | null;
     result: string | null;
 }
@@ -282,6 +350,14 @@ function applyExample(example: Example) {
     fromBase.value = example.from;
     toBase.value = example.to;
     numberInput.value = example.number;
+}
+
+/**
+ * The bit-grouping step's rows come in pairs — a row of cells and what each
+ * becomes — with the first cell of each row being its Arabic label.
+ */
+function stripPairs(step: ConversionStep): { top: string[]; bottom: string[] }[] {
+    return step.rows.filter((_, index) => index % 2 === 0).map((top, index) => ({ top, bottom: step.rows[index * 2 + 1] }));
 }
 
 function swapBases() {

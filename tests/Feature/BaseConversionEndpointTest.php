@@ -20,6 +20,10 @@ it('converts a number between two bases', function () {
 
     expect($response->json('steps'))->toHaveCount(3)
         ->and($response->json('steps.0.title'))->toContain('توسيع المنازل')
+        ->and($response->json('steps.0.columns'))->toBe(['الرقم', 'قيمته', 'وزن المنزلة', 'الناتج'])
+        ->and($response->json('steps.0.rows.0'))->toBe(['2', '2', '16^2 = 256', '512'])
+        ->and($response->json('steps.0.layout'))->toBe('table')
+        ->and($response->json('steps.2.layout'))->toBe('strips')
         ->and($response->json('steps.0.lines'))->not->toBeEmpty();
 });
 

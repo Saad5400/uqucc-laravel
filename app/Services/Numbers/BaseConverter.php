@@ -319,6 +319,7 @@ class BaseConverter
      */
     private function integerExpansionStep(string $digits, int $base, int $value): ConversionStep
     {
+        $equations = [];
         $rows = [];
         $terms = [];
         $length = strlen($digits);
@@ -329,11 +330,12 @@ class BaseConverter
             $placeValue = $base ** $power;
             $product = $digitValue * $placeValue;
 
-            $rows[] = [$digit, '×', $base.'^'.$power, '=', (string) $digitValue, '×', (string) $placeValue, '=', (string) $product];
+            $equations[] = [$digit, '×', $base.'^'.$power, '=', (string) $digitValue, '×', (string) $placeValue, '=', (string) $product];
+            $rows[] = $this->expansionRow($digit, $digitValue, $base.'^'.$power.' = '.$placeValue, (string) $product, $base);
             $terms[] = (string) $product;
         }
 
-        $lines = $this->alignedLines($rows, [
+        $lines = $this->alignedLines($equations, [
             self::ALIGN_RIGHT, self::ALIGN_LEFT, self::ALIGN_LEFT, self::ALIGN_LEFT,
             self::ALIGN_RIGHT, self::ALIGN_LEFT, self::ALIGN_RIGHT, self::ALIGN_LEFT, self::ALIGN_RIGHT,
         ]);
@@ -345,6 +347,8 @@ class BaseConverter
         return new ConversionStep(
             title: 'توسيع المنازل: من الأساس '.$base.' إلى العشري',
             lines: $lines,
+            columns: $this->expansionColumns($base),
+            rows: $rows,
             note: 'نضرب كل رقم في الأساس مرفوعًا لأس منزلته — والمنازل تُعد من الصفر ابتداءً من اليمين — ثم نجمع النواتج.',
             result: 'الجزء الصحيح بالنظام العشري: '.$value,
         );
@@ -356,6 +360,7 @@ class BaseConverter
      */
     private function fractionExpansionStep(string $digits, int $base, int $numerator, int $denominator): ConversionStep
     {
+        $equations = [];
         $rows = [];
         $terms = [];
 
@@ -363,17 +368,19 @@ class BaseConverter
             $power = $index + 1;
             $digitValue = (int) strpos(self::DIGITS, $digit);
             $placeValue = $base ** $power;
+            $placeText = $this->decimalString(0, 1, $placeValue);
             $product = $this->decimalString(0, $digitValue, $placeValue);
 
-            $rows[] = [
+            $equations[] = [
                 $digit, '×', $base.'^-'.$power, '=',
-                (string) $digitValue, '×', $this->decimalString(0, 1, $placeValue), '=', $product,
+                (string) $digitValue, '×', $placeText, '=', $product,
             ];
 
+            $rows[] = $this->expansionRow($digit, $digitValue, $base.'^-'.$power.' = '.$placeText, $product, $base);
             $terms[] = $product;
         }
 
-        $lines = $this->alignedLines($rows, [
+        $lines = $this->alignedLines($equations, [
             self::ALIGN_RIGHT, self::ALIGN_LEFT, self::ALIGN_LEFT, self::ALIGN_LEFT,
             self::ALIGN_RIGHT, self::ALIGN_LEFT, self::ALIGN_POINT, self::ALIGN_LEFT, self::ALIGN_POINT,
         ]);
@@ -386,12 +393,40 @@ class BaseConverter
         return new ConversionStep(
             title: 'الجزء الكسري إلى العشري',
             lines: $lines,
+            columns: $this->expansionColumns($base),
+            rows: $rows,
             // The exponents are spelled out in words on purpose: «^-1» inside
             // an Arabic sentence is a bidi trap, and the same notation is
             // right there in the aligned lines below where it belongs.
             note: 'أرقام ما بعد الفاصلة تأخذ أسسًا سالبة: الرقم الأول أُسّه سالب واحد، والذي يليه سالب اثنين، وهكذا.',
             result: 'الجزء الكسري بالنظام العشري: '.$sum,
         );
+    }
+
+    /**
+     * The expansion table's headers. «قيمته» is what turns A into 10 and is
+     * the column the whole table exists for above base ten — and dead weight
+     * below it, where a digit is already its own value.
+     *
+     * @return list<string>
+     */
+    private function expansionColumns(int $base): array
+    {
+        return $base > 10
+            ? ['الرقم', 'قيمته', 'وزن المنزلة', 'الناتج']
+            : ['الرقم', 'وزن المنزلة', 'الناتج'];
+    }
+
+    /**
+     * One row of that table, with or without the value column.
+     *
+     * @return list<string>
+     */
+    private function expansionRow(string $digit, int $digitValue, string $placeValue, string $product, int $base): array
+    {
+        return $base > 10
+            ? [$digit, (string) $digitValue, $placeValue, $product]
+            : [$digit, $placeValue, $product];
     }
 
     /**
@@ -402,6 +437,7 @@ class BaseConverter
      */
     private function divisionStep(int $value, int $base): array
     {
+        $equations = [];
         $rows = [];
         $digits = '';
         $current = $value;
@@ -413,12 +449,13 @@ class BaseConverter
             $remainder = $current % $base;
             $digit = self::DIGITS[$remainder];
 
-            $rows[] = [(string) $current, '÷', (string) $base, '=', $quotient.',', 'r =', (string) $remainder, '→', $digit];
+            $equations[] = [(string) $current, '÷', (string) $base, '=', $quotient.',', 'r =', (string) $remainder, '→', $digit];
+            $rows[] = [$current.' ÷ '.$base, (string) $quotient, (string) $remainder, $digit];
             $digits = $digit.$digits;
             $current = $quotient;
         } while ($current > 0);
 
-        $lines = $this->alignedLines($rows, [
+        $lines = $this->alignedLines($equations, [
             self::ALIGN_RIGHT, self::ALIGN_LEFT, self::ALIGN_LEFT, self::ALIGN_LEFT,
             self::ALIGN_RIGHT, self::ALIGN_LEFT, self::ALIGN_RIGHT, self::ALIGN_LEFT, self::ALIGN_LEFT,
         ]);
@@ -427,6 +464,11 @@ class BaseConverter
             new ConversionStep(
                 title: 'القسمة المتكررة على '.$base,
                 lines: $lines,
+                // The arrow is in the header because it is the reading
+                // instruction for that column, and the eye needs it where the
+                // column is, not only in the sentence under the table.
+                columns: ['العملية', 'ناتج القسمة', 'الباقي', 'الرقم ↑'],
+                rows: $rows,
                 note: 'نقسم على الأساس مرة بعد مرة ونحتفظ بالباقي (r) من كل قسمة، حتى يصير ناتج القسمة صفرًا.',
                 result: 'نقرأ البواقي من الأسفل إلى الأعلى: '.$digits,
             ),
@@ -442,6 +484,7 @@ class BaseConverter
      */
     private function multiplicationStep(int $numerator, int $denominator, int $base): array
     {
+        $equations = [];
         $rows = [];
         $digits = '';
         $value = $numerator;
@@ -451,17 +494,17 @@ class BaseConverter
             $digitValue = intdiv($product, $denominator);
             $remainder = $product % $denominator;
             $digit = self::DIGITS[$digitValue];
+            $fraction = $this->decimalString(0, $value, $denominator);
+            $result = $this->decimalString($digitValue, $remainder, $denominator);
 
-            $rows[] = [
-                $this->decimalString(0, $value, $denominator), '×', (string) $base, '=',
-                $this->decimalString($digitValue, $remainder, $denominator), '→', $digit,
-            ];
+            $equations[] = [$fraction, '×', (string) $base, '=', $result, '→', $digit];
+            $rows[] = [$fraction.' × '.$base, $result, $digit];
 
             $digits .= $digit;
             $value = $remainder;
         }
 
-        $lines = $this->alignedLines($rows, [
+        $lines = $this->alignedLines($equations, [
             self::ALIGN_POINT, self::ALIGN_LEFT, self::ALIGN_LEFT, self::ALIGN_LEFT,
             self::ALIGN_POINT, self::ALIGN_LEFT, self::ALIGN_LEFT,
         ]);
@@ -472,6 +515,8 @@ class BaseConverter
             new ConversionStep(
                 title: 'الضرب المتكرر في '.$base,
                 lines: $lines,
+                columns: ['العملية', 'الناتج', 'الرقم ↓'],
+                rows: $rows,
                 note: 'نضرب الكسر في الأساس، ونأخذ الجزء الصحيح من الناتج رقمًا، ثم نكمل بالكسر المتبقي.',
                 result: 'نقرأ الأرقام من الأعلى إلى الأسفل: 0.'.$digits
                     .($isExact ? '' : ' (كسر لا ينتهي — وقفنا عند '.ArabicPlural::of(self::MAX_OUTPUT_FRACTION_DIGITS, 'رقم', 'رقمان', 'أرقام', 'واحد').')'),
@@ -498,9 +543,12 @@ class BaseConverter
             return null;
         }
 
-        $rows = [];
+        $equations = [];
+        $strips = [];
+        $binary = decbin($value);
 
         if ($fromBits > 1) {
+            $sourceCells = str_split($sourceDigits);
             $groups = array_map(
                 fn (string $digit): string => str_pad(
                     decbin((int) strpos(self::DIGITS, $digit)),
@@ -508,31 +556,41 @@ class BaseConverter
                     '0',
                     STR_PAD_LEFT,
                 ),
-                str_split($sourceDigits),
+                $sourceCells,
             );
 
-            $rows[] = [$sourceDigits, '=', implode(' ', $groups)];
+            $equations[] = [$sourceDigits, '=', implode(' ', $groups)];
+
+            // Each pair of strips is one transformation, drawn as a row of
+            // cells stacked over their result — which is the whole point of
+            // this step: seeing «F» sit on top of «1111».
+            $strips[] = ['الأساس '.$fromBase, ...$sourceCells];
+            $strips[] = ['بالثنائي', ...$groups];
         }
 
         if ($toBits > 1) {
-            $binary = decbin($value);
             $padded = str_pad($binary, (int) (ceil(strlen($binary) / $toBits) * $toBits), '0', STR_PAD_LEFT);
             $chunks = str_split($padded, $toBits);
 
             // The regrouping line is skipped when it would restate its own
             // left side — one full-width group, as in 1010 → A.
             if (implode(' ', $chunks) !== $binary) {
-                $rows[] = [$binary, '=', implode(' ', $chunks)];
+                $equations[] = [$binary, '=', implode(' ', $chunks)];
             }
 
-            $rows[] = [implode(' ', $chunks), '=', $resultDigits];
+            $equations[] = [implode(' ', $chunks), '=', $resultDigits];
+
+            $strips[] = [$this->groupLabel($toBits), ...$chunks];
+            $strips[] = ['الأساس '.$toBase, ...str_split($resultDigits)];
         }
 
-        $lines = $this->alignedLines($rows, [self::ALIGN_RIGHT, self::ALIGN_LEFT, self::ALIGN_LEFT]);
+        $lines = $this->alignedLines($equations, [self::ALIGN_RIGHT, self::ALIGN_LEFT, self::ALIGN_LEFT]);
 
         return new ConversionStep(
             title: 'طريقة مختصرة: التجميع الثنائي',
             lines: $lines,
+            rows: $strips,
+            layout: ConversionStep::LAYOUT_STRIPS,
             note: 'كل رقم في الأساس '.$fromBase.' يساوي '.$this->bits($fromBits)
                 .'، وكل رقم في الأساس '.$toBase.' يساوي '.$this->bits($toBits)
                 .' — فيكفي كتابة العدد بالثنائي ثم إعادة تجميع بتاته دون أي قسمة.',
@@ -616,6 +674,15 @@ class BaseConverter
     private function spaces(int $count): string
     {
         return str_repeat(' ', max(0, $count));
+    }
+
+    /**
+     * The label over a strip of regrouped bits. «كل بتين» rather than the
+     * «كل بتان» a plain count would give: the dual after «كل» is accusative.
+     */
+    private function groupLabel(int $bits): string
+    {
+        return $bits === 2 ? 'كل بتين' : 'كل '.$bits.' بتات';
     }
 
     /** «بت واحد»، «بتان»، «4 بتات» — the note above reads as Arabic. */
