@@ -53,10 +53,10 @@ class PageReplyComposer
 
     /**
      * Lines the content may take before it is folded into a collapsed quote.
-     * Around a screenful of a phone held in one hand: short enough that the
-     * group's conversation is still visible under it.
+     * Around four wrapping paragraphs — a message a reader takes in at once,
+     * with the group's conversation still visible under it.
      */
-    private const MAX_UNQUOTED_LINES = 12;
+    private const MAX_UNQUOTED_LINES = 14;
 
     public function __construct(
         private readonly TipTapContentExtractor $extractor,

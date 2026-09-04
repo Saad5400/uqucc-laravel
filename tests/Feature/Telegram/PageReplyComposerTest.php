@@ -72,13 +72,26 @@ it('folds content taller than a screenful into a collapsed quote', function () {
         ->and($reply->fallbackText)->not->toContain('<blockquote');
 });
 
+it('leaves a few paragraphs of advice in the message, the way a person would send them', function () {
+    $reply = composeReply(contentPage(['html_content' => docOf(
+        textBlock('افهمي الفوكاب وحلي تمارين عليها بتلاقي تمارين بنفس الدرس وبرضو نهاية الكتاب فيه تمارين للفوكاب والقرامر'),
+        textBlock('وبكتاب النشاط كمان اهم شي تحلي اكثر عشان المعلومة تجلس ببالك'),
+        textBlock('خلصي من الفوكاب والقرامر لكل وحده وبعدها امسكي القطع واقرأيها عشان تدربي نفسك على القراءة واستخراج الحلول من القطع ولها تمارين بكتاب النشاط'),
+        textBlock('واخر شي الكتابة اتبعي الخطوات اللي بقريت رايتنق'),
+    )]));
+
+    expect($reply->text)->not->toContain('<blockquote')
+        ->and($reply->text)->toContain('واخر شي الكتابة')
+        ->and($reply->fallbackText)->toBeNull();
+});
+
 it('decides by height, counting the content\'s own lines and the ones wrapping adds', function (array $document, bool $folded) {
     $reply = composeReply(contentPage(['html_content' => $document]));
 
     expect(str_contains($reply->text, '<blockquote'))->toBe($folded);
 })->with([
-    'six short lines' => [shortLines(6), false],
-    'seven short lines' => [shortLines(7), true],
+    'seven short lines' => [shortLines(7), false],
+    'eight short lines' => [shortLines(8), true],
     'one paragraph wrapping to ten lines' => [docOf(textBlock(str_repeat('كلمة ', 80))), false],
     'one paragraph wrapping past the screen' => [docOf(textBlock(str_repeat('كلمة ', 120))), true],
 ]);
