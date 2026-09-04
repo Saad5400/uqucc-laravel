@@ -190,8 +190,23 @@ describe('edit', function () {
             ->where('children.0.children_count', 1)
             ->where('authors.0.id', $author->id)
             ->where('descendantIds', [$child->id, $grandchild->id])
+            ->where('descendantCount', 2)
             ->where('attachments.0.name', 'file.pdf')
             ->has('users')
+        );
+    });
+
+    it('counts only live descendants for the delete confirmation', function () {
+        $page = PageFactory::new()->create();
+        $child = PageFactory::new()->childOf($page)->create();
+        PageFactory::new()->childOf($page)->create()->delete();
+
+        $response = $this->actingAs($this->admin)->get("/manage/pages/{$page->id}/edit");
+
+        $response->assertInertia(fn (Assert $assert) => $assert
+            ->where('descendantCount', 1)
+            ->where('descendantIds.0', $child->id)
+            ->etc()
         );
     });
 
