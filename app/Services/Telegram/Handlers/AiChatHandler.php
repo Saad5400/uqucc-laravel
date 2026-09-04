@@ -17,6 +17,7 @@ use App\Services\Telegram\TelegramStreamingProgress;
 use App\Services\TelegramMarkdownService;
 use App\Settings\AiSettings;
 use App\Support\LocalFile;
+use App\Support\TelegramHtml;
 use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Http\File;
 use Illuminate\Support\Facades\Cache;
@@ -506,7 +507,7 @@ class AiChatHandler extends BaseHandler
         }
 
         $formatter = new TelegramMarkdownService;
-        $html = $this->flattenBlockquotes($formatter->toTelegramHtml($this->withDisclaimer($text)));
+        $html = TelegramHtml::withoutQuotes($formatter->toTelegramHtml($this->withDisclaimer($text)));
 
         $chunks = array_map(
             fn (string $chunk): string => $this->collapse($chunk),
@@ -527,16 +528,6 @@ class AiChatHandler extends BaseHandler
     protected function collapse(string $html): string
     {
         return $html === '' ? $html : '<blockquote expandable>'.$html.'</blockquote>';
-    }
-
-    /**
-     * Telegram forbids nested blockquotes, so strip any blockquote wrapper the
-     * markdown conversion produced before the reply is itself wrapped in one.
-     * The quoted lines keep their place; only the tags are removed.
-     */
-    protected function flattenBlockquotes(string $html): string
-    {
-        return str_replace(['<blockquote expandable>', '<blockquote>', '</blockquote>'], '', $html);
     }
 
     /**

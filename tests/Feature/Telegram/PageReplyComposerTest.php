@@ -106,7 +106,7 @@ it('leaves the title unlinked when the link is off or the page has no public URL
     'hidden from the website' => [['hidden' => true]],
 ]);
 
-it('does not nest a quote inside a custom message that already carries one', function () {
+it('keeps a short message\'s own quote as the page wrote it', function () {
     $reply = composeReply(contentPage([
         'quick_response_auto_extract_message' => false,
         'quick_response_message' => '<p>سؤال</p><blockquote expandable>جواب</blockquote>',
@@ -114,7 +114,22 @@ it('does not nest a quote inside a custom message that already carries one', fun
 
     expect(substr_count($reply->text, '<blockquote'))->toBe(1)
         ->and($reply->text)->toContain("سؤال\n\n<blockquote expandable>جواب</blockquote>")
-        ->and($reply->fallbackText)->toBeNull();
+        ->and($reply->fallbackText)->toContain("سؤال\n\nجواب")
+        ->and($reply->fallbackText)->not->toContain('<blockquote');
+});
+
+it('gives a tall page\'s own quote up to the one folding the whole reply', function () {
+    $reply = composeReply(contentPage([
+        'quick_response_auto_extract_message' => false,
+        'quick_response_message' => '<p>تسجيل الدخول:</p><blockquote>المستخدم: الرقم الجامعي</blockquote>'
+            .implode('', array_map(fn (int $i): string => "<p>تطبيق {$i}</p>", range(1, 20))),
+    ]));
+
+    expect(substr_count($reply->text, '<blockquote'))->toBe(1)
+        ->and($reply->text)->toContain("<blockquote expandable>تسجيل الدخول:\n\nالمستخدم: الرقم الجامعي")
+        ->and($reply->text)->toEndWith('تطبيق 20</blockquote>')
+        ->and($reply->fallbackText)->not->toContain('<blockquote')
+        ->and($reply->fallbackText)->toContain('تسجيل الدخول:');
 });
 
 it('treats an editor\'s empty paragraph as no text at all', function () {

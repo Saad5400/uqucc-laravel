@@ -33,6 +33,17 @@ final class TelegramHtml
     }
 
     /**
+     * The same text with every quote wrapper gone, its lines left in place.
+     *
+     * Telegram forbids a quote inside a quote, so text that already carries
+     * one has to be flattened before it can be folded into a quote of its own.
+     */
+    public static function withoutQuotes(string $html): string
+    {
+        return preg_replace('#</?blockquote\b[^>]*>#i', '', $html) ?? $html;
+    }
+
+    /**
      * Cut the visible text at `$limit` characters, on a word where one is near,
      * with every open tag closed and an ellipsis where the text stopped.
      *

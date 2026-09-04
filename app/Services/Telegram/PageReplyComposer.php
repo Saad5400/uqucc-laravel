@@ -14,7 +14,9 @@ use App\Support\TelegramHtml;
  * the website; the page's content under it, folded into a collapsed quote that
  * opens on a tap when it is tall enough to bury the conversation and left
  * plainly in the message when it is not; and a footer that says where the rest
- * is when the message could not carry it all. The page's links and sub-pages
+ * is when the message could not carry it all. A page that quotes something of
+ * its own keeps that quote while it is short, and gives it up to the outer one
+ * once it is tall — Telegram draws no quote inside a quote. The page's links and sub-pages
  * are buttons under the text, and the page's few images go before it as an
  * album.
  *
@@ -96,16 +98,17 @@ class PageReplyComposer
             }
         }
 
+        $flat = TelegramHtml::withoutQuotes($body);
+
         $quoted = match (true) {
             $body === '' => null,
-            str_contains($body, '<blockquote') => $body,
             $this->displayLines($body) <= self::MAX_UNQUOTED_LINES => $body,
-            default => '<blockquote expandable>'.$body.'</blockquote>',
+            default => '<blockquote expandable>'.$flat.'</blockquote>',
         };
 
         $text = implode("\n\n", array_filter([$title, $quoted, ...$footer]));
-        $fallbackText = $quoted !== null && $quoted !== $body
-            ? implode("\n\n", array_filter([$title, $body, ...$footer]))
+        $fallbackText = $quoted !== null && $quoted !== $flat
+            ? implode("\n\n", array_filter([$title, $flat, ...$footer]))
             : null;
 
         $attachments = $heavy && $page->quick_response_auto_extract_attachments
