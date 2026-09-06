@@ -52,6 +52,7 @@ class QuizMyScoreHandler extends BaseHandler
             "الإجمالي منذ البداية: %s\n".
             "السلسلة الحالية: %s 🔥 (أفضل سلسلة: %s)\n".
             "الإجابات الصحيحة: %d من %d\n".
+            "%s\n".
             '%s',
             ArabicPlural::points($this->leaderboard()->weeklyPointsFor($player)),
             $this->leaderboard()->weeklyRankFor($player),
@@ -63,10 +64,31 @@ class QuizMyScoreHandler extends BaseHandler
             ArabicPlural::days($player->best_streak),
             $player->correct_count,
             $player->answers_count,
+            $this->speedLine($player),
             $this->freezeLine($player),
         );
 
         $this->replyAndDelete($message, $text, 'HTML', self::AUTODELETE_SECONDS);
+    }
+
+    /**
+     * How often the player made the day's fastest ranks — and, for someone
+     * who never has, what the ranks are. A player only ever sees the speed
+     * bonus land in the group recap, so this is where the rule is spelled
+     * out for the person it would pay.
+     */
+    private function speedLine(QuizPlayer $player): string
+    {
+        $wins = $player->answers()->whereNotNull('speed_rank')->count();
+
+        if ($wins === 0) {
+            return sprintf(
+                '⚡ لم تدخل قائمة الأسرع بعد — أول %s صحيحة كل يوم تكسب نقاطاً إضافية.',
+                ArabicPlural::answers(QuizAnswerRecorder::speedRanksCount()),
+            );
+        }
+
+        return sprintf('⚡ ضمن أسرع الإجابات: %s', ArabicPlural::times($wins));
     }
 
     /**

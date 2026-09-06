@@ -20,6 +20,15 @@ use Telegram\Bot\Objects\PollAnswer;
  * posted quiz's date rather than the calendar — a day where no quiz went out
  * (generation outage) breaks nobody's streak.
  *
+ * On top of that, the first few players to answer *correctly* take a speed
+ * bonus ({@see self::SPEED_BONUSES}) — the race the question opens. It is
+ * deliberately worth about half a correct answer at the front: enough that
+ * being first is a real edge and a day of racing can overtake a rival on the
+ * board, and small enough that it never beats answering correctly and
+ * showing up daily. Only correct answers are ranked, so the fast lane rewards
+ * reading the question rather than tapping an option blind — a wrong answer
+ * neither earns the bonus nor uses up one of the ranks.
+ *
  * A single missed quiz is forgiven by the streak freeze: it costs that day's
  * points but keeps the streak alive, once every
  * {@see self::FREEZE_COOLDOWN_DAYS} days. Without it one busy day wiped out
@@ -33,6 +42,15 @@ class QuizAnswerRecorder
     public const POINTS_WRONG = 2;
 
     public const STREAK_BONUS_CAP = 7;
+
+    /**
+     * The bonus for the 1st…5th correct answer of the day, by rank. Later
+     * correct answers score the base points; the list's length is how many
+     * players the race pays.
+     *
+     * @var list<int>
+     */
+    public const SPEED_BONUSES = [5, 4, 3, 2, 1];
 
     /** Minimum days between two streak freezes — one missed quiz a week. */
     public const FREEZE_COOLDOWN_DAYS = 7;
@@ -60,6 +78,11 @@ class QuizAnswerRecorder
 
         try {
             DB::transaction(function () use ($quiz, $user, $optionIds): void {
+                // Two votes on the same question arriving together would
+                // otherwise both count the same answers before either is
+                // written, and both claim the same speed rank.
+                DailyQuiz::query()->whereKey($quiz->id)->lockForUpdate()->first();
+
                 $player = QuizPlayer::query()->firstOrNew(['telegram_user_id' => $user->getId()]);
 
                 $player->fill([
@@ -83,8 +106,10 @@ class QuizAnswerRecorder
                 ['streak' => $streak, 'frozen' => $frozen] = $this->streakFor($player, $quiz);
                 $selected = (int) $optionIds->first();
                 $isCorrect = $selected === $quiz->correct_option;
+                $speedRank = $isCorrect ? $this->speedRankFor($quiz) : null;
                 $points = ($isCorrect ? self::POINTS_CORRECT : self::POINTS_WRONG)
-                    + min($streak - 1, self::STREAK_BONUS_CAP);
+                    + min($streak - 1, self::STREAK_BONUS_CAP)
+                    + self::speedBonusFor($speedRank);
 
                 QuizAnswer::create([
                     'daily_quiz_id' => $quiz->id,
@@ -93,6 +118,7 @@ class QuizAnswerRecorder
                     'is_correct' => $isCorrect,
                     'points' => $points,
                     'streak_at_answer' => $streak,
+                    'speed_rank' => $speedRank,
                     'answered_at' => now(),
                 ]);
 
@@ -109,6 +135,33 @@ class QuizAnswerRecorder
         } catch (UniqueConstraintViolationException) {
             // A concurrent update already recorded this vote — nothing to do.
         }
+    }
+
+    /**
+     * The points a speed rank is worth — 0 for an answer that placed outside
+     * the paying ranks or was not correct.
+     */
+    public static function speedBonusFor(?int $speedRank): int
+    {
+        return $speedRank === null ? 0 : self::SPEED_BONUSES[$speedRank - 1];
+    }
+
+    /** How many players the speed bonus pays. */
+    public static function speedRanksCount(): int
+    {
+        return count(self::SPEED_BONUSES);
+    }
+
+    /**
+     * Where this correct answer lands in the day's race — one past however
+     * many correct answers the question already has — or null once the paying
+     * ranks are taken.
+     */
+    private function speedRankFor(DailyQuiz $quiz): ?int
+    {
+        $rank = $quiz->answers()->where('is_correct', true)->count() + 1;
+
+        return $rank <= self::speedRanksCount() ? $rank : null;
     }
 
     /**

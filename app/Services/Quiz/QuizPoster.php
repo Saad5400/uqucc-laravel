@@ -346,7 +346,47 @@ class QuizPoster
                 .' — '.ArabicPlural::days($topStreak->streak_at_answer);
         }
 
-        return implode("\n", $lines);
+        return implode("\n", [...$lines, ...$this->speedLines($quiz)]);
+    }
+
+    /**
+     * The day's race: who got there first, and what the head start was worth.
+     * This is the only place the speed bonus is ever shown, so it names the
+     * points rather than just the order — the recap is how the group learns
+     * that answering early pays, in time to race tomorrow.
+     *
+     * @return list<string>
+     */
+    private function speedLines(DailyQuiz $quiz): array
+    {
+        $fastest = $quiz->answers()->fastest()->with('player')->get();
+
+        if ($fastest->isEmpty()) {
+            return [];
+        }
+
+        $lines = [Bidi::line('⚡ <b>أسرع الإجابات الصحيحة</b> (نقاط إضافية)')];
+
+        foreach ($fastest as $index => $answer) {
+            if ($answer->player === null) {
+                continue;
+            }
+
+            $lines[] = Bidi::line(sprintf(
+                '%s %s — %s',
+                $this->medal($index),
+                Bidi::isolate(htmlspecialchars($answer->player->displayName(), ENT_QUOTES | ENT_HTML5, 'UTF-8')),
+                Bidi::ltr('+'.QuizAnswerRecorder::speedBonusFor($answer->speed_rank)),
+            ));
+        }
+
+        return $lines;
+    }
+
+    /** The rank marker for a ranked list: a medal for the podium, else «4.». */
+    private function medal(int $index): string
+    {
+        return self::MEDALS[$index] ?? Bidi::ltr(($index + 1).'.');
     }
 
     /**
@@ -377,7 +417,7 @@ class QuizPoster
             ->values()
             ->map(fn (QuizPlayer $player, int $index): string => Bidi::line(sprintf(
                 '%s %s — %s',
-                self::MEDALS[$index] ?? Bidi::ltr(($index + 1).'.'),
+                $this->medal($index),
                 Bidi::isolate(htmlspecialchars($player->displayName(), ENT_QUOTES | ENT_HTML5, 'UTF-8')),
                 ArabicPlural::points((int) $player->weekly_points),
             )))
@@ -428,7 +468,7 @@ class QuizPoster
         foreach ($standings as $index => $standing) {
             $lines[] = Bidi::line(sprintf(
                 '%s %s — معدل %s · شارك %d من %d',
-                self::MEDALS[$index] ?? Bidi::ltr(($index + 1).'.'),
+                $this->medal($index),
                 Bidi::isolate(htmlspecialchars($standing->team->name, ENT_QUOTES | ENT_HTML5, 'UTF-8')),
                 ArabicPlural::points($standing->average()),
                 $standing->activeMembers,

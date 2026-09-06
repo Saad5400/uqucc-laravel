@@ -56,6 +56,33 @@ it('replies with the player\'s own standing and schedules deletion', function (s
     Bus::assertDispatched(DeleteTelegramMessages::class);
 })->with(['نقاطي', '/myscore', '/mypoints@UquccTestBot']);
 
+it('counts the days the player was among the fastest', function () {
+    Bus::fake();
+
+    $player = QuizPlayer::factory()->create(['telegram_user_id' => 111, 'answers_count' => 3]);
+
+    QuizAnswer::factory()->for($player, 'player')->fastest(1)->onQuizDate(today())->create();
+    QuizAnswer::factory()->for($player, 'player')->fastest(4)->onQuizDate(today()->subDay())->create();
+    QuizAnswer::factory()->for($player, 'player')->onQuizDate(today()->subDays(2))->create();
+
+    $api = new FakeTelegramApi;
+    (new QuizMyScoreHandler($api))->handle(myScoreMessage('نقاطي'));
+
+    expect($api->sentMessages[0]['text'])->toContain('ضمن أسرع الإجابات: مرتان');
+});
+
+it('teaches the speed bonus to a player who has never made the ranks', function () {
+    Bus::fake();
+
+    $player = QuizPlayer::factory()->create(['telegram_user_id' => 111, 'answers_count' => 1]);
+    QuizAnswer::factory()->for($player, 'player')->onQuizDate(today())->create();
+
+    $api = new FakeTelegramApi;
+    (new QuizMyScoreHandler($api))->handle(myScoreMessage('نقاطي'));
+
+    expect($api->sentMessages[0]['text'])->toContain('أول 5 إجابات صحيحة');
+});
+
 it('tells a player whose streak freeze is spent when it comes back', function () {
     Bus::fake();
 

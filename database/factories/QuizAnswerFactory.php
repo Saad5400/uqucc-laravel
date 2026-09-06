@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\DailyQuiz;
 use App\Models\QuizPlayer;
+use App\Services\Quiz\QuizAnswerRecorder;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
@@ -21,8 +22,22 @@ class QuizAnswerFactory extends Factory
             'is_correct' => true,
             'points' => 10,
             'streak_at_answer' => 1,
+            'speed_rank' => null,
             'answered_at' => now(),
         ];
+    }
+
+    /**
+     * An answer that took one of the day's speed-bonus ranks — 1 being the
+     * first correct answer of the question.
+     */
+    public function fastest(int $rank = 1): static
+    {
+        return $this->state(fn (): array => [
+            'is_correct' => true,
+            'speed_rank' => $rank,
+            'points' => QuizAnswerRecorder::POINTS_CORRECT + QuizAnswerRecorder::speedBonusFor($rank),
+        ]);
     }
 
     public function wrong(): static

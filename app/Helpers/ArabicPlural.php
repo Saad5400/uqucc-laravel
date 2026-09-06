@@ -42,4 +42,9 @@ class ArabicPlural
     {
         return self::of($count, 'إجابة', 'إجابتان', 'إجابات');
     }
+
+    public static function times(int $count): string
+    {
+        return self::of($count, 'مرة', 'مرتان', 'مرات');
+    }
 }

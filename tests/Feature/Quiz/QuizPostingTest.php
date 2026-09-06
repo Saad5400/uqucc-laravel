@@ -245,6 +245,32 @@ it('replies to the previous poll with a recap of how it went', function () {
         ->and($recap['text'])->toContain('4 أيام');
 });
 
+it('names the fastest correct answers and what the head start paid in the recap', function () {
+    $previous = livePostedQuiz(['quiz_date' => today()->subDay()], ['message_id' => 555]);
+
+    $first = QuizPlayer::factory()->create(['first_name' => 'ريم']);
+    $second = QuizPlayer::factory()->create(['first_name' => 'خالد']);
+    $late = QuizPlayer::factory()->create(['first_name' => 'نورة']);
+
+    QuizAnswer::factory()->for($first, 'player')->fastest(1)->create(['daily_quiz_id' => $previous->id]);
+    QuizAnswer::factory()->for($second, 'player')->fastest(2)->create(['daily_quiz_id' => $previous->id]);
+    QuizAnswer::factory()->for($late, 'player')->create(['daily_quiz_id' => $previous->id]);
+
+    DailyQuiz::factory()->create(['quiz_date' => today()]);
+
+    $this->artisan('quiz:post')->assertExitCode(0);
+
+    $recap = collect($this->fake->sentMessages)->firstWhere('reply_to_message_id', 555);
+
+    expect($recap['text'])->toContain('أسرع الإجابات الصحيحة')
+        ->and($recap['text'])->toContain('ريم')
+        ->and($recap['text'])->toContain('+5')
+        ->and($recap['text'])->toContain('خالد')
+        ->and($recap['text'])->toContain('+4')
+        // Only the ranked answers are named — the rest of the day is the turnout line.
+        ->and($recap['text'])->not->toContain('نورة');
+});
+
 it('sends no recap when the previous quiz had no answers', function () {
     livePostedQuiz(['quiz_date' => today()->subDay()]);
     DailyQuiz::factory()->create(['quiz_date' => today()]);

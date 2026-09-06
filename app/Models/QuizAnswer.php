@@ -30,6 +30,7 @@ class QuizAnswer extends Model
         'is_correct',
         'points',
         'streak_at_answer',
+        'speed_rank',
         'answered_at',
     ];
 
@@ -40,6 +41,7 @@ class QuizAnswer extends Model
             'is_correct' => 'boolean',
             'points' => 'integer',
             'streak_at_answer' => 'integer',
+            'speed_rank' => 'integer',
             'answered_at' => 'datetime',
         ];
     }
@@ -52,6 +54,18 @@ class QuizAnswer extends Model
     public function player(): BelongsTo
     {
         return $this->belongsTo(QuizPlayer::class, 'quiz_player_id');
+    }
+
+    /**
+     * The answers that took a speed bonus, fastest first — the podium of one
+     * question when scoped to it.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeFastest(Builder $query): Builder
+    {
+        return $query->whereNotNull('speed_rank')->orderBy('speed_rank');
     }
 
     /**
