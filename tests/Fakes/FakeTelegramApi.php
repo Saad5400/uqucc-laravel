@@ -5,6 +5,7 @@ namespace Tests\Fakes;
 use Telegram\Bot\Api;
 use Telegram\Bot\Objects\BaseObject;
 use Telegram\Bot\Objects\Chat;
+use Telegram\Bot\Objects\ChatInviteLink;
 use Telegram\Bot\Objects\ChatMember;
 use Telegram\Bot\Objects\File;
 use Telegram\Bot\Objects\Message;
@@ -34,6 +35,9 @@ class FakeTelegramApi extends Api
 
     /** @var array<int, array<string, mixed>> */
     public array $deletedMessages = [];
+
+    /** @var array<int, array<string, mixed>> */
+    public array $createdInviteLinks = [];
 
     /**
      * Errors the next sendMessage() calls should fail with, in order; a null
@@ -241,6 +245,18 @@ class FakeTelegramApi extends Api
         if (in_array((int) ($params['message_id'] ?? 0), $this->missingMessageIds, true)) {
             throw new \RuntimeException($error);
         }
+    }
+
+    public function createChatInviteLink(array $params): ChatInviteLink
+    {
+        $this->createdInviteLinks[] = $params;
+
+        return new ChatInviteLink([
+            'invite_link' => 'https://t.me/+fake'.count($this->createdInviteLinks),
+            'name' => $params['name'] ?? null,
+            'member_limit' => $params['member_limit'] ?? null,
+            'expire_date' => $params['expire_date'] ?? null,
+        ]);
     }
 
     public function getChat(array $params): Chat

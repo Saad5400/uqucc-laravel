@@ -8,6 +8,12 @@ use Telegram\Bot\Objects\Message;
 
 class InviteLinkHandler extends BaseHandler
 {
+    /**
+     * How long a link stays usable. Telegram rejects it past this point, so an
+     * invite nobody used cannot sit in a chat log and be handed on later.
+     */
+    protected const LINK_TTL_HOURS = 24;
+
     public function handle(Message $message): void
     {
         // Check if message is exactly "رابط" (not a command)
@@ -73,11 +79,14 @@ class InviteLinkHandler extends BaseHandler
             // outside our database — the field caps at 32 characters.
             $linkName = mb_substr('دعوة '.$username, 0, 32);
 
-            // Create a one-time invite link
+            $expiresAt = now()->addHours(self::LINK_TTL_HOURS);
+
+            // Create a one-time, time-limited invite link
             $inviteLink = $this->telegram->createChatInviteLink([
                 'chat_id' => $chatId,
                 'name' => $linkName,
                 'member_limit' => 1, // Only one user can use this link
+                'expire_date' => $expiresAt->getTimestamp(),
                 'creates_join_request' => false, // Direct join without approval
             ]);
 
@@ -95,13 +104,14 @@ class InviteLinkHandler extends BaseHandler
                 ],
                 linkName: $linkName,
                 memberLimit: 1,
+                expiresAt: $expiresAt,
             );
 
             // Send the link privately to the user
             try {
                 $this->telegram->sendMessage([
                     'chat_id' => $userId,
-                    'text' => "رابط دعوة خاص لمجموعة '{$chatTitle}':\n\n{$linkUrl}\n\n⚠️ هذا الرابط يعمل لشخص واحد فقط وسينتهي بعد الاستخدام",
+                    'text' => "رابط دعوة خاص لمجموعة '{$chatTitle}':\n\n{$linkUrl}\n\n⚠️ هذا الرابط يعمل لشخص واحد فقط وسينتهي بعد الاستخدام أو خلال ".self::LINK_TTL_HOURS.' ساعة',
                 ]);
 
                 // Confirm in group that link was sent

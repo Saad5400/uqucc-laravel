@@ -18,6 +18,7 @@ class TelegramInviteLink extends Model
         'creator_name',
         'creator_user_id',
         'member_limit',
+        'expires_at',
         'joins_count',
     ];
 
@@ -27,6 +28,7 @@ class TelegramInviteLink extends Model
             'chat_id' => 'integer',
             'creator_telegram_user_id' => 'integer',
             'member_limit' => 'integer',
+            'expires_at' => 'datetime',
             'joins_count' => 'integer',
         ];
     }
