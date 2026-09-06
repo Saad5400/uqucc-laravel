@@ -23,6 +23,7 @@ use App\Services\Telegram\Handlers\PrivateForwardHandler;
 use App\Services\Telegram\Handlers\PythonExecutionHandler;
 use App\Services\Telegram\Handlers\QuizLeaderboardHandler;
 use App\Services\Telegram\Handlers\QuizMyScoreHandler;
+use App\Services\Telegram\Handlers\QuizScoringHandler;
 use App\Services\Telegram\Handlers\TeamAdminHandler;
 use App\Services\Telegram\Handlers\TeamInfoHandler;
 use App\Services\Telegram\Handlers\TeamJoinPickerHandler;
@@ -187,6 +188,7 @@ class ProcessTelegramUpdate implements ShouldQueue
             new AiToggleHandler($telegram),
             new QuizLeaderboardHandler($telegram),
             new QuizMyScoreHandler($telegram),
+            new QuizScoringHandler($telegram),
             new TeamAdminHandler($telegram),
             new TeamJoinPickerHandler($telegram),
             new TeamMembershipHandler($telegram),

@@ -3,6 +3,7 @@
 namespace App\Services\Telegram\Handlers;
 
 use App\Helpers\ArabicPlural;
+use App\Helpers\Bidi;
 use App\Models\QuizPlayer;
 use App\Services\Quiz\QuizAnswerRecorder;
 use App\Services\Quiz\QuizLeaderboard;
@@ -50,7 +51,7 @@ class QuizMyScoreHandler extends BaseHandler
             "هذا الأسبوع: %s (ترتيبك %d)\n".
             "آخر %d يوماً: %s (ترتيبك %d)\n".
             "الإجمالي منذ البداية: %s\n".
-            "السلسلة الحالية: %s 🔥 (أفضل سلسلة: %s)\n".
+            "السلسلة الحالية: %s 🔥 تضيف %s لكل إجابة (أفضل سلسلة: %s)\n".
             "الإجابات الصحيحة: %d من %d\n".
             "%s\n".
             '%s',
@@ -61,6 +62,7 @@ class QuizMyScoreHandler extends BaseHandler
             $this->leaderboard()->windowRankFor($player),
             ArabicPlural::points($player->total_points),
             ArabicPlural::days($player->current_streak),
+            Bidi::ltr('+'.QuizAnswerRecorder::streakBonusFor($player->current_streak)),
             ArabicPlural::days($player->best_streak),
             $player->correct_count,
             $player->answers_count,

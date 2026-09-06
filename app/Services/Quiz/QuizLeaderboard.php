@@ -5,6 +5,7 @@ namespace App\Services\Quiz;
 use App\Models\DailyQuiz;
 use App\Models\QuizAnswer;
 use App\Models\QuizPlayer;
+use App\Support\Standings;
 use Carbon\CarbonImmutable;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Builder;
@@ -41,10 +42,22 @@ use Illuminate\Database\Eloquent\Collection;
  *
  * Players on the weekly board carry a `weekly_points` attribute; those on the
  * rolling board a `window_points` one.
+ *
+ * A board's limit is a limit on places, not on rows: players tied at the cut
+ * all make it ({@see Standings}), because dropping one of two equal scores by
+ * row number is the one thing a scoreboard must never do.
  */
 class QuizLeaderboard
 {
     public const WINDOW_DAYS = 30;
+
+    /**
+     * How many rows past the asked-for limit a board reads, so a group tied
+     * at the cut can be kept whole ({@see Standings::limitWithTies()}) rather
+     * than split by row number. A tie wider than this is trimmed — the board
+     * is a message, not a register.
+     */
+    private const TIE_OVERFLOW = 10;
 
     /**
      * The quiz day a new week opens on. Thursday: the outgoing week's last
@@ -151,14 +164,16 @@ class QuizLeaderboard
     {
         $inPeriod = fn (Builder $query): Builder => $query->forQuizDates($from, $through);
 
-        return QuizPlayer::query()
+        $players = QuizPlayer::query()
             ->withSum(['answers as '.$alias => $inPeriod], 'points')
             ->whereHas('answers', $inPeriod)
             ->orderByDesc($alias)
             ->orderByDesc('current_streak')
             ->orderBy('id')
-            ->limit($limit)
+            ->limit($limit + self::TIE_OVERFLOW)
             ->get();
+
+        return Standings::limitWithTies($players, $limit, fn (QuizPlayer $player): int => (int) $player->{$alias});
     }
 
     private function pointsFor(QuizPlayer $player, CarbonInterface $from, ?CarbonInterface $through): int
