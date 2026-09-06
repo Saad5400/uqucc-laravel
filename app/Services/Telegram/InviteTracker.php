@@ -34,6 +34,7 @@ class InviteTracker
         array $creator,
         ?string $linkName = null,
         ?int $memberLimit = null,
+        ?Carbon $expiresAt = null,
     ): ?TelegramInviteLink {
         try {
             $telegramUserId = (int) ($creator['id'] ?? 0);
@@ -49,6 +50,7 @@ class InviteTracker
                     'creator_name' => trim(($creator['first_name'] ?? '').' '.($creator['last_name'] ?? '')) ?: null,
                     'creator_user_id' => User::findByTelegramId((string) $telegramUserId)?->id,
                     'member_limit' => $memberLimit,
+                    'expires_at' => $expiresAt,
                 ]
             );
         } catch (\Throwable $e) {
