@@ -8,6 +8,9 @@ use App\Models\QuizPlayer;
 use App\Models\TelegramTeam;
 use App\Services\Quiz\QuizLeaderboard;
 use App\Services\Quiz\QuizTeamLeaderboard;
+use App\Services\Quiz\QuizTeamStanding;
+use App\Support\Standings;
+use Closure;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Support\Facades\Cache;
 use Telegram\Bot\Objects\Message;
@@ -32,17 +35,21 @@ use Telegram\Bot\Objects\Message;
  */
 class QuizLeaderboardHandler extends BaseHandler
 {
-    private const WEEKLY_LIMIT = 10;
-
-    private const WINDOW_LIMIT = 5;
-
-    private const TEAM_LIMIT = 5;
+    /**
+     * How many places each board shows — the same depth for all three, so a
+     * player reads one list length everywhere. It is a limit on places, not
+     * on lines: everyone tied at the cut is shown ({@see Standings}).
+     */
+    private const BOARD_LIMIT = 10;
 
     /** Minimum seconds between leaderboard posts in the same chat. */
     private const COOLDOWN_SECONDS = 60;
 
     /** How members are told to join a team, everywhere it is mentioned. */
     public const JOIN_COMMAND = 'انضم';
+
+    /** The podium, shared by every ranked list this handler prints. */
+    private const MEDALS = ['🥇', '🥈', '🥉'];
 
     private ?QuizLeaderboard $leaderboard = null;
 
@@ -96,7 +103,7 @@ class QuizLeaderboardHandler extends BaseHandler
 
     private function weeklySection(): string
     {
-        $players = $this->leaderboard()->weekly(self::WEEKLY_LIMIT);
+        $players = $this->leaderboard()->weekly(self::BOARD_LIMIT);
 
         if ($players->isEmpty()) {
             return $this->section('📅 <b>هذا الأسبوع</b>', [
@@ -117,7 +124,7 @@ class QuizLeaderboardHandler extends BaseHandler
      */
     private function windowSection(): ?string
     {
-        $players = $this->leaderboard()->window(self::WINDOW_LIMIT);
+        $players = $this->leaderboard()->window(self::BOARD_LIMIT);
 
         if ($players->isEmpty()) {
             return null;
@@ -146,27 +153,27 @@ class QuizLeaderboardHandler extends BaseHandler
             return null;
         }
 
-        $ranked = array_slice(
-            $this->teamLeaderboard()->forChat($chatId, $this->leaderboard()->weekStart()),
-            0,
-            self::TEAM_LIMIT,
+        $ranked = Standings::limitWithTies(
+            collect($this->teamLeaderboard()->forChat($chatId, $this->leaderboard()->weekStart())),
+            self::BOARD_LIMIT,
+            $this->teamScore(...),
         );
 
-        if ($ranked === []) {
+        if ($ranked->isEmpty()) {
             return $this->section('🛡️ <b>الفرق هذا الأسبوع</b>', [
                 Bidi::line('لم يسجّل أي فريق نقاطاً هذا الأسبوع بعد.'),
                 Bidi::line('أجب على سؤال اليوم وكن أول من يفتح الحساب لفريقه! 🔥'),
             ]);
         }
 
-        $medals = ['🥇', '🥈', '🥉'];
+        $places = Standings::places($ranked, $this->teamScore(...));
 
         $lines = [];
 
-        foreach ($ranked as $index => $standing) {
+        foreach ($ranked->values() as $index => $standing) {
             $lines[] = Bidi::line(sprintf(
                 '%s %s — معدل %s · شارك %d من %d',
-                $medals[$index] ?? Bidi::ltr(($index + 1).'.'),
+                $this->place($places[$index]),
                 Bidi::isolate($this->escapeHtml($standing->team->name)),
                 ArabicPlural::points($standing->average()),
                 $standing->activeMembers,
@@ -271,23 +278,44 @@ class QuizLeaderboardHandler extends BaseHandler
     }
 
     /**
+     * What a team is ranked by, and so what makes two of them tied: the
+     * average, and the breadth that separates an equal one.
+     *
+     * @return array{int, int}
+     */
+    private function teamScore(QuizTeamStanding $standing): array
+    {
+        return [$standing->average(), $standing->activeMembers];
+    }
+
+    /**
      * @param  Collection<int, QuizPlayer>  $players
-     * @param  callable(QuizPlayer): int  $points
+     * @param  Closure(QuizPlayer): int  $points
      * @return array<int, string>
      */
-    private function rankedLines(Collection $players, callable $points): array
+    private function rankedLines(Collection $players, Closure $points): array
     {
-        $medals = ['🥇', '🥈', '🥉'];
+        $places = Standings::places($players, $points);
 
         return $players
             ->values()
             ->map(fn (QuizPlayer $player, int $index): string => Bidi::line(sprintf(
                 '%s %s — %s',
-                $medals[$index] ?? Bidi::ltr(($index + 1).'.'),
+                $this->place($places[$index]),
                 Bidi::isolate($this->escapeHtml($player->displayName())),
                 ArabicPlural::points($points($player)),
             )))
             ->all();
+    }
+
+    /**
+     * The marker for a place on any of the boards: a medal for the podium,
+     * else the number. Tied entries pass the same place in, so they carry the
+     * same marker — two equal scores are never silver and bronze.
+     */
+    private function place(int $place): string
+    {
+        return self::MEDALS[$place - 1] ?? Bidi::ltr($place.'.');
     }
 
     private function leaderboard(): QuizLeaderboard

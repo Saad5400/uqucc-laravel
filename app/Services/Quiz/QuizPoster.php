@@ -8,6 +8,7 @@ use App\Models\DailyQuiz;
 use App\Models\QuizPlayer;
 use App\Models\QuizPost;
 use App\Settings\QuizSettings;
+use App\Support\Standings;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\Log;
 use RuntimeException;
@@ -374,7 +375,7 @@ class QuizPoster
 
             $lines[] = Bidi::line(sprintf(
                 '%s %s — %s',
-                $this->medal($index),
+                $this->place($index + 1),
                 Bidi::isolate(htmlspecialchars($answer->player->displayName(), ENT_QUOTES | ENT_HTML5, 'UTF-8')),
                 Bidi::ltr('+'.QuizAnswerRecorder::speedBonusFor($answer->speed_rank)),
             ));
@@ -383,10 +384,14 @@ class QuizPoster
         return $lines;
     }
 
-    /** The rank marker for a ranked list: a medal for the podium, else «4.». */
-    private function medal(int $index): string
+    /**
+     * The marker for a place on a ranked list: a medal for the podium, else
+     * «4.». Tied entries are handed the same place, so they carry the same
+     * marker rather than being split by row number.
+     */
+    private function place(int $place): string
     {
-        return self::MEDALS[$index] ?? Bidi::ltr(($index + 1).'.');
+        return self::MEDALS[$place - 1] ?? Bidi::ltr($place.'.');
     }
 
     /**
@@ -413,13 +418,16 @@ class QuizPoster
             return;
         }
 
+        $score = fn (QuizPlayer $player): int => (int) $player->weekly_points;
+        $places = Standings::places($winners, $score);
+
         $lines = $winners
             ->values()
             ->map(fn (QuizPlayer $player, int $index): string => Bidi::line(sprintf(
                 '%s %s — %s',
-                $this->medal($index),
+                $this->place($places[$index]),
                 Bidi::isolate(htmlspecialchars($player->displayName(), ENT_QUOTES | ENT_HTML5, 'UTF-8')),
-                ArabicPlural::points((int) $player->weekly_points),
+                ArabicPlural::points($score($player)),
             )))
             ->implode("\n");
 
@@ -449,26 +457,29 @@ class QuizPoster
      */
     private function weeklyTeamBlock(int $chatId): string
     {
-        $standings = array_slice(
-            $this->teamLeaderboard()->forChat(
+        $score = fn (QuizTeamStanding $standing): array => [$standing->average(), $standing->activeMembers];
+
+        $standings = Standings::limitWithTies(
+            collect($this->teamLeaderboard()->forChat(
                 $chatId,
                 $this->leaderboard()->lastWeekStart(),
                 $this->leaderboard()->lastWeekEnd(),
-            ),
-            0,
+            )),
             self::WEEKLY_WINNING_TEAMS,
+            $score,
         );
 
-        if ($standings === []) {
+        if ($standings->isEmpty()) {
             return '';
         }
 
+        $places = Standings::places($standings, $score);
         $lines = [Bidi::line('🛡️ <b>فرق الأسبوع</b>')];
 
-        foreach ($standings as $index => $standing) {
+        foreach ($standings->values() as $index => $standing) {
             $lines[] = Bidi::line(sprintf(
                 '%s %s — معدل %s · شارك %d من %d',
-                $this->medal($index),
+                $this->place($places[$index]),
                 Bidi::isolate(htmlspecialchars($standing->team->name, ENT_QUOTES | ENT_HTML5, 'UTF-8')),
                 ArabicPlural::points($standing->average()),
                 $standing->activeMembers,

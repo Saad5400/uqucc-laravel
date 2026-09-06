@@ -86,6 +86,49 @@ it('ranks the rolling board on the window only, so an old lead ages out', functi
         ->not->toContain('قديم');
 });
 
+describe('places and ties', function () {
+    /** `$scores` players named «لاعب1»…, each scoring their entry today. */
+    function boardOf(array $scores): void
+    {
+        foreach ($scores as $index => $points) {
+            teamPlayer(201 + $index, 'لاعب'.($index + 1), $points);
+        }
+    }
+
+    it('gives tied scores the same place and skips the places they use up', function () {
+        boardOf([30, 20, 20, 10]);
+
+        $text = withoutBidi(leaderboardText());
+
+        expect($text)->toContain('🥇 لاعب1 — 30 نقطة')
+            ->toContain('🥈 لاعب2 — 20 نقطة')
+            ->toContain('🥈 لاعب3 — 20 نقطة')
+            ->toContain('4. لاعب4 — 10 نقاط')
+            ->not->toContain('🥉');
+    });
+
+    it('shows ten places on every board', function () {
+        boardOf([120, 110, 100, 90, 80, 70, 60, 50, 40, 30, 20]);
+
+        $text = withoutBidi(leaderboardText());
+
+        expect($text)->toContain('10. لاعب10')
+            ->not->toContain('لاعب11');
+    });
+
+    it('keeps a group tied at the cut whole rather than dropping one by row number', function () {
+        boardOf([120, 110, 100, 90, 80, 70, 60, 50, 40, 30, 30, 30]);
+
+        $text = withoutBidi(leaderboardText());
+
+        // Three players hold tenth: dropping the last two for their row
+        // number would cost them a place they did not lose on the board.
+        expect($text)->toContain('10. لاعب10')
+            ->toContain('10. لاعب11')
+            ->toContain('10. لاعب12');
+    });
+});
+
 it('shows a teaching empty state when nobody has played yet', function () {
     $api = new FakeTelegramApi;
     (new QuizLeaderboardHandler($api))->handle(leaderboardMessage('المتصدرين'));
