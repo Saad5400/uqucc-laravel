@@ -96,9 +96,23 @@ it('pays the first five correct answers a speed bonus by order, and nothing afte
         ->and($answers->pluck('points')->all())->toBe([
             correctPoints(1), correctPoints(2), correctPoints(3),
             correctPoints(4), correctPoints(5), correctPoints(null),
-        ])
-        // The head start is worth having: half a correct answer again.
-        ->and($answers->first()->points)->toBe(QuizAnswerRecorder::POINTS_CORRECT + 5);
+        ]);
+});
+
+it('spaces the places far enough apart to move a player past a rival', function () {
+    $bonuses = QuizAnswerRecorder::SPEED_BONUSES;
+    $half = intdiv(QuizAnswerRecorder::POINTS_CORRECT, 2);
+
+    // Every place climbed — including the climb into fifth from outside the
+    // ranks — is worth about half a correct answer, so beating one more
+    // person to the answer actually changes the standings.
+    $gaps = collect([...$bonuses, 0])
+        ->sliding(2)
+        ->map(fn ($pair): int => $pair->first() - $pair->last());
+
+    expect($gaps->min())->toBeGreaterThanOrEqual($half - 2)
+        // Winning the day outright is worth more than answering it.
+        ->and($bonuses[0])->toBeGreaterThan(QuizAnswerRecorder::POINTS_CORRECT);
 });
 
 it('lets a fast answer outscore a slower one on the same question', function () {

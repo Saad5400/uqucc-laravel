@@ -6,6 +6,7 @@ use App\Models\QuizAnswer;
 use App\Models\QuizPlayer;
 use App\Models\QuizPost;
 use App\Models\QuizTopic;
+use App\Services\Quiz\QuizAnswerRecorder;
 use App\Services\Quiz\QuizImageRenderer;
 use App\Services\Quiz\QuizPoster;
 use App\Services\Quiz\QuizSchedule;
@@ -264,9 +265,9 @@ it('names the fastest correct answers and what the head start paid in the recap'
 
     expect($recap['text'])->toContain('أسرع الإجابات الصحيحة')
         ->and($recap['text'])->toContain('ريم')
-        ->and($recap['text'])->toContain('+5')
+        ->and($recap['text'])->toContain('+'.QuizAnswerRecorder::speedBonusFor(1))
         ->and($recap['text'])->toContain('خالد')
-        ->and($recap['text'])->toContain('+4')
+        ->and($recap['text'])->toContain('+'.QuizAnswerRecorder::speedBonusFor(2))
         // Only the ranked answers are named — the rest of the day is the turnout line.
         ->and($recap['text'])->not->toContain('نورة');
 });

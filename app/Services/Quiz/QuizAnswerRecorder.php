@@ -21,13 +21,18 @@ use Telegram\Bot\Objects\PollAnswer;
  * (generation outage) breaks nobody's streak.
  *
  * On top of that, the first few players to answer *correctly* take a speed
- * bonus ({@see self::SPEED_BONUSES}) — the race the question opens. It is
- * deliberately worth about half a correct answer at the front: enough that
- * being first is a real edge and a day of racing can overtake a rival on the
- * board, and small enough that it never beats answering correctly and
- * showing up daily. Only correct answers are ranked, so the fast lane rewards
- * reading the question rather than tapping an option blind — a wrong answer
- * neither earns the bonus nor uses up one of the ranks.
+ * bonus ({@see self::SPEED_BONUSES}) — the race the question opens, and the
+ * one part of the day a player can still win after falling behind. The gaps
+ * between the places are what makes it a race, so they are wide on purpose:
+ * beating one more person to the answer is worth around half a correct answer
+ * ({@see self::POINTS_CORRECT}), and taking the day outright is worth more
+ * than answering it. A tight ladder — a point between neighbours — ranked
+ * people without ever moving them past each other on the board, which is no
+ * race at all.
+ *
+ * Only correct answers are ranked, so the fast lane rewards reading the
+ * question rather than tapping an option blind — a wrong answer neither earns
+ * the bonus nor uses up one of the ranks.
  *
  * A single missed quiz is forgiven by the streak freeze: it costs that day's
  * points but keeps the streak alive, once every
@@ -44,13 +49,14 @@ class QuizAnswerRecorder
     public const STREAK_BONUS_CAP = 7;
 
     /**
-     * The bonus for the 1st…5th correct answer of the day, by rank. Later
-     * correct answers score the base points; the list's length is how many
-     * players the race pays.
+     * The bonus for the 1st…5th correct answer of the day, by rank — a race
+     * worth up to two and a half correct answers, thinning out to a
+     * consolation for fifth. Later correct answers score the base points; the
+     * list's length is how many players the race pays.
      *
      * @var list<int>
      */
-    public const SPEED_BONUSES = [5, 4, 3, 2, 1];
+    public const SPEED_BONUSES = [25, 18, 12, 7, 3];
 
     /** Minimum days between two streak freezes — one missed quiz a week. */
     public const FREEZE_COOLDOWN_DAYS = 7;
