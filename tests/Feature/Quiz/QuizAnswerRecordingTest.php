@@ -99,6 +99,24 @@ it('pays the first five correct answers a speed bonus by order, and nothing afte
         ]);
 });
 
+it('balances a week of showing up against a week of racing', function () {
+    $streakWeek = 7 * QuizAnswerRecorder::STREAK_BONUS_CAP;
+    // A strong racer's week: the day twice, second twice, third once.
+    $raceWeek = collect([1, 1, 2, 2, 3])->sum(QuizAnswerRecorder::speedBonusFor(...));
+
+    // Neither lever runs away with the board: they are worth about the same
+    // over a week, so consistency decides who is in the running and speed
+    // decides the order.
+    expect($raceWeek)->toBeGreaterThan((int) ($streakWeek * 0.75))
+        ->and($raceWeek)->toBeLessThan((int) ($streakWeek * 1.5));
+
+    // And a week of showing up beats a few days of racing and vanishing.
+    $committedWeek = 7 * (QuizAnswerRecorder::POINTS_CORRECT + QuizAnswerRecorder::STREAK_BONUS_CAP);
+    $dropInWeek = 3 * (QuizAnswerRecorder::POINTS_CORRECT + QuizAnswerRecorder::speedBonusFor(1));
+
+    expect($committedWeek)->toBeGreaterThan($dropInWeek);
+});
+
 it('spaces the places far enough apart to move a player past a rival', function () {
     $bonuses = QuizAnswerRecorder::SPEED_BONUSES;
     $half = intdiv(QuizAnswerRecorder::POINTS_CORRECT, 2);

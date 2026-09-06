@@ -1,5 +1,6 @@
 <?php
 
+use App\Helpers\Bidi;
 use App\Jobs\DeleteTelegramMessages;
 use App\Models\QuizAnswer;
 use App\Models\QuizPlayer;
@@ -55,6 +56,22 @@ it('replies with the player\'s own standing and schedules deletion', function (s
 
     Bus::assertDispatched(DeleteTelegramMessages::class);
 })->with(['نقاطي', '/myscore', '/mypoints@UquccTestBot']);
+
+it('shows what the current streak adds to every answer', function () {
+    Bus::fake();
+
+    QuizPlayer::factory()->create([
+        'telegram_user_id' => 111,
+        'answers_count' => 9,
+        'current_streak' => 5,
+    ]);
+
+    $api = new FakeTelegramApi;
+    (new QuizMyScoreHandler($api))->handle(myScoreMessage('نقاطي'));
+
+    // The value is bidi-fenced so «+4» keeps its sign on the left.
+    expect($api->sentMessages[0]['text'])->toContain('تضيف '.Bidi::ltr('+4').' لكل إجابة');
+});
 
 it('counts the days the player was among the fastest', function () {
     Bus::fake();

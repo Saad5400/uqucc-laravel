@@ -46,7 +46,20 @@ class QuizAnswerRecorder
 
     public const POINTS_WRONG = 2;
 
-    public const STREAK_BONUS_CAP = 7;
+    /**
+     * The ceiling on the streak bonus, reached after a fortnight of daily
+     * play. It is the floor a committed player stands on: it makes a full
+     * week of showing up ({@see self::POINTS_CORRECT} + this, seven times)
+     * worth clearly more than a few days of winning the race and vanishing,
+     * while a week of good racing ({@see self::SPEED_BONUSES}) still comes to
+     * about the same as a week of streak — so consistency decides who is in
+     * the running and speed decides the order.
+     *
+     * A missed quiz is what makes it a wager: the streak freeze forgives one
+     * every {@see self::FREEZE_COOLDOWN_DAYS} days, and anything past that
+     * drops the bonus back to zero for a fortnight.
+     */
+    public const STREAK_BONUS_CAP = 12;
 
     /**
      * The bonus for the 1st…5th correct answer of the day, by rank — a race
@@ -114,7 +127,7 @@ class QuizAnswerRecorder
                 $isCorrect = $selected === $quiz->correct_option;
                 $speedRank = $isCorrect ? $this->speedRankFor($quiz) : null;
                 $points = ($isCorrect ? self::POINTS_CORRECT : self::POINTS_WRONG)
-                    + min($streak - 1, self::STREAK_BONUS_CAP)
+                    + self::streakBonusFor($streak)
                     + self::speedBonusFor($speedRank);
 
                 QuizAnswer::create([
@@ -141,6 +154,16 @@ class QuizAnswerRecorder
         } catch (UniqueConstraintViolationException) {
             // A concurrent update already recorded this vote — nothing to do.
         }
+    }
+
+    /**
+     * What a streak is worth on every answer while it holds: a point per
+     * consecutive quiz answered before this one, up to
+     * {@see self::STREAK_BONUS_CAP}.
+     */
+    public static function streakBonusFor(int $streak): int
+    {
+        return min(max($streak - 1, 0), self::STREAK_BONUS_CAP);
     }
 
     /**
