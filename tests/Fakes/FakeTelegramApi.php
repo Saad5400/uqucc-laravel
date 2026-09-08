@@ -48,6 +48,14 @@ class FakeTelegramApi extends Api
      */
     public array $sendMessageFailures = [];
 
+    /**
+     * Errors the next sendPhoto() calls should fail with, in order; read the
+     * same way as {@see $sendMessageFailures}.
+     *
+     * @var array<int, string|null>
+     */
+    public array $sendPhotoFailures = [];
+
     /** @var array<int, array<string, mixed>> */
     public array $sentPolls = [];
 
@@ -131,6 +139,14 @@ class FakeTelegramApi extends Api
 
     public function sendPhoto(array $params): Message
     {
+        if ($this->sendPhotoFailures !== []) {
+            $error = array_shift($this->sendPhotoFailures);
+
+            if ($error !== null) {
+                throw new \RuntimeException($error);
+            }
+        }
+
         $this->sentPhotos[] = $params;
 
         return new Message(['message_id' => ++$this->nextMessageId, 'chat' => ['id' => $params['chat_id'] ?? 0]]);

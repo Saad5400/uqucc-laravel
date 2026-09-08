@@ -260,3 +260,17 @@ it('reads a legacy HTML page the way it reads an editor document', function () {
     expect($reply->text)->toContain("<b>الشروط</b>\n\nيلزم <b>معدل</b> لا يقل عن <i>٣</i>.\n\n• الأول\n• الثاني")
         ->and($reply->text)->not->toContain('<blockquote');
 });
+
+it('says a short reply fits a caption, so its page arrives as one message', function () {
+    expect(composeReply(contentPage())->fitsInCaption())->toBeTrue();
+});
+
+it('says a reply past the caption limit does not fit one', function () {
+    $paragraph = str_repeat('تفاصيل التسجيل والقبول والمواعيد. ', 12);
+    $reply = composeReply(contentPage([
+        'html_content' => docOf(...array_map(fn (int $i): array => textBlock("{$i} {$paragraph}"), range(1, 4))),
+    ]));
+
+    expect(TelegramHtml::length($reply->text))->toBeGreaterThan(PageReply::CAPTION_LIMIT)
+        ->and($reply->fitsInCaption())->toBeFalse();
+});

@@ -2,6 +2,8 @@
 
 namespace App\Services\Telegram;
 
+use App\Support\TelegramHtml;
+
 /**
  * A page's reply, composed and ready to send: the text with its markup, the
  * keyboard under it, the files that go before it, and whether Telegram should
@@ -11,6 +13,12 @@ namespace App\Services\Telegram;
  */
 final readonly class PageReply
 {
+    /**
+     * Visible characters a caption may hold. Telegram allows 1024; the margin
+     * covers what it counts as two (an emoji) and this side counts as one.
+     */
+    public const CAPTION_LIMIT = 1000;
+
     /**
      * @param  string  $text  Telegram HTML: title, the content in a collapsed quote, and the footer lines.
      * @param  string|null  $fallbackText  The same reply with the content unquoted, for a Telegram that refuses the quoted markup; null when there is nothing to fall back to.
@@ -36,6 +44,17 @@ final readonly class PageReply
         }
 
         return json_encode(['inline_keyboard' => $this->keyboard]);
+    }
+
+    /**
+     * Whether the reply is short enough to ride on a file as its caption, so
+     * the page arrives as one message instead of a picture and a paragraph
+     * under it. Telegram gives a caption a quarter of a message's room, and a
+     * reply that outgrows it keeps its content and goes as its own message.
+     */
+    public function fitsInCaption(): bool
+    {
+        return TelegramHtml::length($this->text) <= self::CAPTION_LIMIT;
     }
 
     /**
