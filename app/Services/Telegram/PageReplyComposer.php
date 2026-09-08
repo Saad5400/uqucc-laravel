@@ -17,8 +17,10 @@ use App\Support\TelegramHtml;
  * is when the message could not carry it all. A page that quotes something of
  * its own keeps that quote while it is short, and gives it up to the outer one
  * once it is tall — Telegram draws no quote inside a quote. The page's links and sub-pages
- * are buttons under the text, and the page's few images go before it as an
- * album.
+ * are buttons under the text, and the page's few images ride with it: a reply
+ * short enough for a caption is sent on the image itself, so the page arrives
+ * as one message rather than a picture and a paragraph under it, and a taller
+ * one keeps its content and follows the album as its own message.
  *
  * A page that is mostly pictures — a tutorial of screenshots — is the one case
  * the text cannot stand in for. Its reply keeps the text, drops the album, and

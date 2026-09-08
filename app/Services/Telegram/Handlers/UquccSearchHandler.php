@@ -23,9 +23,10 @@ use Telegram\Bot\Objects\Message;
  * message carrying a smart-search title — with that page's reply.
  *
  * What the reply says is {@see PageReplyComposer}'s business; this handler finds
- * the page and does the sending: the page's few images as an album first, then
- * the one text message that carries the title, the content in a collapsed
- * quote, and the buttons.
+ * the page and does the sending, in as few messages as the Bot API allows: the
+ * page's few images with the reply as their caption when they can carry it,
+ * otherwise the images first and the reply — title, content in a collapsed
+ * quote, buttons — in the message under them.
  */
 class UquccSearchHandler extends BaseHandler
 {
@@ -209,67 +210,25 @@ class UquccSearchHandler extends BaseHandler
     }
 
     /**
-     * Send a page: its images as an album, then the text with the buttons under it.
+     * Send a page: its files and its text, in as few messages as Telegram
+     * allows — one message when the files can carry the text as their caption,
+     * the files first and the text under them when they cannot.
      */
     protected function sendPageResult(Message $message, Page $page): void
     {
         $reply = $this->composer->compose($page);
 
-        if ($reply->attachments !== []) {
-            $this->sendAttachments($message, $page, collect($reply->attachments));
+        if ($reply->attachments === []) {
+            $this->sendReplyText($message, $reply);
+
+            return;
         }
 
-        $this->sendReplyText($message, $reply);
-    }
-
-    /**
-     * The text message. Telegram parses the markup server-side and rejects the
-     * whole message on anything it dislikes, so a refused quoted reply is sent
-     * again without the quote rather than not at all.
-     */
-    protected function sendReplyText(Message $message, PageReply $reply): void
-    {
-        $params = [
-            'chat_id' => $message->getChat()->getId(),
-            'text' => $reply->text,
-            'parse_mode' => 'HTML',
-            'reply_to_message_id' => $this->getReplyToMessageId($message),
-            'link_preview_options' => $reply->linkPreviewOptions(),
-        ];
-
-        if ($markup = $reply->replyMarkup()) {
-            $params['reply_markup'] = $markup;
-        }
-
-        try {
-            $this->telegram->sendMessage($params);
-        } catch (\Throwable $e) {
-            if ($reply->fallbackText === null) {
-                throw $e;
-            }
-
-            Log::warning('Telegram refused the quoted page reply, resending it unquoted', [
-                'error' => $e->getMessage(),
-            ]);
-
-            $params['text'] = $reply->fallbackText;
-            $this->telegram->sendMessage($params);
-        }
-    }
-
-    /**
-     * Send the page's attachments, before the text: an album per ten images
-     * (or documents, when the files are not all images), a single file on its own.
-     *
-     * @param  Collection<int, string>  $attachments  Media disk paths or external URLs
-     */
-    protected function sendAttachments(Message $message, Page $page, Collection $attachments): void
-    {
         $chatId = $message->getChat()->getId();
         $loadingMessage = null;
 
-        // Check if any external files need to be downloaded
-        if ($this->hasUncachedExternalAttachments($attachments)) {
+        // Tell the reader something is coming while external files download.
+        if ($this->hasUncachedExternalAttachments(collect($reply->attachments))) {
             $loadingMessage = $this->telegram->sendMessage([
                 'chat_id' => $chatId,
                 'text' => '⏳ جاري تحميل الملفات...',
@@ -278,35 +237,17 @@ class UquccSearchHandler extends BaseHandler
         }
 
         try {
-            // Resolve all attachments to local paths, filtering out any that fail
-            $resolved = $attachments
+            $resolved = collect($reply->attachments)
                 ->map(fn (string $path) => $this->resolveAttachmentPath($path))
                 ->filter()
                 ->values();
 
             if ($resolved->isEmpty()) {
                 Log::warning('All attachments failed to resolve', ['page_id' => $page->id]);
-
-                return;
             }
 
-            if ($resolved->count() === 1) {
-                $this->sendSingleAttachment($message, $resolved->first());
-
-                return;
-            }
-
-            foreach ($resolved->chunk(self::MEDIA_GROUP_SIZE) as $chunk) {
-                if ($chunk->count() === 1) {
-                    $this->sendSingleAttachment($message, $chunk->first());
-
-                    continue;
-                }
-
-                $this->sendMediaGroup($message, $chunk->values());
-            }
+            $this->sendAttachmentsWithReply($message, $resolved, $reply);
         } finally {
-            // Delete loading message if it was sent
             if ($loadingMessage) {
                 try {
                     $this->telegram->deleteMessage([
@@ -321,57 +262,195 @@ class UquccSearchHandler extends BaseHandler
     }
 
     /**
-     * @param  array{path: string, filename: string}  $attachment
+     * The page's files and its reply, in as few messages as the Bot API allows.
+     *
+     * A file takes a caption, so a reply short enough for one rides on the file
+     * itself: the reader gets the picture, the text and the buttons as a single
+     * message, the way a person would have sent it. An album is the exception —
+     * Telegram hangs no buttons under one — so a reply with buttons keeps them
+     * and goes as its own message under the album. A reply too long for a
+     * caption also goes on its own rather than lose the content it carries.
+     *
+     * @param  Collection<int, array{path: string, filename: string}>  $resolved
      */
-    protected function sendSingleAttachment(Message $message, array $attachment): void
+    protected function sendAttachmentsWithReply(Message $message, Collection $resolved, PageReply $reply): void
     {
-        $mime = mime_content_type($attachment['path']) ?: '';
+        $albums = $resolved->chunk(self::MEDIA_GROUP_SIZE)->values();
 
-        $payload = [
-            'chat_id' => $message->getChat()->getId(),
-            'reply_to_message_id' => $this->getReplyToMessageId($message),
-        ];
+        $carriesCaption = $albums->count() === 1
+            && $reply->fitsInCaption()
+            && ($resolved->count() === 1 || $reply->keyboard === []);
 
-        if (str_starts_with($mime, 'image/')) {
-            $payload['photo'] = InputFile::create($attachment['path'], $attachment['filename']);
-            $this->telegram->sendPhoto($payload);
-        } else {
-            $payload['document'] = InputFile::create($attachment['path'], $attachment['filename']);
-            $this->telegram->sendDocument($payload);
+        if ($carriesCaption) {
+            $this->sendAttachmentGroup($message, $albums->first()->values(), $reply);
+
+            return;
+        }
+
+        foreach ($albums as $album) {
+            $this->sendAttachmentGroup($message, $album->values(), null);
+        }
+
+        $this->sendReplyText($message, $reply);
+    }
+
+    /**
+     * One album of up to ten files, or a lone file on its own, with the reply
+     * as its caption when it was given one.
+     *
+     * @param  Collection<int, array{path: string, filename: string}>  $attachments
+     */
+    protected function sendAttachmentGroup(Message $message, Collection $attachments, ?PageReply $reply): void
+    {
+        if ($attachments->count() === 1) {
+            $this->sendSingleAttachment($message, $attachments->first(), $reply);
+
+            return;
+        }
+
+        $this->sendMediaGroup($message, $attachments, $reply);
+    }
+
+    /**
+     * The text message. Telegram parses the markup server-side and rejects the
+     * whole message on anything it dislikes, so a refused quoted reply is sent
+     * again without the quote rather than not at all.
+     */
+    protected function sendReplyText(Message $message, PageReply $reply): void
+    {
+        $this->withQuoteFallback($reply, function (string $text) use ($message, $reply): void {
+            $params = [
+                'chat_id' => $message->getChat()->getId(),
+                'text' => $text,
+                'parse_mode' => 'HTML',
+                'reply_to_message_id' => $this->getReplyToMessageId($message),
+                'link_preview_options' => $reply->linkPreviewOptions(),
+            ];
+
+            if ($markup = $reply->replyMarkup()) {
+                $params['reply_markup'] = $markup;
+            }
+
+            $this->telegram->sendMessage($params);
+        });
+    }
+
+    /**
+     * Send the reply, and send it once more unquoted when Telegram refuses the
+     * markup — it parses HTML server-side and rejects the whole message over
+     * anything it dislikes, so a reply it turned down still arrives, plainly.
+     *
+     * @param  callable(string): void  $send  Sends the reply carrying the given text
+     */
+    protected function withQuoteFallback(PageReply $reply, callable $send): void
+    {
+        try {
+            $send($reply->text);
+        } catch (\Throwable $e) {
+            if ($reply->fallbackText === null) {
+                throw $e;
+            }
+
+            Log::warning('Telegram refused the quoted page reply, resending it unquoted', [
+                'error' => $e->getMessage(),
+            ]);
+
+            $send($reply->fallbackText);
         }
     }
 
     /**
+     * @param  array{path: string, filename: string}  $attachment
+     */
+    protected function sendSingleAttachment(Message $message, array $attachment, ?PageReply $reply): void
+    {
+        $isImage = str_starts_with(mime_content_type($attachment['path']) ?: '', 'image/');
+
+        $send = function (?string $caption) use ($message, $attachment, $isImage, $reply): void {
+            $payload = [
+                'chat_id' => $message->getChat()->getId(),
+                'reply_to_message_id' => $this->getReplyToMessageId($message),
+            ];
+
+            if ($caption !== null) {
+                $payload['caption'] = $caption;
+                $payload['parse_mode'] = 'HTML';
+
+                if ($markup = $reply?->replyMarkup()) {
+                    $payload['reply_markup'] = $markup;
+                }
+            }
+
+            $file = InputFile::create($attachment['path'], $attachment['filename']);
+
+            if ($isImage) {
+                $payload['photo'] = $file;
+                $this->telegram->sendPhoto($payload);
+            } else {
+                $payload['document'] = $file;
+                $this->telegram->sendDocument($payload);
+            }
+        };
+
+        if ($reply === null) {
+            $send(null);
+
+            return;
+        }
+
+        $this->withQuoteFallback($reply, $send);
+    }
+
+    /**
      * One album of up to ten files. Photos when every file is an image,
-     * documents otherwise — Telegram will not mix the two in one group.
+     * documents otherwise — Telegram will not mix the two in one group. A
+     * caption goes on the first file, which is where Telegram draws it for
+     * the album as a whole.
      *
      * @param  Collection<int, array{path: string, filename: string}>  $attachments
      */
-    protected function sendMediaGroup(Message $message, Collection $attachments): void
+    protected function sendMediaGroup(Message $message, Collection $attachments, ?PageReply $reply): void
     {
         $allImages = $attachments->every(fn (array $attachment): bool => str_starts_with(mime_content_type($attachment['path']) ?: '', 'image/'));
 
-        $media = [];
-        $payload = [];
+        $send = function (?string $caption) use ($message, $attachments, $allImages): void {
+            $media = [];
+            $payload = [];
 
-        foreach ($attachments as $index => $attachment) {
-            // Sanitize filename for attach name (remove special characters)
-            $safeFilename = preg_replace('/[^a-zA-Z0-9._-]/', '_', $attachment['filename']);
-            $attachName = "attach_{$index}_{$safeFilename}";
+            foreach ($attachments as $index => $attachment) {
+                // Sanitize filename for attach name (remove special characters)
+                $safeFilename = preg_replace('/[^a-zA-Z0-9._-]/', '_', $attachment['filename']);
+                $attachName = "attach_{$index}_{$safeFilename}";
 
-            $media[] = [
-                'type' => $allImages ? 'photo' : 'document',
-                'media' => "attach://{$attachName}",
-            ];
+                $item = [
+                    'type' => $allImages ? 'photo' : 'document',
+                    'media' => "attach://{$attachName}",
+                ];
 
-            $payload[$attachName] = InputFile::create($attachment['path'], $attachment['filename']);
+                if ($index === 0 && $caption !== null) {
+                    $item['caption'] = $caption;
+                    $item['parse_mode'] = 'HTML';
+                }
+
+                $media[] = $item;
+
+                $payload[$attachName] = InputFile::create($attachment['path'], $attachment['filename']);
+            }
+
+            $payload['chat_id'] = $message->getChat()->getId();
+            $payload['media'] = json_encode($media);
+            $payload['reply_to_message_id'] = $this->getReplyToMessageId($message);
+
+            $this->telegram->sendMediaGroup($payload);
+        };
+
+        if ($reply === null) {
+            $send(null);
+
+            return;
         }
 
-        $payload['chat_id'] = $message->getChat()->getId();
-        $payload['media'] = json_encode($media);
-        $payload['reply_to_message_id'] = $this->getReplyToMessageId($message);
-
-        $this->telegram->sendMediaGroup($payload);
+        $this->withQuoteFallback($reply, $send);
     }
 
     /**

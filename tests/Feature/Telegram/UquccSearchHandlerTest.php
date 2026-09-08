@@ -95,14 +95,14 @@ it('sends a section page as its title over the sub-page buttons, with no image',
         ->and(collect(json_decode($api->sentMessages[0]['reply_markup'], true)['inline_keyboard'])->flatten(1)->pluck('text')->all())->toBe(['الأولى', 'الثانية']);
 });
 
-it('sends a page\'s images as an album before the text', function () {
+it('sends a page\'s album with the reply as its caption, in one message', function () {
     pageWithContent([textParagraph('خطوات التفعيل'), storedImage('one.png'), storedImage('two.png')]);
 
     $api = new FakeTelegramApi;
     searchHandler($api)->handle(pageLookupMessage('المقررات'));
 
     expect($api->sentMediaGroups)->toHaveCount(1)
-        ->and($api->sentMessages)->toHaveCount(1);
+        ->and($api->sentMessages)->toBeEmpty();
 
     $album = $api->sentMediaGroups[0];
     $media = json_decode($album['media'], true);
@@ -110,20 +110,80 @@ it('sends a page\'s images as an album before the text', function () {
     expect($album['reply_to_message_id'])->toBe(20)
         ->and($media)->toHaveCount(2)
         ->and(collect($media)->pluck('type')->unique()->all())->toBe(['photo'])
-        ->and($album)->not->toHaveKey('caption')
-        ->and($api->sentMessages[0]['text'])->toContain('خطوات التفعيل');
+        ->and($media[0]['caption'])->toContain('خطوات التفعيل')
+        ->and($media[0]['parse_mode'])->toBe('HTML')
+        ->and($media[1])->not->toHaveKey('caption');
 });
 
-it('sends a single image on its own, without a caption, then the text', function () {
-    pageWithContent([textParagraph('خريطة الحرم'), storedImage('map.png')]);
+it('sends a single image with the reply as its caption and the buttons under it', function () {
+    $page = pageWithContent([textParagraph('خريطة الحرم'), storedImage('map.png')]);
+    $child = Page::factory()->childOf($page)->create(['title' => 'المداخل', 'slug' => '/courses/gates']);
+
+    $api = new FakeTelegramApi;
+    searchHandler($api)->handle(pageLookupMessage('المقررات'));
+
+    expect($api->sentPhotos)->toHaveCount(1)
+        ->and($api->sentMediaGroups)->toBeEmpty()
+        ->and($api->sentMessages)->toBeEmpty();
+
+    $photo = $api->sentPhotos[0];
+
+    expect($photo['chat_id'])->toBe(-100200)
+        ->and($photo['reply_to_message_id'])->toBe(20)
+        ->and($photo['parse_mode'])->toBe('HTML')
+        ->and($photo['caption'])->toContain('خريطة الحرم')
+        ->and(json_decode($photo['reply_markup'], true)['inline_keyboard'])->toBe([
+            [['text' => 'المداخل', 'url' => url($child->slug)]],
+        ]);
+});
+
+it('keeps an album\'s buttons in a message of their own, since Telegram hangs none under one', function () {
+    $page = pageWithContent([textParagraph('خطوات التفعيل'), storedImage('one.png'), storedImage('two.png')]);
+    $child = Page::factory()->childOf($page)->create(['title' => 'الفيزياء', 'slug' => '/courses/physics']);
+
+    $api = new FakeTelegramApi;
+    searchHandler($api)->handle(pageLookupMessage('المقررات'));
+
+    expect($api->sentMediaGroups)->toHaveCount(1)
+        ->and($api->sentMessages)->toHaveCount(1)
+        ->and(json_decode($api->sentMediaGroups[0]['media'], true)[0])->not->toHaveKey('caption')
+        ->and($api->sentMessages[0]['text'])->toContain('خطوات التفعيل')
+        ->and(json_decode($api->sentMessages[0]['reply_markup'], true)['inline_keyboard'])->toBe([
+            [['text' => 'الفيزياء', 'url' => url($child->slug)]],
+        ]);
+});
+
+it('sends a reply too long for a caption as its own message under the image', function () {
+    $paragraph = str_repeat('تفاصيل التسجيل والقبول والمواعيد. ', 12);
+    pageWithContent([
+        ...array_map(fn (int $i): array => textParagraph("{$i} {$paragraph}"), range(1, 4)),
+        storedImage('map.png'),
+    ]);
 
     $api = new FakeTelegramApi;
     searchHandler($api)->handle(pageLookupMessage('المقررات'));
 
     expect($api->sentPhotos)->toHaveCount(1)
         ->and($api->sentPhotos[0])->not->toHaveKey('caption')
-        ->and($api->sentMediaGroups)->toBeEmpty()
-        ->and($api->sentMessages)->toHaveCount(1);
+        ->and($api->sentMessages)->toHaveCount(1)
+        ->and($api->sentMessages[0]['text'])->toContain('تفاصيل التسجيل');
+});
+
+it('resends a refused caption unquoted rather than not at all', function () {
+    pageWithContent([
+        ...array_map(fn (int $i): array => textParagraph("سطر {$i}"), range(1, 20)),
+        storedImage('map.png'),
+    ]);
+
+    $api = new FakeTelegramApi;
+    $api->sendPhotoFailures = ["Bad Request: can't parse entities"];
+
+    searchHandler($api)->handle(pageLookupMessage('المقررات'));
+
+    expect($api->sentPhotos)->toHaveCount(1)
+        ->and($api->sentPhotos[0]['caption'])->not->toContain('<blockquote')
+        ->and($api->sentPhotos[0]['caption'])->toContain('سطر 1')
+        ->and($api->sentMessages)->toBeEmpty();
 });
 
 it('lets Telegram draw the page preview for an image-heavy page and sends no album', function () {
