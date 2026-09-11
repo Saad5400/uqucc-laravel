@@ -22,6 +22,12 @@ class HelpHandler extends BaseHandler
         // Build help message based on user permissions
         $helpMessage = $this->buildHelpMessage($user);
 
+        if ($this->isGroupChat($message)) {
+            $this->replyAndDelete($message, $helpMessage, 'HTML', 60);
+
+            return;
+        }
+
         $this->replyHtml($message, $helpMessage);
     }
 

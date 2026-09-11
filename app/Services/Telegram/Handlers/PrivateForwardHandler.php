@@ -2,8 +2,8 @@
 
 namespace App\Services\Telegram\Handlers;
 
-use Telegram\Bot\Objects\Message;
 use Telegram\Bot\Exceptions\TelegramSDKException;
+use Telegram\Bot\Objects\Message;
 
 class PrivateForwardHandler extends BaseHandler
 {
@@ -13,7 +13,7 @@ class PrivateForwardHandler extends BaseHandler
         $content = is_string($text) ? trim($text) : '';
 
         // Check if message matches /pforward command with optional channel ID
-        if (!preg_match('/^\/pforward(?:\s+(-?\d+))?$/u', $content, $matches)) {
+        if (! preg_match('/^\/pforward(?:\s+(-?\d+))?$/u', $content, $matches)) {
             return;
         }
 
@@ -27,20 +27,22 @@ class PrivateForwardHandler extends BaseHandler
         $replyToMessage = $message->getReplyToMessage();
 
         // Check if user is replying to a message
-        if (!$replyToMessage) {
-            $this->reply(
+        if (! $replyToMessage) {
+            $this->replyEphemeralInGroup(
                 $message,
                 "❌ يجب أن ترد على رسالة لإعادة توجيهها.\n\nالاستخدام: رد على رسالة بـ /pforward <معرف_القناة>"
             );
+
             return;
         }
 
         // Check if channel ID is provided
         if ($targetChannelId === null) {
-            $this->reply(
+            $this->replyEphemeralInGroup(
                 $message,
                 "❌ يجب تحديد معرف القناة.\n\nالاستخدام: /pforward <معرف_القناة>\n\nمثال: /pforward -1001234567890"
             );
+
             return;
         }
 
@@ -54,11 +56,12 @@ class PrivateForwardHandler extends BaseHandler
             $status = $userMember->status;
             $isAdmin = in_array($status, ['creator', 'administrator']);
 
-            if (!$isAdmin) {
-                $this->reply(
+            if (! $isAdmin) {
+                $this->replyEphemeralInGroup(
                     $message,
-                    "❌ ليس لديك صلاحيات المسؤول في القناة المحددة."
+                    '❌ ليس لديك صلاحيات المسؤول في القناة المحددة.'
                 );
+
                 return;
             }
 
@@ -70,11 +73,12 @@ class PrivateForwardHandler extends BaseHandler
             ]);
 
             $botStatus = $botMember->status;
-            if (!in_array($botStatus, ['member', 'administrator', 'creator'])) {
-                $this->reply(
+            if (! in_array($botStatus, ['member', 'administrator', 'creator'])) {
+                $this->replyEphemeralInGroup(
                     $message,
                     "❌ البوت ليس عضواً في القناة المحددة.\n\nحالة البوت: {$botStatus}"
                 );
+
                 return;
             }
 
@@ -95,47 +99,46 @@ class PrivateForwardHandler extends BaseHandler
             }
 
             // Send confirmation
-            $this->reply(
+            $this->replyEphemeralInGroup(
                 $message,
                 "✅ تم إعادة توجيه الرسالة بشكل خاص إلى: {$channelName}\n"
-                . "🔒 الرسالة محمية من النسخ وإعادة التوجيه."
+                .'🔒 الرسالة محمية من النسخ وإعادة التوجيه.'
             );
 
         } catch (TelegramSDKException $e) {
             $errorMsg = strtolower($e->getMessage());
-            
+
             if (strpos($errorMsg, 'chat not found') !== false || strpos($errorMsg, 'not found') !== false) {
-                $this->reply(
+                $this->replyEphemeralInGroup(
                     $message,
-                    "❌ القناة المحددة غير موجودة أو المعرف غير صحيح.\n\nخطأ: " . $e->getMessage()
+                    "❌ القناة المحددة غير موجودة أو المعرف غير صحيح.\n\nخطأ: ".$e->getMessage()
                 );
             } elseif (strpos($errorMsg, 'user not found') !== false || strpos($errorMsg, 'participant') !== false) {
-                $this->reply(
+                $this->replyEphemeralInGroup(
                     $message,
-                    "❌ أنت لست عضواً في القناة المحددة.\n\nخطأ: " . $e->getMessage()
+                    "❌ أنت لست عضواً في القناة المحددة.\n\nخطأ: ".$e->getMessage()
                 );
             } elseif (strpos($errorMsg, 'forbidden') !== false) {
-                $this->reply(
+                $this->replyEphemeralInGroup(
                     $message,
-                    "❌ البوت محظور أو لا يملك صلاحيات الإرسال في القناة.\n\nخطأ: " . $e->getMessage()
+                    "❌ البوت محظور أو لا يملك صلاحيات الإرسال في القناة.\n\nخطأ: ".$e->getMessage()
                 );
             } elseif (strpos($errorMsg, 'have no rights') !== false || strpos($errorMsg, 'not enough rights') !== false) {
-                $this->reply(
+                $this->replyEphemeralInGroup(
                     $message,
-                    "❌ البوت لا يملك صلاحيات الإرسال في القناة المحددة.\n\nخطأ: " . $e->getMessage()
+                    "❌ البوت لا يملك صلاحيات الإرسال في القناة المحددة.\n\nخطأ: ".$e->getMessage()
                 );
             } else {
-                $this->reply(
+                $this->replyEphemeralInGroup(
                     $message,
-                    "❌ فشل إعادة توجيه الرسالة: " . $e->getMessage()
+                    '❌ فشل إعادة توجيه الرسالة: '.$e->getMessage()
                 );
             }
         } catch (\Exception $e) {
-            $this->reply(
+            $this->replyEphemeralInGroup(
                 $message,
-                "❌ خطأ غير متوقع: " . $e->getMessage()
+                '❌ خطأ غير متوقع: '.$e->getMessage()
             );
         }
     }
 }
-

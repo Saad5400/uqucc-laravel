@@ -20,7 +20,7 @@ function myScoreMessage(string $text, int $userId = 111): Message
     ]);
 }
 
-it('replies with the player\'s own standing and schedules deletion', function (string $trigger) {
+it('replies with the player\'s own standing as an ephemeral group message', function (string $trigger) {
     Bus::fake();
 
     $rival = QuizPlayer::factory()->create();
@@ -44,6 +44,7 @@ it('replies with the player\'s own standing and schedules deletion', function (s
     expect($api->sentMessages)->toHaveCount(1);
 
     $text = $api->sentMessages[0]['text'];
+    $ephemeral = json_decode($api->sentMessages[0]['ephemeral_message_parameters'], true, flags: JSON_THROW_ON_ERROR);
 
     expect($text)->toContain('نتيجتك في سؤال اليوم')
         ->toContain('ترتيبك 2')
@@ -52,9 +53,13 @@ it('replies with the player\'s own standing and schedules deletion', function (s
         ->toContain('الإجمالي منذ البداية: 90 نقطة')
         ->toContain('3 أيام')
         ->toContain('7 من 9')
-        ->toContain('تجميدة السلسلة جاهزة');
+        ->toContain('تجميدة السلسلة جاهزة')
+        ->and($ephemeral)->toBe(['receiver_user_id' => 111]);
 
-    Bus::assertDispatched(DeleteTelegramMessages::class);
+    Bus::assertDispatched(
+        DeleteTelegramMessages::class,
+        fn (DeleteTelegramMessages $job): bool => $job->messageIds === [10],
+    );
 })->with(['نقاطي', '/myscore', '/mypoints@UquccTestBot']);
 
 it('shows what the current streak adds to every answer', function () {
@@ -126,6 +131,43 @@ it('teaches a member who has not played yet', function () {
         ->and($api->sentMessages[0]['text'])->toContain('لم تشارك');
 
     Bus::assertDispatched(DeleteTelegramMessages::class);
+});
+
+it('falls back to the existing auto-deleting reply when Telegram rejects ephemeral delivery', function () {
+    Bus::fake();
+
+    $api = new FakeTelegramApi;
+    $api->sendMessageFailures = ['Bad Request: ephemeral messages are unavailable', null];
+
+    (new QuizMyScoreHandler($api))->handle(myScoreMessage('نقاطي'));
+
+    expect($api->sentMessages)->toHaveCount(1)
+        ->and($api->sentMessages[0])->not->toHaveKey('ephemeral_message_parameters');
+
+    Bus::assertDispatched(
+        DeleteTelegramMessages::class,
+        fn (DeleteTelegramMessages $job): bool => $job->messageIds === [10, 1001],
+    );
+});
+
+it('uses an ephemeral message id when replying to an ephemeral command', function () {
+    Bus::fake();
+
+    $api = new FakeTelegramApi;
+    $message = myScoreMessage('نقاطي');
+    $message = new Message(array_merge($message->getRawResponse(), [
+        'message_id' => null,
+        'ephemeral_message_id' => 77,
+    ]));
+
+    (new QuizMyScoreHandler($api))->handle($message);
+
+    $reply = json_decode($api->sentMessages[0]['reply_parameters'], true, flags: JSON_THROW_ON_ERROR);
+
+    expect($reply)->toBe(['ephemeral_message_id' => 77])
+        ->and($api->sentMessages[0])->not->toHaveKey('reply_to_message_id');
+
+    Bus::assertNotDispatched(DeleteTelegramMessages::class);
 });
 
 it('ignores unrelated messages', function () {

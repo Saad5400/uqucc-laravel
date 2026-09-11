@@ -34,6 +34,7 @@ use App\Services\Telegram\Handlers\UquccListHandler;
 use App\Services\Telegram\Handlers\UquccSearchHandler;
 use App\Services\Telegram\InviteTracker;
 use App\Services\Telegram\PageReplyComposer;
+use App\Services\Telegram\TelegramApi;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -90,7 +91,7 @@ class ProcessTelegramUpdate implements ShouldQueue
      */
     protected function makeTelegram(): Api
     {
-        return new Api(config('services.telegram.token'), false);
+        return new TelegramApi(config('services.telegram.token'), false);
     }
 
     /**

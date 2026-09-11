@@ -172,14 +172,7 @@ class UquccSearchHandler extends BaseHandler
         $page = $this->searchPage($query);
 
         if (! $page) {
-            $sentMessage = $this->telegram->sendMessage([
-                'chat_id' => $message->getChat()->getId(),
-                'text' => 'الصفحة غير موجودة',
-                'reply_to_message_id' => $this->getReplyToMessageId($message),
-            ]);
-
-            // Delete both the user message and bot response after 5 seconds
-            $this->deleteMessagesAfterDelay($message, $sentMessage);
+            $this->replyAndDelete($message, 'الصفحة غير موجودة');
 
             return;
         }
@@ -194,14 +187,7 @@ class UquccSearchHandler extends BaseHandler
         $page = $this->aggressiveSearch($query);
 
         if (! $page) {
-            $sentMessage = $this->telegram->sendMessage([
-                'chat_id' => $message->getChat()->getId(),
-                'text' => 'لم أتمكن من العثور على أي صفحة مطابقة',
-                'reply_to_message_id' => $this->getReplyToMessageId($message),
-            ]);
-
-            // Delete both the user message and bot response after 5 seconds
-            $this->deleteMessagesAfterDelay($message, $sentMessage);
+            $this->replyAndDelete($message, 'لم أتمكن من العثور على أي صفحة مطابقة');
 
             return;
         }

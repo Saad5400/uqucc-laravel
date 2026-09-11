@@ -129,12 +129,96 @@ abstract class BaseHandler
     }
 
     /**
-     * Reply to a message and auto-delete both messages after a delay.
+     * Ask Telegram to show a reply only to the member who triggered it.
+     *
+     * Ephemeral messages only exist in groups. Telegram may also reject one
+     * when the bot is not an administrator, or may fail to deliver it when
+     * the member is offline, so callers must retain a normal-message fallback.
+     *
+     * @param  array<string, mixed>  $params
+     */
+    protected function tryEphemeralReply(Message $message, array $params): bool
+    {
+        $receiverUserId = $message->getFrom()?->getId();
+
+        if (! $this->isGroupChat($message) || $receiverUserId === null) {
+            return false;
+        }
+
+        $params['chat_id'] = $message->getChat()->getId();
+        $params['ephemeral_message_parameters'] = json_encode([
+            'receiver_user_id' => $receiverUserId,
+        ], JSON_THROW_ON_ERROR);
+
+        $ephemeralMessageId = $message->getEphemeralMessageId();
+
+        if (is_int($ephemeralMessageId)) {
+            // This is an ephemeral command/reply. Referencing it gives any bot
+            // a 15-second window to answer, even when it is not a chat admin.
+            $params['reply_parameters'] = json_encode([
+                'ephemeral_message_id' => $ephemeralMessageId,
+            ], JSON_THROW_ON_ERROR);
+            unset($params['reply_to_message_id']);
+        }
+
+        try {
+            $this->telegram->sendMessage($params);
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /** Remove a visible command after its private response has been sent. */
+    protected function deleteIncomingMessageAfterDelay(Message $message, int $delaySeconds = 5): void
+    {
+        $messageId = $message->getMessageId();
+
+        // Ephemeral commands have an ephemeral_message_id instead and already
+        // remain invisible to everyone else in the group.
+        if (! is_int($messageId)) {
+            return;
+        }
+
+        DeleteTelegramMessages::dispatch((int) $message->getChat()->getId(), [$messageId])
+            ->delay(now()->addSeconds($delaySeconds));
+    }
+
+    /**
+     * Send a native ephemeral group reply, falling back to auto-deletion.
      */
     protected function replyAndDelete(Message $message, string $text, ?string $parseMode = null, int $delaySeconds = 5): void
     {
+        $params = ['text' => $text];
+
+        if ($parseMode) {
+            $params['parse_mode'] = $parseMode;
+        }
+
+        if ($this->tryEphemeralReply($message, $params)) {
+            $this->deleteIncomingMessageAfterDelay($message, $delaySeconds);
+
+            return;
+        }
+
         $response = $this->reply($message, $text, $parseMode);
         $this->deleteMessagesAfterDelay($message, $response, $delaySeconds);
+    }
+
+    /**
+     * Keep a requester-specific group notice private without changing the
+     * normal persistent behavior of the same command in a private chat.
+     */
+    protected function replyEphemeralInGroup(Message $message, string $text, ?string $parseMode = null, int $delaySeconds = 15): void
+    {
+        if ($this->isGroupChat($message)) {
+            $this->replyAndDelete($message, $text, $parseMode, $delaySeconds);
+
+            return;
+        }
+
+        $this->reply($message, $text, $parseMode);
     }
 
     /**

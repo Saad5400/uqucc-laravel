@@ -4,6 +4,7 @@ use App\Models\BotCommandStat;
 use App\Models\TelegramChatSetting;
 use App\Services\Telegram\Handlers\AiToggleHandler;
 use App\Settings\AiSettings;
+use Illuminate\Support\Facades\Bus;
 use Telegram\Bot\Objects\Message;
 use Tests\Fakes\FakeTelegramApi;
 
@@ -65,13 +66,17 @@ it('lets a telegram-side group admin enable the assistant', function () {
 });
 
 it('refuses the toggle for non-admin group members', function (string $command) {
+    Bus::fake();
+
     $api = new FakeTelegramApi;
     $api->chatMemberStatuses[501] = 'member';
 
     (new AiToggleHandler($api))->handle(groupToggleMessage($command));
 
     expect(TelegramChatSetting::query()->count())->toBe(0)
-        ->and($api->sentMessages[0]['text'])->toContain('لمشرفي المجموعة فقط');
+        ->and($api->sentMessages[0]['text'])->toContain('لمشرفي المجموعة فقط')
+        ->and(json_decode($api->sentMessages[0]['ephemeral_message_parameters'], true, flags: JSON_THROW_ON_ERROR))
+        ->toBe(['receiver_user_id' => 501]);
 })->with(['/ai_on', '/ai_off', '/ai_new']);
 
 it('matches the command with the bot username suffix', function () {

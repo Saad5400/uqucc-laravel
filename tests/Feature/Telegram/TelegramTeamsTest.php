@@ -82,7 +82,9 @@ describe('help', function () {
         expect($fake->allTexts()[0])->toContain('👥 الفرق (في المجموعات):')
             ->and($fake->allTexts()[0])->toContain('منشن فريق')
             ->and($fake->allTexts()[0])->toContain('🛡️ إدارة الفرق (لمشرفي المجموعة):')
-            ->and($fake->allTexts()[0])->toContain('حذف تصنيف');
+            ->and($fake->allTexts()[0])->toContain('حذف تصنيف')
+            ->and(json_decode($fake->sentMessages[0]['ephemeral_message_parameters'], true, flags: JSON_THROW_ON_ERROR))
+            ->toBe(['receiver_user_id' => TEAMS_ADMIN_ID]);
     });
 });
 
@@ -98,7 +100,9 @@ describe('team administration', function () {
         $fake = runTeamsUpdate(teamsGroupMessage('فريق جديد العابدية'));
 
         expect($fake->allTexts())->toContain('هذا الأمر متاح لمشرفي المجموعة فقط. 🔒')
-            ->and(TelegramTeam::query()->count())->toBe(0);
+            ->and(TelegramTeam::query()->count())->toBe(0)
+            ->and(json_decode($fake->sentMessages[0]['ephemeral_message_parameters'], true, flags: JSON_THROW_ON_ERROR))
+            ->toBe(['receiver_user_id' => TEAMS_ADMIN_ID]);
     });
 
     it('refuses team commands in a private chat', function () {
@@ -491,7 +495,9 @@ describe('listing', function () {
             'from' => ['id' => TEAMS_MEMBER_ID, 'is_bot' => false, 'first_name' => 'سارة'],
         ]));
 
-        expect($fake->allTexts()[0])->toContain('👤 فرقك: العابدية');
+        expect($fake->allTexts()[0])->toContain('👤 فرقك: العابدية')
+            ->and(json_decode($fake->sentMessages[0]['ephemeral_message_parameters'], true, flags: JSON_THROW_ON_ERROR))
+            ->toBe(['receiver_user_id' => TEAMS_MEMBER_ID]);
     });
 });
 

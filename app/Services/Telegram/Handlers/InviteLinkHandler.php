@@ -107,23 +107,30 @@ class InviteLinkHandler extends BaseHandler
                 expiresAt: $expiresAt,
             );
 
-            // Send the link privately to the user
+            $linkText = "رابط دعوة خاص لمجموعة '{$chatTitle}':\n\n{$linkUrl}\n\n⚠️ هذا الرابط يعمل لشخص واحد فقط وسينتهي بعد الاستخدام أو خلال ".self::LINK_TTL_HOURS.' ساعة';
+
+            // Keep the one-use URL on the group's timeline but visible only
+            // to its requester. This also avoids requiring the member to have
+            // opened a private chat with the bot first.
+            if ($this->tryEphemeralReply($message, ['text' => $linkText])) {
+                $this->deleteIncomingMessageAfterDelay($message);
+
+                return;
+            }
+
+            // Compatibility fallback for a bot/client that cannot use native
+            // ephemeral messages yet: deliver the link in the user's DM.
             try {
                 $this->telegram->sendMessage([
                     'chat_id' => $userId,
-                    'text' => "رابط دعوة خاص لمجموعة '{$chatTitle}':\n\n{$linkUrl}\n\n⚠️ هذا الرابط يعمل لشخص واحد فقط وسينتهي بعد الاستخدام أو خلال ".self::LINK_TTL_HOURS.' ساعة',
+                    'text' => $linkText,
                 ]);
 
-                // Confirm in group that link was sent
+                // Confirm privately on the group's timeline. On older clients
+                // or when Telegram rejects ephemeral delivery, the shared
+                // helper falls back to the former short-lived group reply.
                 $displayUsername = $user->getUsername() ? '@'.$user->getUsername() : $username;
-                $confirmationMessage = $this->telegram->sendMessage([
-                    'chat_id' => $chatId,
-                    'text' => "✅ تم إرسال رابط دعوة خاص إلى {$displayUsername} في الرسائل الخاصة",
-                    'reply_to_message_id' => $message->getMessageId(),
-                ]);
-
-                // Delete both the user message and confirmation message after 5 seconds
-                $this->deleteMessagesAfterDelay($message, $confirmationMessage);
+                $this->replyAndDelete($message, "✅ تم إرسال رابط دعوة خاص إلى {$displayUsername} في الرسائل الخاصة");
 
             } catch (TelegramSDKException $e) {
                 $errorMsg = strtolower($e->getMessage());

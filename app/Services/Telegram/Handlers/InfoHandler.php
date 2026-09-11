@@ -113,11 +113,11 @@ class InfoHandler extends BaseHandler
                 $response .= '📝 <b>النوع:</b> '.$escape($chatType)."\n";
             }
 
-            $this->replyHtml($message, $response);
+            $this->replyEphemeralInGroup($message, $response, 'HTML', 60);
         } catch (TelegramSDKException $e) {
-            $this->reply($message, '❌ حدث خطأ في الحصول على معلومات الدردشة: '.$e->getMessage());
+            $this->replyEphemeralInGroup($message, '❌ حدث خطأ في الحصول على معلومات الدردشة: '.$e->getMessage());
         } catch (\Exception $e) {
-            $this->reply($message, '❌ حدث خطأ غير متوقع: '.$e->getMessage());
+            $this->replyEphemeralInGroup($message, '❌ حدث خطأ غير متوقع: '.$e->getMessage());
         }
     }
 }

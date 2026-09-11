@@ -40,15 +40,31 @@ it('creates a one-time link that expires within 24 hours', function () {
         ->and($params['expire_date'])->toBe(now()->addHours(24)->getTimestamp());
 });
 
-it('tells the requester when the link stops working', function () {
+it('sends the invite itself as an ephemeral message to the requester', function () {
     $api = new FakeTelegramApi;
+
+    handleInviteRequest($api);
+
+    $inviteMessage = $api->sentMessages[0];
+    $ephemeral = json_decode($inviteMessage['ephemeral_message_parameters'], true, flags: JSON_THROW_ON_ERROR);
+
+    expect($inviteMessage['chat_id'])->toBe(-100123)
+        ->and($inviteMessage['text'])->toContain('https://t.me/+fake1')
+        ->and($inviteMessage['text'])->toContain('24 ساعة')
+        ->and($inviteMessage['text'])->toContain('لشخص واحد فقط')
+        ->and($ephemeral)->toBe(['receiver_user_id' => 42]);
+});
+
+it('falls back to a direct message when Telegram rejects the ephemeral invite', function () {
+    $api = new FakeTelegramApi;
+    $api->sendMessageFailures = ['Bad Request: ephemeral messages are unavailable', null];
 
     handleInviteRequest($api);
 
     $privateMessage = collect($api->sentMessages)->firstWhere('chat_id', 42);
 
-    expect($privateMessage['text'])->toContain('24 ساعة')
-        ->and($privateMessage['text'])->toContain('لشخص واحد فقط');
+    expect($privateMessage)->not->toBeNull()
+        ->and($privateMessage['text'])->toContain('https://t.me/+fake1');
 });
 
 it('records the expiry alongside the link', function () {

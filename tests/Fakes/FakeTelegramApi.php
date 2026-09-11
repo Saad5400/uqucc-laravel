@@ -2,7 +2,7 @@
 
 namespace Tests\Fakes;
 
-use Telegram\Bot\Api;
+use App\Services\Telegram\TelegramApi;
 use Telegram\Bot\Objects\BaseObject;
 use Telegram\Bot\Objects\Chat;
 use Telegram\Bot\Objects\ChatInviteLink;
@@ -16,13 +16,16 @@ use Telegram\Bot\Objects\User;
  * call instead of hitting the Bot API, and answers getChatMember/getFile from
  * canned data the test sets up.
  */
-class FakeTelegramApi extends Api
+class FakeTelegramApi extends TelegramApi
 {
     /** @var array<int, array<string, mixed>> */
     public array $sentMessages = [];
 
     /** @var array<int, array<string, mixed>> */
     public array $editedMessages = [];
+
+    /** @var array<int, array<string, mixed>> */
+    public array $editedEphemeralMessages = [];
 
     /** @var array<int, array<string, mixed>> */
     public array $sentPhotos = [];
@@ -220,6 +223,13 @@ class FakeTelegramApi extends Api
         $this->editedMessages[] = $params;
 
         return new Message(['message_id' => $params['message_id'] ?? 0, 'chat' => ['id' => $params['chat_id'] ?? 0]]);
+    }
+
+    public function editEphemeralMessageText(array $params): bool
+    {
+        $this->editedEphemeralMessages[] = $params;
+
+        return true;
     }
 
     public function answerCallbackQuery(array $params): bool

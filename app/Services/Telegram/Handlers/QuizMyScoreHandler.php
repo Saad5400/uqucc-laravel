@@ -13,11 +13,12 @@ use Telegram\Bot\Objects\Message;
  * «نقاطي» / /myscore — a member's own daily-quiz standing (weekly and
  * rolling-window rank and points, lifetime points, streak, accuracy, and
  * whether their streak freeze is ready). Both the request and the reply
- * self-delete after a short delay so personal stats don't clutter the group.
+ * are private ephemeral messages so personal stats don't clutter the group.
+ * A normal auto-deleting reply remains as a compatibility fallback.
  */
 class QuizMyScoreHandler extends BaseHandler
 {
-    /** How long the request and its reply live before being removed. */
+    /** How long a visible request or fallback reply lives before removal. */
     private const AUTODELETE_SECONDS = 30;
 
     private ?QuizLeaderboard $leaderboard = null;

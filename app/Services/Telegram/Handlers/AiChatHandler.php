@@ -233,7 +233,7 @@ class AiChatHandler extends BaseHandler
         }
 
         if ($this->budget->exceeded()) {
-            $this->reply($message, __('ai-kit::safety.budget_exceeded'));
+            $this->replyEphemeralInGroup($message, __('ai-kit::safety.budget_exceeded'));
 
             return;
         }
@@ -359,7 +359,7 @@ class AiChatHandler extends BaseHandler
     protected function notifyLimitOnce(Message $message, string $cacheKey, int $ttlSeconds, string $notice): void
     {
         if (Cache::add($cacheKey, true, $ttlSeconds)) {
-            $this->reply($message, $notice);
+            $this->replyEphemeralInGroup($message, $notice);
         }
     }
 

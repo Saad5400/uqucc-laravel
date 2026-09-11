@@ -10,7 +10,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * A Telegram user's membership in a {@see TelegramTeam}, keyed by their raw
  * Telegram user id in the {@see QuizPlayer} style (members are almost never
  * panel users). Every row records the consent that created it: the member's
- * own «انضم» message id and time, and which group admin approved it.
+ * own «انضم» message or ephemeral picker id and time, and which group
+ * admin approved it (or their own id for self-service picker joins).
  */
 class TelegramTeamMember extends Model
 {

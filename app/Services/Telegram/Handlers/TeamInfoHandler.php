@@ -143,14 +143,14 @@ class TeamInfoHandler extends BaseTeamHandler
             ->get();
 
         if ($memberships->isEmpty()) {
-            $this->reply($message, "لست في أي فريق بعد.\nأرسل «انضم» واختر فرقك من الأزرار — ضغطة واحدة لكل فريق.");
+            $this->replyAndDelete($message, "لست في أي فريق بعد.\nأرسل «انضم» واختر فرقك من الأزرار — ضغطة واحدة لكل فريق.", delaySeconds: 30);
 
             return;
         }
 
         $names = $memberships->map(fn (TelegramTeamMember $member): string => $member->team->name)->sort();
 
-        $this->replyHtml($message, '👤 فرقك: '.$this->joinNames($names));
+        $this->replyAndDelete($message, '👤 فرقك: '.$this->joinNames($names), 'HTML', 30);
     }
 
     /**

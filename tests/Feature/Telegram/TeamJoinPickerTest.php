@@ -34,7 +34,7 @@ const PICKER_MEMBER_ID = 222;
 
 const PICKER_OTHER_ID = 333;
 
-const PICKER_MESSAGE_ID = 555;
+const PICKER_EPHEMERAL_MESSAGE_ID = 555;
 
 beforeEach(fn () => Bus::fake());
 
@@ -64,16 +64,20 @@ function pickerCommand(string $text = 'انضم', array $overrides = []): array
     ];
 }
 
-/** A press on one of the picker's buttons, by default from its owner. */
-function pickerPress(string $action, int $ownerId = PICKER_MEMBER_ID, int $presserId = PICKER_MEMBER_ID): array
+/** A press on one of the ephemeral picker's buttons, by default from its owner. */
+function pickerPress(string $action, int $ownerId = PICKER_MEMBER_ID, int $presserId = PICKER_MEMBER_ID, bool $ephemeral = true): array
 {
+    $messageIdentifier = $ephemeral
+        ? ['ephemeral_message_id' => PICKER_EPHEMERAL_MESSAGE_ID]
+        : ['message_id' => PICKER_EPHEMERAL_MESSAGE_ID];
+
     return [
         'update_id' => random_int(1_000, 9_999_999),
         'callback_query' => [
             'id' => 'cb'.random_int(1, 9_999),
             'from' => ['id' => $presserId, 'is_bot' => false, 'first_name' => 'سارة', 'username' => 'sara'],
             'message' => [
-                'message_id' => PICKER_MESSAGE_ID,
+                ...$messageIdentifier,
                 'chat' => ['id' => PICKER_CHAT_ID, 'type' => 'supergroup'],
             ],
             'data' => TeamJoinPickerHandler::CALLBACK_PREFIX.$ownerId.':'.$action,
@@ -98,7 +102,7 @@ function pickerCategory(string $name): TelegramTeamCategory
 /** The keyboard of the last thing the bot sent or edited, as JSON. */
 function pickerKeyboard(FakeTelegramApi $fake): string
 {
-    $calls = array_merge($fake->sentMessages, $fake->editedMessages);
+    $calls = array_merge($fake->sentMessages, $fake->editedMessages, $fake->editedEphemeralMessages);
 
     return (string) json_encode(end($calls)['reply_markup'] ?? null, JSON_UNESCAPED_UNICODE);
 }
@@ -115,7 +119,9 @@ describe('opening the picker', function () {
 
         expect($fake->sentMessages)->toHaveCount(1)
             ->and($fake->sentMessages[0]['text'])->toContain('اختر فرقك يا سارة')
-            ->toContain('فرقك الآن: لا شيء بعد.');
+            ->toContain('فرقك الآن: لا شيء بعد.')
+            ->and(json_decode($fake->sentMessages[0]['ephemeral_message_parameters'], true, flags: JSON_THROW_ON_ERROR))
+            ->toBe(['receiver_user_id' => PICKER_MEMBER_ID]);
 
         $keyboard = pickerKeyboard($fake);
 
@@ -176,14 +182,30 @@ describe('opening the picker', function () {
             ->and($fake->sentMessages[0])->not->toHaveKey('reply_markup');
     });
 
-    it('schedules the picker and the command that opened it for cleanup', function () {
+    it('only schedules the visible command for cleanup after opening an ephemeral picker', function () {
         pickerTeam('العابدية');
 
         runPickerUpdate(pickerCommand());
 
         Bus::assertDispatched(
             DeleteTelegramMessages::class,
-            fn (DeleteTelegramMessages $job): bool => $job->chatId === PICKER_CHAT_ID && in_array(42, $job->messageIds, true),
+            fn (DeleteTelegramMessages $job): bool => $job->chatId === PICKER_CHAT_ID && $job->messageIds === [42],
+        );
+    });
+
+    it('falls back to the legacy visible picker and cleanup when ephemeral delivery fails', function () {
+        pickerTeam('العابدية');
+
+        $fake = new FakeTelegramApi;
+        $fake->sendMessageFailures = ['Bad Request: ephemeral messages are unavailable', null];
+        (new PickerRecordingProcessTelegramUpdate(pickerCommand(), $fake))->handle();
+
+        expect($fake->sentMessages)->toHaveCount(1)
+            ->and($fake->sentMessages[0])->not->toHaveKey('ephemeral_message_parameters');
+
+        Bus::assertDispatched(
+            DeleteTelegramMessages::class,
+            fn (DeleteTelegramMessages $job): bool => $job->messageIds === [42, 1001],
         );
     });
 });
@@ -197,11 +219,23 @@ describe('pressing the buttons', function () {
 
         $fake = runPickerUpdate(pickerPress('c:'.$branch->id));
 
-        expect($fake->editedMessages)->toHaveCount(1)
-            ->and($fake->editedMessages[0]['message_id'])->toBe(PICKER_MESSAGE_ID)
+        expect($fake->editedEphemeralMessages)->toHaveCount(1)
+            ->and($fake->editedEphemeralMessages[0]['ephemeral_message_id'])->toBe(PICKER_EPHEMERAL_MESSAGE_ID)
+            ->and($fake->editedEphemeralMessages[0]['receiver_user_id'])->toBe(PICKER_MEMBER_ID)
             ->and(pickerKeyboard($fake))->toContain('العابدية')
             ->toContain(':menu')
             ->not->toContain('علوم الحاسب');
+    });
+
+    it('continues editing a legacy visible picker after an ephemeral fallback', function () {
+        $branch = pickerCategory('الفرع');
+        pickerTeam('العابدية', $branch);
+
+        $fake = runPickerUpdate(pickerPress('c:'.$branch->id, ephemeral: false));
+
+        expect($fake->editedMessages)->toHaveCount(1)
+            ->and($fake->editedEphemeralMessages)->toBeEmpty()
+            ->and($fake->editedMessages[0]['message_id'])->toBe(PICKER_EPHEMERAL_MESSAGE_ID);
     });
 
     it('walks back to the menu and on into another category', function () {
@@ -230,7 +264,7 @@ describe('pressing the buttons', function () {
         $joined = runPickerUpdate(pickerPress('t:'.$cs->id));
 
         expect(TelegramTeamMember::query()->where('telegram_user_id', PICKER_MEMBER_ID)->count())->toBe(2)
-            ->and($joined->editedMessages[0]['text'])->toContain('فرقك الآن: العابدية • علوم الحاسب')
+            ->and($joined->editedEphemeralMessages[0]['text'])->toContain('فرقك الآن: العابدية • علوم الحاسب')
             // The toggle leaves the member where they were choosing, with the
             // way back still under the list.
             ->and(pickerKeyboard($joined))->toContain('✅ علوم الحاسب')
@@ -250,7 +284,7 @@ describe('pressing the buttons', function () {
             ->and($member->username)->toBe('sara')
             // The press is the consent, and it is the member's own.
             ->and($member->added_by_telegram_id)->toBe(PICKER_MEMBER_ID)
-            ->and($member->consent_message_id)->toBe(PICKER_MESSAGE_ID)
+            ->and($member->consent_message_id)->toBe(PICKER_EPHEMERAL_MESSAGE_ID)
             ->and($fake->answeredCallbacks[0]['text'])->toContain('انضممت إلى «العابدية»')
             ->and(pickerKeyboard($fake))->toContain('✅ العابدية');
     });
@@ -307,7 +341,8 @@ describe('pressing the buttons', function () {
         expect(TelegramTeamMember::query()->count())->toBe(0)
             ->and($fake->answeredCallbacks[0]['text'])->toContain('أرسل «انضم» لتفتح قائمتك أنت')
             ->and($fake->answeredCallbacks[0]['show_alert'])->toBeTrue()
-            ->and($fake->editedMessages)->toBeEmpty();
+            ->and($fake->editedMessages)->toBeEmpty()
+            ->and($fake->editedEphemeralMessages)->toBeEmpty();
     });
 
     it('closes into a plain summary that cannot be pressed again', function () {
@@ -316,8 +351,8 @@ describe('pressing the buttons', function () {
 
         $fake = runPickerUpdate(pickerPress('done'));
 
-        expect($fake->editedMessages[0]['text'])->toContain('فرقك: العابدية')
-            ->and($fake->editedMessages[0])->not->toHaveKey('reply_markup');
+        expect($fake->editedEphemeralMessages[0]['text'])->toContain('فرقك: العابدية')
+            ->and($fake->editedEphemeralMessages[0])->not->toHaveKey('reply_markup');
     });
 
     it('survives a team deleted while the picker was open', function () {

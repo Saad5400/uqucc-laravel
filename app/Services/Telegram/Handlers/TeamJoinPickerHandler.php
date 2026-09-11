@@ -50,7 +50,7 @@ class TeamJoinPickerHandler extends BaseTeamHandler
     /** Buttons one view will show before falling back to the typed command. */
     private const MAX_BUTTONS = 40;
 
-    /** How long the picker and the message that opened it stay in the group. */
+    /** How long the legacy visible picker stays when ephemeral delivery fails. */
     private const PICKER_TTL_SECONDS = 300;
 
     public function handle(Message $message): void
@@ -70,7 +70,7 @@ class TeamJoinPickerHandler extends BaseTeamHandler
         $chatId = (int) $message->getChat()->getId();
 
         if (! TelegramTeam::query()->where('chat_id', $chatId)->exists()) {
-            $this->reply($message, "لا توجد فرق في هذه المجموعة بعد.\nينشئها مشرفو المجموعة بالأمر: فريق جديد اسم الفريق");
+            $this->replyAndDelete($message, "لا توجد فرق في هذه المجموعة بعد.\nينشئها مشرفو المجموعة بالأمر: فريق جديد اسم الفريق");
 
             return;
         }
@@ -78,13 +78,21 @@ class TeamJoinPickerHandler extends BaseTeamHandler
         $userId = (int) $message->getFrom()->getId();
         $view = $this->openingView($chatId);
 
-        $picker = $this->telegram->sendMessage([
+        $params = [
             'chat_id' => $chatId,
             'text' => $this->pickerText($message->getFrom()->getFirstName(), $chatId, $userId, $view),
             'parse_mode' => 'HTML',
             'reply_to_message_id' => $message->getMessageId(),
             'reply_markup' => $this->keyboard($chatId, $userId, $view),
-        ]);
+        ];
+
+        if ($this->tryEphemeralReply($message, $params)) {
+            $this->deleteIncomingMessageAfterDelay($message);
+
+            return;
+        }
+
+        $picker = $this->telegram->sendMessage($params);
 
         DeleteTelegramMessages::dispatch($chatId, [
             $message->getMessageId(),
@@ -192,8 +200,10 @@ class TeamJoinPickerHandler extends BaseTeamHandler
             'first_name' => $from->getFirstName(),
             'username' => $from->getUsername(),
             // A self-service join has no «انضم» message behind it: the press
-            // itself is the consent, so the picker carries the record.
-            'consent_message_id' => (int) $callback->getMessage()->getMessageId(),
+            // itself is the consent, so its normal or ephemeral picker id
+            // carries the record.
+            'consent_message_id' => (int) ($callback->getMessage()->getEphemeralMessageId()
+                ?? $callback->getMessage()->getMessageId()),
             'consented_at' => now(),
             'added_by_telegram_id' => $userId,
         ]);
@@ -209,9 +219,8 @@ class TeamJoinPickerHandler extends BaseTeamHandler
     {
         $teams = $this->teamNamesOf($chatId, $userId);
 
-        $this->telegram->editMessageText([
+        $this->editPickerMessage($callback, $userId, [
             'chat_id' => $chatId,
-            'message_id' => $callback->getMessage()->getMessageId(),
             'text' => $teams === []
                 ? 'لم تنضم إلى أي فريق. أرسل «انضم» متى ما أردت.'
                 : '👥 فرقك: '.$this->joinNames($teams),
@@ -230,9 +239,8 @@ class TeamJoinPickerHandler extends BaseTeamHandler
     private function redraw(CallbackQuery $callback, int $chatId, int $userId, int $view): void
     {
         try {
-            $this->telegram->editMessageText([
+            $this->editPickerMessage($callback, $userId, [
                 'chat_id' => $chatId,
-                'message_id' => $callback->getMessage()->getMessageId(),
                 'text' => $this->pickerText($callback->getFrom()->getFirstName(), $chatId, $userId, $view),
                 'parse_mode' => 'HTML',
                 'reply_markup' => $this->keyboard($chatId, $userId, $view),
@@ -240,6 +248,32 @@ class TeamJoinPickerHandler extends BaseTeamHandler
         } catch (\Exception) {
             // Nothing to redraw, or the picker is gone; the press still counted.
         }
+    }
+
+    /**
+     * Edit either kind of picker through the matching Bot API endpoint.
+     *
+     * @param  array<string, mixed>  $params
+     */
+    private function editPickerMessage(CallbackQuery $callback, int $userId, array $params): void
+    {
+        $message = $callback->getMessage();
+        $ephemeralMessageId = $message->getEphemeralMessageId();
+
+        if (is_int($ephemeralMessageId)) {
+            $this->telegram->editEphemeralMessageText([
+                ...$params,
+                'receiver_user_id' => $userId,
+                'ephemeral_message_id' => $ephemeralMessageId,
+            ]);
+
+            return;
+        }
+
+        $this->telegram->editMessageText([
+            ...$params,
+            'message_id' => $message->getMessageId(),
+        ]);
     }
 
     /**

@@ -42,7 +42,7 @@ class TeamAdminHandler extends BaseTeamHandler
         $this->trackCommand($message, $route['command']);
 
         if (! $this->isGroupAdmin($message)) {
-            $this->reply($message, self::ADMIN_ONLY_MESSAGE);
+            $this->replyAndDelete($message, self::ADMIN_ONLY_MESSAGE);
 
             return;
         }
@@ -163,7 +163,7 @@ class TeamAdminHandler extends BaseTeamHandler
         $team = TelegramTeam::findByName($chatId, $teamName);
 
         if ($team === null) {
-            $this->reply($message, "لا يوجد فريق باسم «{$teamName}». اعرض الفرق بالأمر: الفرق");
+            $this->replyAndDelete($message, "لا يوجد فريق باسم «{$teamName}». اعرض الفرق بالأمر: الفرق");
 
             return;
         }
@@ -171,7 +171,7 @@ class TeamAdminHandler extends BaseTeamHandler
         $names = $this->parseNameList($rawAliases);
 
         if ($names === []) {
-            $this->reply($message, "حدد الاختصار: اختصار {$team->name}: cs");
+            $this->replyAndDelete($message, "حدد الاختصار: اختصار {$team->name}: cs");
 
             return;
         }
@@ -216,7 +216,11 @@ class TeamAdminHandler extends BaseTeamHandler
             $lines[] = '⚠️ طويلة (الحد '.self::MAX_NAME_LENGTH.' حرفًا): '.$this->joinNames($tooLong);
         }
 
-        $this->replyHtml($message, implode("\n", $lines));
+        if ($added === []) {
+            $this->replyAndDelete($message, implode("\n", $lines), 'HTML');
+        } else {
+            $this->replyHtml($message, implode("\n", $lines));
+        }
     }
 
     /**
@@ -256,7 +260,11 @@ class TeamAdminHandler extends BaseTeamHandler
             $lines[] = '⚠️ لا يوجد اختصار بهذا الاسم: '.$this->joinNames($missing);
         }
 
-        $this->replyHtml($message, implode("\n", $lines));
+        if ($removed === []) {
+            $this->replyAndDelete($message, implode("\n", $lines), 'HTML');
+        } else {
+            $this->replyHtml($message, implode("\n", $lines));
+        }
     }
 
     protected function createTeam(Message $message, string $name, ?string $categoryName): void
@@ -264,19 +272,19 @@ class TeamAdminHandler extends BaseTeamHandler
         $chatId = (int) $message->getChat()->getId();
 
         if (mb_strlen($name) > self::MAX_NAME_LENGTH) {
-            $this->reply($message, 'اسم الفريق طويل — الحد الأقصى '.self::MAX_NAME_LENGTH.' حرفًا.');
+            $this->replyAndDelete($message, 'اسم الفريق طويل — الحد الأقصى '.self::MAX_NAME_LENGTH.' حرفًا.');
 
             return;
         }
 
         if (TelegramTeam::nameIsTaken($chatId, $name)) {
-            $this->reply($message, "الاسم «{$name}» مستخدم بالفعل في هذه المجموعة (كفريق أو كاختصار).");
+            $this->replyAndDelete($message, "الاسم «{$name}» مستخدم بالفعل في هذه المجموعة (كفريق أو كاختصار).");
 
             return;
         }
 
         if (TelegramTeam::query()->where('chat_id', $chatId)->count() >= self::MAX_TEAMS_PER_CHAT) {
-            $this->reply($message, 'وصلت المجموعة للحد الأقصى من الفرق ('.self::MAX_TEAMS_PER_CHAT.'). احذف فريقًا قديمًا أولًا.');
+            $this->replyAndDelete($message, 'وصلت المجموعة للحد الأقصى من الفرق ('.self::MAX_TEAMS_PER_CHAT.'). احذف فريقًا قديمًا أولًا.');
 
             return;
         }
@@ -287,7 +295,7 @@ class TeamAdminHandler extends BaseTeamHandler
             $category = TelegramTeamCategory::findByName($chatId, $categoryName);
 
             if ($category === null) {
-                $this->reply($message, "تصنيف «{$categoryName}» غير موجود. أنشئه أولًا بالأمر: تصنيف جديد {$categoryName}");
+                $this->replyAndDelete($message, "تصنيف «{$categoryName}» غير موجود. أنشئه أولًا بالأمر: تصنيف جديد {$categoryName}");
 
                 return;
             }
@@ -311,7 +319,7 @@ class TeamAdminHandler extends BaseTeamHandler
         $team = TelegramTeam::findByName($chatId, $name);
 
         if ($team === null) {
-            $this->reply($message, "لا يوجد فريق باسم «{$name}». اعرض الفرق بالأمر: الفرق");
+            $this->replyAndDelete($message, "لا يوجد فريق باسم «{$name}». اعرض الفرق بالأمر: الفرق");
 
             return;
         }
@@ -344,19 +352,19 @@ class TeamAdminHandler extends BaseTeamHandler
         $chatId = (int) $message->getChat()->getId();
 
         if (mb_strlen($name) > self::MAX_NAME_LENGTH) {
-            $this->reply($message, 'اسم التصنيف طويل — الحد الأقصى '.self::MAX_NAME_LENGTH.' حرفًا.');
+            $this->replyAndDelete($message, 'اسم التصنيف طويل — الحد الأقصى '.self::MAX_NAME_LENGTH.' حرفًا.');
 
             return;
         }
 
         if (TelegramTeamCategory::findByName($chatId, $name) !== null) {
-            $this->reply($message, "تصنيف «{$name}» موجود بالفعل.");
+            $this->replyAndDelete($message, "تصنيف «{$name}» موجود بالفعل.");
 
             return;
         }
 
         if (TelegramTeamCategory::query()->where('chat_id', $chatId)->count() >= self::MAX_CATEGORIES_PER_CHAT) {
-            $this->reply($message, 'وصلت المجموعة للحد الأقصى من التصنيفات ('.self::MAX_CATEGORIES_PER_CHAT.').');
+            $this->replyAndDelete($message, 'وصلت المجموعة للحد الأقصى من التصنيفات ('.self::MAX_CATEGORIES_PER_CHAT.').');
 
             return;
         }
@@ -375,7 +383,7 @@ class TeamAdminHandler extends BaseTeamHandler
         $category = TelegramTeamCategory::findByName($chatId, $name);
 
         if ($category === null) {
-            $this->reply($message, "لا يوجد تصنيف باسم «{$name}».");
+            $this->replyAndDelete($message, "لا يوجد تصنيف باسم «{$name}».");
 
             return;
         }
@@ -394,7 +402,7 @@ class TeamAdminHandler extends BaseTeamHandler
         $team = TelegramTeam::findByName($chatId, $teamName);
 
         if ($team === null) {
-            $this->reply($message, "لا يوجد فريق باسم «{$teamName}». اعرض الفرق بالأمر: الفرق");
+            $this->replyAndDelete($message, "لا يوجد فريق باسم «{$teamName}». اعرض الفرق بالأمر: الفرق");
 
             return;
         }
@@ -402,7 +410,7 @@ class TeamAdminHandler extends BaseTeamHandler
         $category = TelegramTeamCategory::findByName($chatId, $categoryName);
 
         if ($category === null) {
-            $this->reply($message, "تصنيف «{$categoryName}» غير موجود. أنشئه أولًا بالأمر: تصنيف جديد {$categoryName}");
+            $this->replyAndDelete($message, "تصنيف «{$categoryName}» غير موجود. أنشئه أولًا بالأمر: تصنيف جديد {$categoryName}");
 
             return;
         }

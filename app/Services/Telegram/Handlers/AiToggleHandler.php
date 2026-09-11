@@ -33,7 +33,7 @@ class AiToggleHandler extends BaseHandler
         $this->trackCommand($message, '/'.$command);
 
         if (! $this->userMayToggle($message, $chatType)) {
-            $this->reply($message, 'هذا الأمر متاح لمشرفي المجموعة فقط. 🔒');
+            $this->replyEphemeralInGroup($message, 'هذا الأمر متاح لمشرفي المجموعة فقط. 🔒');
 
             return;
         }
@@ -100,7 +100,7 @@ class AiToggleHandler extends BaseHandler
         $settings = TelegramChatSetting::forChat($message->getChat()->getId());
 
         if ($settings === null || ! $settings->ai_enabled) {
-            $this->reply($message, 'المساعد الذكي غير مفعل في هذه المحادثة. فعّله أولاً بالأمر /ai_on');
+            $this->replyEphemeralInGroup($message, 'المساعد الذكي غير مفعل في هذه المحادثة. فعّله أولاً بالأمر /ai_on');
 
             return;
         }

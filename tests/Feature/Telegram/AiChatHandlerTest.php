@@ -15,6 +15,7 @@ use App\Models\TelegramChatSetting;
 use App\Services\Telegram\Handlers\AiChatHandler;
 use App\Settings\AiSettings;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -456,23 +457,28 @@ it('enforces the per-chat daily quota with a single arabic notice', function () 
 });
 
 it('enforces the burst limit per chat with a single notice', function () {
+    Bus::fake();
+
     StudentAssistant::fake(fn () => 'رد.');
 
-    activatedChat();
+    activatedChat(-100777);
 
     $api = new FakeTelegramApi;
 
     foreach (range(1, 5) as $i) {
-        aiChatHandler($api)->handle(aiChatMessage(['text' => "سيك سؤال {$i}"]));
+        aiChatHandler($api)->handle(groupAiChatMessage(['text' => "سيك سؤال {$i}"]));
     }
 
-    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك السادسة']));
-    aiChatHandler($api)->handle(aiChatMessage(['text' => 'سيك السابعة']));
+    aiChatHandler($api)->handle(groupAiChatMessage(['text' => 'سيك السادسة']));
+    aiChatHandler($api)->handle(groupAiChatMessage(['text' => 'سيك السابعة']));
 
     $notices = array_filter($api->allTexts(), fn (string $text) => str_contains($text, 'انتظر دقيقة'));
+    $notice = collect($api->sentMessages)->first(fn (array $params): bool => str_contains($params['text'], 'انتظر دقيقة'));
 
     expect($notices)->toHaveCount(1)
-        ->and(UsageEvent::query()->where('feature', 'telegram')->count())->toBe(5);
+        ->and(UsageEvent::query()->where('feature', 'telegram')->count())->toBe(5)
+        ->and(json_decode($notice['ephemeral_message_parameters'], true, flags: JSON_THROW_ON_ERROR))
+        ->toBe(['receiver_user_id' => 501]);
 });
 
 it('refuses politely without calling the model once the daily budget is spent', function () {
@@ -489,6 +495,26 @@ it('refuses politely without calling the model once the daily budget is spent', 
     StudentAssistant::assertNeverPrompted();
 
     expect($api->sentMessages[0]['text'])->toContain(__('ai-kit::safety.budget_exceeded'));
+});
+
+it('keeps a group budget warning visible only to the requester', function () {
+    Bus::fake();
+
+    StudentAssistant::fake(['يجب ألا يظهر هذا الرد.']);
+
+    app(BudgetGuard::class)->record(6.0);
+    activatedChat(-100777);
+
+    $api = new FakeTelegramApi;
+
+    aiChatHandler($api)->handle(groupAiChatMessage());
+
+    $ephemeral = json_decode($api->sentMessages[0]['ephemeral_message_parameters'], true, flags: JSON_THROW_ON_ERROR);
+
+    StudentAssistant::assertNeverPrompted();
+
+    expect($api->sentMessages[0]['text'])->toContain(__('ai-kit::safety.budget_exceeded'))
+        ->and($ephemeral)->toBe(['receiver_user_id' => 501]);
 });
 
 it('chunks replies longer than the telegram message limit', function () {

@@ -126,7 +126,7 @@ class TeamMembershipHandler extends BaseTeamHandler
             // Only the bare «أضف» earns a hint; «أضف …» with arguments may be
             // another handler's command used as a reply.
             if ($subsetRaw === null) {
-                $this->reply($message, 'للموافقة، رد بكلمة «أضف» على رسالة «انضم …» المرسلة من العضو نفسه.');
+                $this->replyAndDelete($message, 'للموافقة، رد بكلمة «أضف» على رسالة «انضم …» المرسلة من العضو نفسه.');
             }
 
             return;
@@ -135,7 +135,7 @@ class TeamMembershipHandler extends BaseTeamHandler
         $this->trackCommand($message, 'team_approve');
 
         if (! $this->isGroupAdmin($message)) {
-            $this->reply($message, self::ADMIN_ONLY_MESSAGE);
+            $this->replyAndDelete($message, self::ADMIN_ONLY_MESSAGE);
 
             return;
         }
@@ -143,7 +143,7 @@ class TeamMembershipHandler extends BaseTeamHandler
         $consentDate = (int) $consent->getDate();
 
         if ($consentDate < now()->subHours(self::CONSENT_MAX_AGE_HOURS)->getTimestamp()) {
-            $this->reply($message, '⌛ انتهت صلاحية رسالة الموافقة (أقدم من '.self::CONSENT_MAX_AGE_HOURS." ساعة).\nاطلب من العضو إرسال «انضم …» من جديد.");
+            $this->replyAndDelete($message, '⌛ انتهت صلاحية رسالة الموافقة (أقدم من '.self::CONSENT_MAX_AGE_HOURS." ساعة).\nاطلب من العضو إرسال «انضم …» من جديد.");
 
             return;
         }
@@ -156,7 +156,7 @@ class TeamMembershipHandler extends BaseTeamHandler
             $outsideConsent = array_values(array_diff($requested, $consentNames));
 
             if ($outsideConsent !== []) {
-                $this->replyHtml($message, 'هذه الفرق ليست في رسالة الموافقة: '.$this->joinNames($outsideConsent)."\nلا يمكن إضافة العضو إلا لما طلبه بنفسه.");
+                $this->replyAndDelete($message, 'هذه الفرق ليست في رسالة الموافقة: '.$this->joinNames($outsideConsent)."\nلا يمكن إضافة العضو إلا لما طلبه بنفسه.", 'HTML');
 
                 return;
             }
@@ -169,7 +169,7 @@ class TeamMembershipHandler extends BaseTeamHandler
         [$teams, $missing] = $this->resolveTeams($chatId, $approvedNames);
 
         if ($teams->isEmpty()) {
-            $this->replyHtml($message, 'الفرق المطلوبة لم تعد موجودة: '.$this->joinNames($missing));
+            $this->replyAndDelete($message, 'الفرق المطلوبة لم تعد موجودة: '.$this->joinNames($missing), 'HTML');
 
             return;
         }
@@ -333,19 +333,19 @@ class TeamMembershipHandler extends BaseTeamHandler
         $target = $message->getReplyToMessage()?->getFrom();
 
         if ($target === null) {
-            $this->reply($message, 'استخدم هذا الأمر بالرد على رسالة من العضو المراد إزالته.');
+            $this->replyAndDelete($message, 'استخدم هذا الأمر بالرد على رسالة من العضو المراد إزالته.');
 
             return;
         }
 
         if (! $this->isGroupAdmin($message)) {
-            $this->reply($message, self::ADMIN_ONLY_MESSAGE);
+            $this->replyAndDelete($message, self::ADMIN_ONLY_MESSAGE);
 
             return;
         }
 
         if ($target->getIsBot()) {
-            $this->reply($message, 'هذه رسالة بوت — رد على رسالة العضو نفسه.');
+            $this->replyAndDelete($message, 'هذه رسالة بوت — رد على رسالة العضو نفسه.');
 
             return;
         }
@@ -360,7 +360,7 @@ class TeamMembershipHandler extends BaseTeamHandler
             ->get();
 
         if ($memberships->isEmpty()) {
-            $this->reply($message, 'هذا العضو ليس في أي فريق.');
+            $this->replyAndDelete($message, 'هذا العضو ليس في أي فريق.');
 
             return;
         }
