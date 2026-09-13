@@ -38,9 +38,9 @@ describe('model resolution', function () {
 
         $models = app(ModelRegistry::class);
 
-        expect($models->chat())->toBe('deepseek/deepseek-v4-flash')
+        expect($models->chat())->toBe('deepseek/deepseek-v4-flash-0731')
             ->and($models->chatReasoningEffort())->toBe('medium')
-            ->and($models->vision())->toBe('google/gemini-2.5-flash-lite');
+            ->and($models->vision())->toBe('google/gemini-3.1-flash-lite');
     });
 
     it('lets this app override the fleet default through its own config', function () {
@@ -56,7 +56,7 @@ describe('model resolution', function () {
     it('treats a blank config value as inherit, never as a nameless model', function () {
         config()->set('ai.chat.model', '   ');
 
-        expect(app(ModelRegistry::class)->chat())->toBe('deepseek/deepseek-v4-flash');
+        expect(app(ModelRegistry::class)->chat())->toBe('deepseek/deepseek-v4-flash-0731');
     });
 
     it('keeps chat and vision on different models, because the chat model cannot see', function () {
@@ -154,8 +154,8 @@ describe('manage settings AI card', function () {
             ->assertInertia(fn (Assert $page) => $page
                 ->component('manage/settings/Index')
                 ->where('ai.ai_enabled', false)
-                ->where('models.chat', 'deepseek/deepseek-v4-flash')
-                ->where('models.vision', 'google/gemini-2.5-flash-lite')
+                ->where('models.chat', 'deepseek/deepseek-v4-flash-0731')
+                ->where('models.vision', 'google/gemini-3.1-flash-lite')
                 ->where('ai.daily_budget_usd', 5)
                 ->where('ai.per_session_rate_limit', 20)
                 ->where('ai.per_conversation_rate_limit', 30)

@@ -21,7 +21,7 @@ function finalStepBody(bool $isFinalStep, array $tools): array
     return $method->invoke(
         $gateway,
         $provider,
-        'deepseek/deepseek-v4-flash',
+        'deepseek/deepseek-v4-flash-0731',
         'التعليمات',
         [new UserMessage('ايش المادة العشرون؟')],
         $tools,
