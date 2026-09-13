@@ -35,9 +35,9 @@ it('inherits the chat and vision models from the kit instead of pinning its own'
     // slug to drift.
     expect(config('ai.chat.model'))->toBeNull()
         ->and(config('ai.vision.model'))->toBeNull()
-        ->and(config('ai-kit.chat.model'))->toBe('deepseek/deepseek-v4-flash')
-        ->and(app(Catalog::class)->chatModel())->toBe('deepseek/deepseek-v4-flash')
-        ->and(app(Catalog::class)->visionModel())->toBe('google/gemini-2.5-flash-lite');
+        ->and(config('ai-kit.chat.model'))->toBe('deepseek/deepseek-v4-flash-0731')
+        ->and(app(Catalog::class)->chatModel())->toBe('deepseek/deepseek-v4-flash-0731')
+        ->and(app(Catalog::class)->visionModel())->toBe('google/gemini-3.1-flash-lite');
 });
 
 it('turns an empty or invalid OpenRouter body into a clean AiException, not a TypeError', function () {

@@ -96,10 +96,20 @@ return [
     | analysis. Deliberately a stronger reasoning model than chat: these are
     | rare, admin-triggered, review-gated calls where quality beats latency.
     |
+    | `model` is EMPTY so the fleet's shared `authoring` lane applies (ai-kit
+    | docs/DECISIONS.md #28a). That lane is pinned to the model this app had
+    | already picked privately — `deepseek/deepseek-v4-pro-0813` — so nothing
+    | changes here; what changes is that s-grade's report-narrative drafter now
+    | resolves to the same model instead of a Gemini of its own. Set
+    | AI_AUTHORING_MODEL to override for this app only.
+    |
+    | `reasoning_effort` stays app-level at 'high': it is a per-SURFACE call
+    | (this app's authoring is review-gated and unhurried), not a fleet one.
+    |
     */
 
     'authoring' => [
-        'model' => env('AI_AUTHORING_MODEL', 'deepseek/deepseek-v4-pro-0813'),
+        'model' => env('AI_AUTHORING_MODEL'),
         'reasoning_effort' => env('AI_AUTHORING_REASONING_EFFORT', 'high'),
         'timeout' => (int) env('AI_AUTHORING_TIMEOUT', 180),
     ],
@@ -132,9 +142,14 @@ return [
     | Separate from chat by necessity, not preference: the fleet's chat model
     | is TEXT-ONLY on OpenRouter, so an image routed at it fails outright.
     | `model` is EMPTY so the kit's shared vision default applies (ai-kit
-    | docs/DECISIONS.md #26b — currently `google/gemini-2.5-flash-lite`, the
-    | cheapest vision-capable model that keeps tools + structured outputs).
-    | Set AI_VISION_MODEL to override for this app only.
+    | docs/DECISIONS.md #28a — currently `google/gemini-3.1-flash-lite`, with
+    | `google/gemini-3.5-flash-lite` as its declared fallback). That supersedes
+    | #26b's `google/gemini-2.5-flash-lite`, which had been chosen on price
+    | alone and read a degraded Arabic scan at 83% character fidelity against
+    | the new pin's 98% — the accuracy this app's transcript and poster
+    | extraction actually depends on. It costs ~2.5x the retired rate per token,
+    | the one place the #28 release deliberately spends more. Set AI_VISION_MODEL
+    | to override for this app only.
     |
     */
 

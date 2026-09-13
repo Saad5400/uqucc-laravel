@@ -60,13 +60,26 @@ class ModelRegistry
     }
 
     /**
+     * The sturdier model a vision caller retries onto when {@see vision()}
+     * errors or returns unusable output (ai-kit DECISIONS.md #28a).
+     */
+    public function visionFallback(): string
+    {
+        return $this->configured('ai.vision.fallback_model') ?? $this->catalog->visionFallbackModel();
+    }
+
+    /**
      * The heavyweight authoring model for admin-triggered, review-gated work
-     * (drafting a page from a document, proposing revisions). App-level on
-     * purpose — no other app in the fleet has this surface.
+     * (drafting a page from a document, proposing revisions).
+     *
+     * It is a FLEET lane as of ai-kit DECISIONS.md #28a: s-grade drafts its
+     * course-report narratives on the same kind of call, and was doing it on a
+     * model of its own. The kit's lane is pinned to the slug this app had
+     * already chosen, so this is a unification, not a change of model here.
      */
     public function authoring(): string
     {
-        return $this->configured('ai.authoring.model') ?? $this->chat();
+        return $this->configured('ai.authoring.model') ?? $this->catalog->authoringModel();
     }
 
     /**

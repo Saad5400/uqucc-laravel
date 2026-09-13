@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "041fb999e6111eb7ce7097859b40a4ca",
+    "content-hash": "f62e5e47ef6d3fe68d4530641a78302f",
     "packages": [
         {
             "name": "aws/aws-crt-php",
@@ -5283,16 +5283,16 @@
         },
         {
             "name": "saad/ai-kit",
-            "version": "v0.10.0",
+            "version": "v0.13.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/Saad5400/ai-kit.git",
-                "reference": "c162d318abbad1302a98aa6d4b1d90cfe2b76592"
+                "reference": "83c1e88a23f0c19b6ba97d152fb4a5815892b049"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Saad5400/ai-kit/zipball/c162d318abbad1302a98aa6d4b1d90cfe2b76592",
-                "reference": "c162d318abbad1302a98aa6d4b1d90cfe2b76592",
+                "url": "https://api.github.com/repos/Saad5400/ai-kit/zipball/83c1e88a23f0c19b6ba97d152fb4a5815892b049",
+                "reference": "83c1e88a23f0c19b6ba97d152fb4a5815892b049",
                 "shasum": ""
             },
             "require": {
@@ -5349,10 +5349,10 @@
                 "openrouter"
             ],
             "support": {
-                "source": "https://github.com/Saad5400/ai-kit/tree/v0.10.0",
+                "source": "https://github.com/Saad5400/ai-kit/tree/v0.13.0",
                 "issues": "https://github.com/Saad5400/ai-kit/issues"
             },
-            "time": "2026-08-23T23:00:22+00:00"
+            "time": "2026-09-13T18:40:11+00:00"
         },
         {
             "name": "scrivo/highlight.php",
@@ -12633,5 +12633,5 @@
         "php": "^8.2"
     },
     "platform-dev": {},
-    "plugin-api-version": "2.6.0"
+    "plugin-api-version": "2.9.0"
 }
