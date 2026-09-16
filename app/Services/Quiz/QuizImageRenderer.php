@@ -2,7 +2,9 @@
 
 namespace App\Services\Quiz;
 
+use App\Helpers\Bidi;
 use App\Models\DailyQuiz;
+use App\Support\QuizContentHtml;
 use App\Support\TakumiRenderer;
 use Illuminate\Support\Facades\View;
 
@@ -64,8 +66,14 @@ class QuizImageRenderer
     public function render(DailyQuiz $quiz): string
     {
         $html = View::make('quiz.question-image', [
-            'questionHtml' => (string) $quiz->question,
-            'options' => array_values($quiz->options ?? []),
+            // Both of these carry their direction as characters rather than as
+            // CSS or attributes, because Takumi resolves the direction of a
+            // line of text without either: see
+            // QuizContentHtml::withDirectionMarks() for the question, and the
+            // template's `unicode-bidi: plaintext` — which the engine ignores
+            // and Bidi::isolate() restates — for an option.
+            'questionHtml' => QuizContentHtml::withDirectionMarks((string) $quiz->question),
+            'options' => array_map(Bidi::isolate(...), array_values($quiz->options ?? [])),
             'topic' => $quiz->topic?->name,
             'arrowIcon' => 'data:image/svg+xml;base64,'.base64_encode(self::ARROW_SVG),
         ])->render();
