@@ -3,6 +3,7 @@
 use App\Models\DailyQuiz;
 use App\Models\QuizTopic;
 use App\Services\Quiz\QuizImageRenderer;
+use App\Support\QuizContentHtml;
 use App\Support\TakumiRenderer;
 use Illuminate\Support\Facades\Log;
 
@@ -214,4 +215,86 @@ it('honours a height floor without capping a taller card', function () {
 
     expect(imagesy($floored))->toBe(500)
         ->and(imagesy($natural))->toBe(900);
+});
+
+/**
+ * The widths of the ink clusters the red run draws, left to right — one per
+ * group of glyphs with a space in it.
+ *
+ * Direction is the one defect that leaves every pixel where it was and only
+ * changes the order they appear in, so it is invisible to a measurement of how
+ * much ink a card holds. The run is coloured in the probe below purely so this
+ * can pick it out of the Arabic it sits inside.
+ *
+ * @return list<int>
+ */
+function redClusterWidths(GdImage $image, int $gap = 4): array
+{
+    $columns = [];
+
+    for ($x = 0; $x < imagesx($image); $x++) {
+        $columns[$x] = 0;
+
+        for ($y = 0; $y < imagesy($image); $y++) {
+            $color = imagecolorat($image, $x, $y);
+
+            if ((($color >> 16) & 0xFF) > 100 && (($color >> 8) & 0xFF) < 60 && ($color & 0xFF) < 60) {
+                $columns[$x] = 1;
+
+                break;
+            }
+        }
+    }
+
+    $widths = [];
+    $start = null;
+    $blank = 0;
+
+    foreach ($columns as $x => $hasInk) {
+        if ($hasInk) {
+            $start ??= $x;
+            $blank = 0;
+
+            continue;
+        }
+
+        if ($start !== null && ++$blank >= $gap) {
+            $widths[] = $x - $blank - $start + 1;
+            $start = null;
+        }
+    }
+
+    return $start === null ? $widths : [...$widths, count($columns) - $start];
+}
+
+it('draws an inline LTR run in the order it was written, not mirrored by the Arabic around it', function () {
+    // «(255, 0, 0)» in an Arabic sentence, exactly as a question fences it. Its
+    // three clusters have unmistakable widths: «(255,» is far wider than the
+    // two lone zeros, so where the wide one lands says which way the run was
+    // laid out — and nothing else about the image does.
+    $line = function (string $question): array {
+        $paragraph = '<p dir="rtl">بالقيم '.$question.'، فما اللون</p>';
+
+        return redClusterWidths(imagecreatefromstring(app(TakumiRenderer::class)->render(
+            '<style>body{margin:0;background:#000;width:760px;padding:20px;'
+            ."font-family:'IBM Plex Sans Arabic';font-size:36px;color:#fff}</style>".$paragraph,
+            800,
+            scale: 1.0,
+        )));
+    };
+
+    $span = '<span dir="ltr" style="color:#f00">(255, 0, 0)</span>';
+
+    // What the engine does with the attribute alone: it ignores it, the Arabic
+    // around the run decides, and the group is shown «(0, 0, 255)» — a
+    // different colour, and an answer they can only get wrong. This is the
+    // defect the marks exist for, asserted here so a change that drops them
+    // cannot pass by rendering something that merely looks like text.
+    [$first, , $last] = $line($span);
+    expect($first)->toBeLessThan($last);
+
+    // ...and with the direction fenced in characters, the wide cluster is back
+    // at the left where it was written.
+    [$first, , $last] = $line(QuizContentHtml::withDirectionMarks($span));
+    expect($first)->toBeGreaterThan($last);
 });

@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Helpers\Bidi;
 use DOMDocument;
 use DOMElement;
 use DOMNode;
@@ -32,6 +33,20 @@ class QuizContentHtml
     private const DROPPED_TAGS = ['script', 'style', 'template', 'iframe', 'object', 'embed'];
 
     /**
+     * The tags that lay out as part of a line of text rather than as a box of
+     * their own — the ones whose `dir` the image engine drops on the floor.
+     * {@see withDirectionMarks()}
+     */
+    private const INLINE_TAGS = ['span', 'code', 'strong', 'b', 'em', 'i'];
+
+    /** The isolate that opens a run, by the `dir` value that asked for it. */
+    private const DIRECTION_ISOLATES = [
+        'ltr' => Bidi::LRI,
+        'rtl' => Bidi::RLI,
+        'auto' => Bidi::FSI,
+    ];
+
+    /**
      * Return the fragment with every disallowed tag unwrapped, every attribute
      * but a valid `dir` removed, and surrounding whitespace trimmed. An empty
      * or tagless fragment round-trips to its plain text wrapped in one
@@ -45,31 +60,54 @@ class QuizContentHtml
             return '';
         }
 
-        $document = new DOMDocument;
+        $root = self::parse($html);
 
-        $previous = libxml_use_internal_errors(true);
-        $document->loadHTML(
-            '<?xml encoding="UTF-8"><div id="quiz-content-root">'.$html.'</div>',
-            LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD,
-        );
-        libxml_clear_errors();
-        libxml_use_internal_errors($previous);
-
-        $root = $document->getElementsByTagName('div')->item(0);
-
-        if (! $root instanceof DOMElement) {
+        if ($root === null) {
             return '<p dir="rtl">'.htmlspecialchars($html, ENT_QUOTES | ENT_HTML5, 'UTF-8').'</p>';
         }
 
-        self::clean($root, $document);
+        self::clean($root);
 
-        $output = '';
+        return self::serialize($root);
+    }
 
-        foreach (iterator_to_array($root->childNodes) as $child) {
-            $output .= $document->saveHTML($child);
+    /**
+     * The fragment with every inline run's direction restated as a Unicode
+     * isolate — what the question card is rendered from.
+     *
+     * The card is laid out by the Takumi engine ({@see TakumiRenderer}), which
+     * reads `dir` on a block element and ignores it on an inline one. So
+     * `<span dir="ltr">(255, 0, 0)</span>` inside an Arabic paragraph came out
+     * reordered — «(0, 0, 255)», a different colour and a different answer —
+     * while the very same markup read correctly in the admin preview beside
+     * it, because a browser honours the attribute. Anything an author fences
+     * that way is exactly the content that cannot survive being reordered:
+     * coordinates, signed numbers, expressions, calls.
+     *
+     * The isolates say what the attribute says, in characters the engine's own
+     * bidi pass cannot ignore. They are zero-width, so the text they fence is
+     * unchanged; this is a rendering step, never a write path.
+     *
+     * Block-level `dir` is deliberately left alone. The engine honours it, and
+     * a `<pre>` opens a fresh bidi paragraph on every line, which an isolate
+     * placed at the top of the block would not reach.
+     *
+     * Inline `<code>` that carries no `dir` is fenced first-strong instead:
+     * that is what the template's `unicode-bidi: plaintext` asks for and the
+     * engine likewise ignores, and it lets a snippet pick its own direction
+     * rather than inherit the Arabic around it.
+     */
+    public static function withDirectionMarks(string $html): string
+    {
+        $root = self::parse(trim($html));
+
+        if ($root === null) {
+            return $html;
         }
 
-        return trim($output);
+        self::markDirection($root);
+
+        return self::serialize($root);
     }
 
     /**
@@ -97,11 +135,91 @@ class QuizContentHtml
     }
 
     /**
+     * The fragment parsed into a throwaway root element, or null when it holds
+     * no markup at all. Every pass over the content starts here, so they all
+     * see the same document — one parser, one set of quirks.
+     */
+    private static function parse(string $html): ?DOMElement
+    {
+        if ($html === '') {
+            return null;
+        }
+
+        $document = new DOMDocument;
+
+        $previous = libxml_use_internal_errors(true);
+        $document->loadHTML(
+            '<?xml encoding="UTF-8"><div id="quiz-content-root">'.$html.'</div>',
+            LIBXML_HTML_NOIMPLIED | LIBXML_HTML_NODEFDTD,
+        );
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+
+        $root = $document->getElementsByTagName('div')->item(0);
+
+        return $root instanceof DOMElement ? $root : null;
+    }
+
+    /** The root's children back as an HTML fragment, without the root itself. */
+    private static function serialize(DOMElement $root): string
+    {
+        $output = '';
+
+        foreach (iterator_to_array($root->childNodes) as $child) {
+            $output .= $root->ownerDocument?->saveHTML($child);
+        }
+
+        return trim($output);
+    }
+
+    /**
+     * Depth-first: fence every inline element that declares a direction — and
+     * every inline `<code>` that does not — between the isolate it asks for
+     * and a POP DIRECTIONAL ISOLATE. {@see withDirectionMarks()}
+     *
+     * Inside a `<pre>` nothing is fenced: the block carries its own direction
+     * and each of its lines is a bidi paragraph of its own.
+     */
+    private static function markDirection(DOMNode $node, bool $inPre = false): void
+    {
+        foreach (iterator_to_array($node->childNodes) as $child) {
+            if (! $child instanceof DOMElement) {
+                continue;
+            }
+
+            $tag = strtolower($child->nodeName);
+
+            self::markDirection($child, $inPre || $tag === 'pre');
+
+            if ($inPre || ! in_array($tag, self::INLINE_TAGS, true) || ! $child->hasChildNodes()) {
+                continue;
+            }
+
+            $direction = strtolower($child->getAttribute('dir'));
+            $isolate = self::DIRECTION_ISOLATES[$direction]
+                ?? ($tag === 'code' ? Bidi::FSI : null);
+
+            if ($isolate === null) {
+                continue;
+            }
+
+            $document = $child->ownerDocument;
+
+            if ($document === null) {
+                continue;
+            }
+
+            $child->insertBefore($document->createTextNode($isolate), $child->firstChild);
+            $child->appendChild($document->createTextNode(Bidi::PDI));
+        }
+    }
+
+    /**
      * Depth-first: strip disallowed attributes in place, and unwrap any tag not
      * on the allow-list into its own children so its text survives while the
      * element does not.
      */
-    private static function clean(DOMNode $node, DOMDocument $document): void
+    private static function clean(DOMNode $node): void
     {
         foreach (iterator_to_array($node->childNodes) as $child) {
             if (! $child instanceof DOMElement) {
@@ -116,7 +234,7 @@ class QuizContentHtml
                 continue;
             }
 
-            self::clean($child, $document);
+            self::clean($child);
 
             if (! in_array($tag, self::ALLOWED_TAGS, true)) {
                 self::unwrap($child);

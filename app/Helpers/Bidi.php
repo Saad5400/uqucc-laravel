@@ -3,7 +3,7 @@
 namespace App\Helpers;
 
 /**
- * Bidirectional-text fencing for the bot's Arabic messages.
+ * Bidirectional-text fencing for text whose direction no stylesheet decides.
  *
  * A Telegram message has no stylesheet, so direction is decided entirely by
  * the Unicode bidi algorithm reading the characters themselves. In a line like
@@ -22,6 +22,11 @@ namespace App\Helpers;
  * Use {@see ltr()} for a token that must read left-to-right whatever surrounds
  * it, such as «4.» in a ranked list.
  *
+ * The question card is the second place with no stylesheet worth the name: the
+ * Takumi layout engine reads `dir` on a block but ignores it on an inline
+ * element, so the marks are what carry an inline run's direction into the image
+ * — see {@see \App\Support\QuizContentHtml::withDirectionMarks()}.
+ *
  * The marks are zero-width: they change ordering, never the visible text, so
  * a fenced line still contains the plain substrings it is built from.
  */
@@ -35,6 +40,9 @@ class Bidi
 
     /** LEFT-TO-RIGHT ISOLATE — the run reads left-to-right. */
     public const LRI = "\u{2066}";
+
+    /** RIGHT-TO-LEFT ISOLATE — the run reads right-to-left. */
+    public const RLI = "\u{2067}";
 
     /** POP DIRECTIONAL ISOLATE — closes FSI/LRI. */
     public const PDI = "\u{2069}";

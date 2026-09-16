@@ -11,7 +11,11 @@
     "⬇️" character it used to be.
 
     The authored $questionHtml is already sanitized to a small tag vocabulary
-    (App\Support\QuizContentHtml), so it is printed unescaped.
+    (App\Support\QuizContentHtml), so it is printed unescaped. It also arrives
+    with its inline direction rewritten as Unicode isolates
+    (QuizContentHtml::withDirectionMarks), because Takumi honours `dir` on a
+    block and ignores it on a <span> — the difference between «(255, 0, 0)» and
+    the «(0, 0, 255)» the group was once asked about.
 
     @var string      $questionHtml  Sanitized HTML fragment: the preamble + question.
     @var array       $options       The four plain-text answer options, in order.
@@ -175,7 +179,13 @@
             border-radius: 7px;
             padding: 2px 8px;
             font-size: 0.86em;
-            unicode-bidi: isolate;
+            /* `plaintext`, so a snippet reads in its own direction instead of
+               the paragraph's. Takumi ignores this the way it ignores every
+               other inline bidi declaration, so QuizImageRenderer sends the
+               same instruction as isolate characters; the rule is what the
+               browser preview goes by, and the two must keep saying the same
+               thing. */
+            unicode-bidi: plaintext;
             /* Takumi draws inline runs as text, not as boxes, so the chip above
                it survives only in a browser preview. The tint is what actually
                separates an inline `code` from the prose around it in the image
@@ -226,6 +236,9 @@
         }
 
         .option-text {
+            /* Same bargain as `.content code`: the rule is for the preview,
+               and the option arrives already fenced with isolate characters
+               for the engine. */
             unicode-bidi: plaintext;
             min-width: 0;
         }
