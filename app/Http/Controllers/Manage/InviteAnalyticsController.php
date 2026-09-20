@@ -30,6 +30,15 @@ class InviteAnalyticsController extends Controller
         'all' => null,
     ];
 
+    /** @var list<string> */
+    protected const VIEWS = ['overview', 'joins', 'links', 'requests'];
+
+    /** @var list<string> */
+    protected const LINK_STATUSES = ['all', 'available', 'used', 'expired'];
+
+    /** @var list<string> */
+    protected const JOIN_SOURCES = ['all', 'invite_link', 'added_by_admin', 'self'];
+
     public function index(Request $request): Response
     {
         $period = array_key_exists((string) $request->query('period'), self::PERIODS)
@@ -38,6 +47,13 @@ class InviteAnalyticsController extends Controller
 
         $chatId = is_numeric($request->query('chat')) ? (int) $request->query('chat') : null;
         $search = trim((string) $request->query('q'));
+        $view = in_array($request->query('view'), self::VIEWS, true) ? (string) $request->query('view') : 'overview';
+        $linkStatus = in_array($request->query('link_status'), self::LINK_STATUSES, true)
+            ? (string) $request->query('link_status')
+            : 'all';
+        $joinSource = in_array($request->query('join_source'), self::JOIN_SOURCES, true)
+            ? (string) $request->query('join_source')
+            : 'all';
         $since = $this->since($period);
 
         return Inertia::render('manage/invites/Index', [
@@ -45,11 +61,15 @@ class InviteAnalyticsController extends Controller
                 'period' => $period,
                 'chat' => $chatId === null ? null : (string) $chatId,
                 'q' => $search,
+                'view' => $view,
+                'link_status' => $linkStatus,
+                'join_source' => $joinSource,
             ],
             'chats' => $this->chats(),
             'stats' => $this->stats($since, $chatId),
             'leaderboard' => $this->leaderboard($since, $chatId),
-            'recentJoins' => Inertia::defer(fn (): array => $this->recentJoins($chatId, $search)),
+            'recentJoins' => Inertia::defer(fn (): array => $this->recentJoins($since, $chatId, $search, $joinSource)),
+            'inviteLinks' => Inertia::defer(fn (): array => $this->inviteLinks($since, $chatId, $search, $linkStatus)),
             'preTrackingRequests' => Inertia::defer(fn (): array => $this->preTrackingRequests($chatId)),
         ]);
     }
@@ -81,7 +101,7 @@ class InviteAnalyticsController extends Controller
     }
 
     /**
-     * @return array{joins: int, attributedJoins: int, links: int, unusedLinks: int, inviters: int, conversion: int|null}
+     * @return array{joins: int, attributedJoins: int, attributionRate: int|null, links: int, usedLinks: int, unusedLinks: int, inviters: int, usageRate: int|null}
      */
     protected function stats(?Carbon $since, ?int $chatId): array
     {
@@ -96,15 +116,19 @@ class InviteAnalyticsController extends Controller
             ->when($chatId, fn ($query) => $query->where('chat_id', $chatId));
 
         $linksCount = (clone $links)->count();
-        $joinsThroughLinks = (int) (clone $links)->sum('joins_count');
+        $usedLinks = (clone $links)->where('joins_count', '>', 0)->count();
+        $joinsCount = (clone $joins)->count();
+        $attributedCount = (clone $attributed)->count();
 
         return [
-            'joins' => (clone $joins)->count(),
-            'attributedJoins' => (clone $attributed)->count(),
+            'joins' => $joinsCount,
+            'attributedJoins' => $attributedCount,
+            'attributionRate' => $joinsCount === 0 ? null : (int) round($attributedCount / $joinsCount * 100),
             'inviters' => (clone $attributed)->distinct()->count('creator_telegram_user_id'),
             'links' => $linksCount,
+            'usedLinks' => $usedLinks,
             'unusedLinks' => (clone $links)->where('joins_count', 0)->count(),
-            'conversion' => $linksCount === 0 ? null : (int) round($joinsThroughLinks / $linksCount * 100),
+            'usageRate' => $linksCount === 0 ? null : (int) round($usedLinks / $linksCount * 100),
         ];
     }
 
@@ -206,13 +230,15 @@ class InviteAnalyticsController extends Controller
      *     joined_at: string|null,
      * }>
      */
-    protected function recentJoins(?int $chatId, string $search = ''): array
+    protected function recentJoins(?Carbon $since, ?int $chatId, string $search = '', string $source = 'all'): array
     {
         $identities = $this->identities();
 
         return TelegramInviteLinkJoin::query()
-            ->with('inviteLink:id,chat_title')
+            ->with('inviteLink:id,chat_title,link_name')
+            ->when($since, fn ($query) => $query->where('joined_at', '>=', $since))
             ->when($chatId, fn ($query) => $query->where('chat_id', $chatId))
+            ->when($source !== 'all', fn ($query) => $query->where('source', $source))
             ->when($search !== '', fn ($query) => $this->applySearch($query, $search, $this->matchingInviterIds($search)))
             ->latest('joined_at')
             ->limit(100)
@@ -231,6 +257,8 @@ class InviteAnalyticsController extends Controller
                     'inviter_username' => $inviterId === null ? null : ($identities[$inviterId]['username'] ?? null),
                     'inviter_telegram_user_id' => $inviterId === null ? null : (string) $inviterId,
                     'chat_title' => $join->inviteLink?->chat_title,
+                    'invite_link' => $join->invite_link,
+                    'link_name' => $join->inviteLink?->link_name,
                     'source' => $join->source,
                     'joined_at' => $join->joined_at?->toISOString(),
                 ];
@@ -247,12 +275,20 @@ class InviteAnalyticsController extends Controller
      */
     protected function applySearch(\Illuminate\Database\Eloquent\Builder $query, string $search, array $inviterIds): void
     {
-        $needle = '%'.mb_strtolower(ltrim($search, '@')).'%';
+        $needles = $this->searchNeedles($search);
 
-        $query->where(function ($query) use ($needle, $inviterIds): void {
-            $query->whereRaw('LOWER(joiner_username) LIKE ?', [$needle])
-                ->orWhereRaw('LOWER(joiner_name) LIKE ?', [$needle])
-                ->orWhereRaw('CAST(joiner_telegram_user_id AS TEXT) LIKE ?', [$needle]);
+        $query->where(function ($query) use ($needles, $inviterIds): void {
+            foreach ($needles as $needle) {
+                $query->orWhere(function ($query) use ($needle): void {
+                    $query->whereRaw('LOWER(joiner_username) LIKE ?', [$needle])
+                        ->orWhereRaw('LOWER(joiner_name) LIKE ?', [$needle])
+                        ->orWhereRaw('CAST(joiner_telegram_user_id AS TEXT) LIKE ?', [$needle])
+                        ->orWhereRaw('LOWER(invite_link) LIKE ?', [$needle])
+                        ->orWhereHas('inviteLink', fn ($query) => $query
+                            ->whereRaw('LOWER(link_name) LIKE ?', [$needle])
+                            ->orWhereRaw('LOWER(chat_title) LIKE ?', [$needle]));
+                });
+            }
 
             if ($inviterIds !== []) {
                 $query->orWhereIn('creator_telegram_user_id', $inviterIds);
@@ -267,16 +303,124 @@ class InviteAnalyticsController extends Controller
      */
     protected function matchingInviterIds(string $search): array
     {
-        $needle = '%'.mb_strtolower(ltrim($search, '@')).'%';
+        $needles = $this->searchNeedles($search);
 
         return TelegramInviteLink::query()
-            ->whereRaw('LOWER(creator_username) LIKE ?', [$needle])
-            ->orWhereRaw('LOWER(creator_name) LIKE ?', [$needle])
-            ->orWhereRaw('CAST(creator_telegram_user_id AS TEXT) LIKE ?', [$needle])
+            ->where(function ($query) use ($needles): void {
+                foreach ($needles as $needle) {
+                    $query->orWhereRaw('LOWER(creator_username) LIKE ?', [$needle])
+                        ->orWhereRaw('LOWER(creator_name) LIKE ?', [$needle])
+                        ->orWhereRaw('CAST(creator_telegram_user_id AS TEXT) LIKE ?', [$needle]);
+                }
+            })
             ->distinct()
             ->pluck('creator_telegram_user_id')
             ->map(fn ($id): int => (int) $id)
             ->all();
+    }
+
+    /**
+     * Searchable link directory. This is intentionally a distinct data set
+     * from joins: an unused link is still important when somebody pastes its
+     * URL into the panel to check who created it and whether it is valid.
+     *
+     * @return list<array{
+     *     id: int,
+     *     invite_link: string,
+     *     link_name: string|null,
+     *     creator: string|null,
+     *     creator_username: string|null,
+     *     creator_telegram_user_id: string,
+     *     chat_title: string|null,
+     *     chat_id: string,
+     *     joins_count: int,
+     *     member_limit: int|null,
+     *     expires_at: string|null,
+     *     created_at: string|null,
+     *     status: string,
+     * }>
+     */
+    protected function inviteLinks(?Carbon $since, ?int $chatId, string $search = '', string $status = 'all'): array
+    {
+        $needles = $this->searchNeedles($search);
+
+        return TelegramInviteLink::query()
+            ->when($since, fn ($query) => $query->where('created_at', '>=', $since))
+            ->when($chatId, fn ($query) => $query->where('chat_id', $chatId))
+            ->when($status === 'used', fn ($query) => $query->where('joins_count', '>', 0))
+            ->when($status === 'expired', fn ($query) => $query->where('joins_count', 0)->where('expires_at', '<=', now()))
+            ->when($status === 'available', fn ($query) => $query
+                ->where('joins_count', 0)
+                ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now())))
+            ->when($search !== '', fn ($query) => $query->where(function ($query) use ($needles): void {
+                foreach ($needles as $needle) {
+                    $query->orWhere(function ($query) use ($needle): void {
+                        $query->whereRaw('LOWER(invite_link) LIKE ?', [$needle])
+                            ->orWhereRaw('LOWER(link_name) LIKE ?', [$needle])
+                            ->orWhereRaw('LOWER(creator_username) LIKE ?', [$needle])
+                            ->orWhereRaw('LOWER(creator_name) LIKE ?', [$needle])
+                            ->orWhereRaw('LOWER(chat_title) LIKE ?', [$needle])
+                            ->orWhereRaw('CAST(creator_telegram_user_id AS TEXT) LIKE ?', [$needle])
+                            ->orWhereRaw('CAST(chat_id AS TEXT) LIKE ?', [$needle])
+                            ->orWhereHas('joins', fn ($query) => $query
+                                ->whereRaw('LOWER(joiner_username) LIKE ?', [$needle])
+                                ->orWhereRaw('LOWER(joiner_name) LIKE ?', [$needle])
+                                ->orWhereRaw('CAST(joiner_telegram_user_id AS TEXT) LIKE ?', [$needle]));
+                    });
+                }
+            }))
+            ->latest()
+            ->limit(100)
+            ->get()
+            ->map(fn (TelegramInviteLink $link): array => [
+                'id' => $link->id,
+                'invite_link' => $link->invite_link,
+                'link_name' => $link->link_name,
+                'creator' => $link->creator_name ?: $link->creator_username,
+                'creator_username' => $link->creator_username,
+                'creator_telegram_user_id' => (string) $link->creator_telegram_user_id,
+                'chat_title' => $link->chat_title,
+                'chat_id' => (string) $link->chat_id,
+                'joins_count' => $link->joins_count,
+                'member_limit' => $link->member_limit,
+                'expires_at' => $link->expires_at?->toISOString(),
+                'created_at' => $link->created_at?->toISOString(),
+                'status' => $this->linkStatus($link),
+            ])
+            ->all();
+    }
+
+    protected function linkStatus(TelegramInviteLink $link): string
+    {
+        if ($link->joins_count > 0) {
+            return 'used';
+        }
+
+        if ($link->expires_at?->isPast()) {
+            return 'expired';
+        }
+
+        return 'available';
+    }
+
+    /**
+     * A pasted conversation may contain several Telegram URLs. Treat each
+     * URL as an alternative lookup while keeping ordinary names and phrases
+     * as one search term, so "سارة محمد" does not become two broad queries.
+     *
+     * @return list<string>
+     */
+    protected function searchNeedles(string $search): array
+    {
+        $search = trim($search);
+        preg_match_all('~(?:https?://)?(?:www\.)?(?:t\.me|telegram\.me)/[a-z0-9_+\-]+~iu', $search, $matches);
+        $terms = $matches[0] === [] ? [$search] : array_values(array_unique($matches[0]));
+
+        return array_map(function (string $term): string {
+            $normalized = ltrim(trim($term), '@');
+
+            return '%'.mb_strtolower($normalized === '' ? trim($term) : $normalized).'%';
+        }, $terms);
     }
 
     /**

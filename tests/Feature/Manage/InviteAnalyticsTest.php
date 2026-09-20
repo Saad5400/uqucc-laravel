@@ -138,7 +138,7 @@ describe('member lookup', function () {
         $other->update(['joiner_username' => 'omar', 'joiner_name' => 'عمر']);
     });
 
-    function lookup(array $extra = []): \Illuminate\Testing\TestResponse
+    function lookup(array $extra = [], string $data = 'recentJoins'): \Illuminate\Testing\TestResponse
     {
         test()->actingAs(test()->admin)->get('/manage/invites')->assertOk();
 
@@ -146,7 +146,7 @@ describe('member lookup', function () {
             'X-Inertia' => 'true',
             'X-Inertia-Version' => \Inertia\Inertia::getVersion(),
             'X-Inertia-Partial-Component' => 'manage/invites/Index',
-            'X-Inertia-Partial-Data' => 'recentJoins',
+            'X-Inertia-Partial-Data' => $data,
         ]);
     }
 
@@ -179,5 +179,52 @@ describe('member lookup', function () {
 
     it('returns nothing for a member nobody recorded', function () {
         lookup(['q' => 'ghost'])->assertJsonCount(0, 'props.recentJoins');
+    });
+
+    it('checks a pasted invite URL across the link directory and join log', function () {
+        lookup(['q' => 'https://t.me/+one'], 'inviteLinks,recentJoins')
+            ->assertJsonCount(1, 'props.inviteLinks')
+            ->assertJsonPath('props.inviteLinks.0.invite_link', 'https://t.me/+one')
+            ->assertJsonPath('props.inviteLinks.0.creator_username', 'admin1')
+            ->assertJsonCount(1, 'props.recentJoins')
+            ->assertJsonPath('props.recentJoins.0.invite_link', 'https://t.me/+one');
+    });
+
+    it('checks multiple invite URLs pasted from one conversation', function () {
+        $message = "السلام عليكم، هل دخل أحد من الرابطين؟\nhttps://t.me/+one\nhttps://t.me/+two";
+
+        lookup(['q' => $message], 'inviteLinks,recentJoins')
+            ->assertJsonCount(2, 'props.inviteLinks')
+            ->assertJsonCount(2, 'props.recentJoins')
+            ->assertJsonFragment(['invite_link' => 'https://t.me/+one'])
+            ->assertJsonFragment(['invite_link' => 'https://t.me/+two']);
+    });
+
+    it('finds an unused URL even though it has no join event', function () {
+        inviteLink(44, 'https://t.me/+never-used', 'admin3');
+
+        lookup(['q' => 'https://t.me/+never-used'], 'inviteLinks,recentJoins')
+            ->assertJsonCount(1, 'props.inviteLinks')
+            ->assertJsonPath('props.inviteLinks.0.status', 'available')
+            ->assertJsonCount(0, 'props.recentJoins');
+    });
+
+    it('filters links by operational status', function () {
+        $expired = inviteLink(44, 'https://t.me/+expired', 'admin3');
+        $expired->update(['expires_at' => now()->subMinute()]);
+
+        lookup(['view' => 'links', 'link_status' => 'expired'], 'inviteLinks')
+            ->assertJsonCount(1, 'props.inviteLinks')
+            ->assertJsonPath('props.inviteLinks.0.invite_link', 'https://t.me/+expired')
+            ->assertJsonPath('props.inviteLinks.0.status', 'expired');
+    });
+
+    it('applies the period to the visible join log as well as the summary', function () {
+        $old = inviteJoin($this->link, 904, now()->subDays(3)->toDateTimeString());
+        $old->update(['joiner_username' => 'old_member']);
+
+        lookup(['period' => '24h'], 'recentJoins')
+            ->assertJsonCount(2, 'props.recentJoins')
+            ->assertJsonMissing(['joiner_username' => 'old_member']);
     });
 });
