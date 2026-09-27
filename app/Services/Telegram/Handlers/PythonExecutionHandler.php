@@ -3,7 +3,7 @@
 namespace App\Services\Telegram\Handlers;
 
 use Telegram\Bot\Objects\Message;
-use Symfony\Component\Process\Process;
+use App\Support\CodeSandbox;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
 
 class PythonExecutionHandler extends BaseHandler
@@ -59,11 +59,16 @@ class PythonExecutionHandler extends BaseHandler
 
     protected function runPythonCode(Message $message, string $code, ?string $input = null): void
     {
-        $tempFile = tempnam(sys_get_temp_dir(), 'py_') . '.py';
-        file_put_contents($tempFile, $code);
+        $sandbox = app(CodeSandbox::class);
+        $runDir = $sandbox->makeRunDir();
 
-        $process = new Process(['python3', $tempFile]);
-        $process->setTimeout(5);
+        $file = "$runDir/main.py";
+        file_put_contents($file, $code);
+        chmod($file, 0644);
+
+        // -I: isolated mode (no PYTHON* variables, no user site-packages),
+        // -B: no .pyc files.
+        $process = $sandbox->process(['python3', '-I', '-B', $file], $runDir, 5);
 
         if ($input !== null) {
             $process->setInput($input . "\n");
@@ -86,7 +91,7 @@ class PythonExecutionHandler extends BaseHandler
         } catch (ProcessTimedOutException $e) {
             $this->reply($message, 'خطأ: انتهت مهلة التنفيذ.');
         } finally {
-            @unlink($tempFile);
+            $sandbox->removeRunDir($runDir);
         }
     }
 }

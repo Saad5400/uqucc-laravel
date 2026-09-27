@@ -3,7 +3,7 @@
 namespace App\Services\Telegram\Handlers;
 
 use Telegram\Bot\Objects\Message;
-use Symfony\Component\Process\Process;
+use App\Support\CodeSandbox;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
 
 class JavaExecutionHandler extends BaseHandler
@@ -92,31 +92,58 @@ class JavaExecutionHandler extends BaseHandler
         return 'TempJavaProgram';
     }
 
+    /**
+     * JVM flags for the sandboxed compile and run: one GC thread and the C1
+     * compiler only (a student program never runs long enough for C2), small
+     * fixed reservations so the JVM starts under the sandbox's address-space
+     * cap, no hsperfdata file, and temp files inside the run dir.
+     *
+     * @return list<string>
+     */
+    protected function jvmFlags(string $runDir): array
+    {
+        return [
+            '-XX:+UseSerialGC',
+            '-XX:TieredStopAtLevel=1',
+            '-XX:-UsePerfData',
+            '-XX:ReservedCodeCacheSize=32m',
+            '-XX:MaxMetaspaceSize=128m',
+            '-XX:CompressedClassSpaceSize=64m',
+            '-Xss1m',
+            '-Djava.io.tmpdir='.$runDir,
+        ];
+    }
+
     protected function runJavaCode(Message $message, string $code, string $className, ?string $input = null): void
     {
-        $tempDir = sys_get_temp_dir() . '/java_' . uniqid();
-        mkdir($tempDir);
+        $sandbox = app(CodeSandbox::class);
+        $runDir = $sandbox->makeRunDir();
 
-        $javaFile = "$tempDir/$className.java";
+        $javaFile = "$runDir/$className.java";
         file_put_contents($javaFile, $code);
-
-        // Compile
-        $compileProcess = new Process(['javac', $javaFile]);
-        $compileProcess->setTimeout(10);
+        chmod($javaFile, 0644);
 
         try {
+            // Compile (javac writes the .class files next to the source)
+            $compileProcess = $sandbox->process(
+                ['javac', '-encoding', 'UTF-8', ...array_map(fn (string $flag): string => '-J'.$flag, [...$this->jvmFlags($runDir), '-Xmx256m']), $javaFile],
+                $runDir,
+                10,
+            );
             $compileProcess->run();
 
             if (!$compileProcess->isSuccessful()) {
                 $error = $compileProcess->getErrorOutput();
                 $this->reply($message, "خطأ في الترجمة:\n```\n$error\n```", 'Markdown');
-                $this->cleanup($tempDir);
                 return;
             }
 
             // Run
-            $runProcess = new Process(['java', '-Dfile.encoding=UTF-8', $className], $tempDir);
-            $runProcess->setTimeout(2);
+            $runProcess = $sandbox->process(
+                ['java', ...$this->jvmFlags($runDir), '-Xmx128m', '-Dfile.encoding=UTF-8', '-cp', $runDir, $className],
+                $runDir,
+                2,
+            );
 
             if ($input !== null) {
                 // Add extra newlines to handle multiple inputs
@@ -139,20 +166,7 @@ class JavaExecutionHandler extends BaseHandler
         } catch (ProcessTimedOutException $e) {
             $this->reply($message, 'انتهت مهلة التنفيذ.');
         } finally {
-            $this->cleanup($tempDir);
-        }
-    }
-
-    protected function cleanup(string $dir): void
-    {
-        if (is_dir($dir)) {
-            $files = glob($dir . '/*');
-            foreach ($files as $file) {
-                if (is_file($file)) {
-                    @unlink($file);
-                }
-            }
-            @rmdir($dir);
+            $sandbox->removeRunDir($runDir);
         }
     }
 }

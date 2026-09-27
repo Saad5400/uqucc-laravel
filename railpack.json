@@ -1,7 +1,8 @@
 {
   "$schema": "https://schema.railpack.com",
   "packages": {
-    "node": "22"
+    "node": "22",
+    "java": "temurin-21.0.12+8.0.LTS"
   },
   "steps": {
     "extensions": {
@@ -68,7 +69,6 @@
   "deploy": {
     "aptPackages": [
       "supervisor",
-      "openjdk-17-jdk-headless",
       "curl",
       "wget"
     ],
@@ -84,6 +84,9 @@
           "/usr/local/bin/mise",
           "/etc/mise/config.toml",
           "/root/.local/state/mise"
+        ],
+        "exclude": [
+          "**/jmods"
         ]
       },
       {
