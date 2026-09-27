@@ -22,7 +22,10 @@ createServer(
                 },
             },
         }),
-    { cluster: true },
+    // One process, as in s-grade and catodemy. cluster: true (the starter
+    // kit's default) forked a worker per vCPU: five Node processes and
+    // ~220MB more for SSR traffic that one process renders in milliseconds.
+    { cluster: false },
 );
 
 function resolvePage(name: string) {
