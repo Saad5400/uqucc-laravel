@@ -60,6 +60,34 @@ return [
         'node_binary' => env('NODE_BINARY', 'node'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Code sandbox
+    |--------------------------------------------------------------------------
+    |
+    | Where the bot's Java / Python runner executes user code: an unprivileged
+    | uid of its own, an empty environment and rlimits (App\Support\CodeSandbox).
+    | `path` is the only PATH the sandboxed program sees; start-container.sh
+    | exports SANDBOX_PATH with the JDK's real bin dir in front, because the
+    | mise shims need an environment the sandbox does not get. The JVM reserves
+    | far more address space than it touches: with the handler's flags it
+    | starts at 768MB and fails at 512MB, so the cap is 1GB.
+    |
+    */
+
+    'code_sandbox' => [
+        'uid' => 47000,
+        'root' => '/var/lib/code-sandbox',
+        'path' => env('SANDBOX_PATH', '/usr/local/bin:/usr/bin:/bin'),
+        'limits' => [
+            'nproc' => 128,
+            'address_space' => 1024 * 1024 * 1024,
+            'cpu_seconds' => 20,
+            'file_size' => 16 * 1024 * 1024,
+            'open_files' => 256,
+        ],
+    ],
+
     'google_analytics' => [
         'id' => env('GOOGLE_ANALYTICS_ID', 'G-D6V76T469N'),
     ],
