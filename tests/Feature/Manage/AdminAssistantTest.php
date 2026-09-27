@@ -964,8 +964,8 @@ describe('resumable turns', function () {
     it('dispatches the turn onto the dedicated ai-chat queue', function () {
         // Not `default` (one worker, no --timeout: turns serialize behind each
         // other and are killed at 60s) and not `ai` (multi-minute corpus
-        // extraction an interactive reply would wait behind). nixpacks.toml's
-        // `worker-ai-chat` is the other half of this pairing, and the queue NAME
+        // extraction an interactive reply would wait behind). The
+        // `worker-ai-chat` program in deploy/supervisord.conf is the other half of this pairing, and the queue NAME
         // is the whole contract between config and worker topology.
         //
         // The streamed body is deliberately NOT rendered: with the queue faked

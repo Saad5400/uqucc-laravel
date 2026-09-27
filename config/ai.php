@@ -59,7 +59,7 @@ return [
     | 60s; and `ai` carries multi-minute corpus extraction and ingestion, which
     | an interactive reply must never wait behind. Static on purpose — like
     | queue.php's `retry_after` it is a fixed property of our worker topology
-    | (nixpacks.toml's `worker-ai-chat`), not a per-environment knob.
+    | (deploy/supervisord.conf's `worker-ai-chat`), not a per-environment knob.
     |
     */
 
