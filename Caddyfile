@@ -1,0 +1,65 @@
+{
+	admin off
+	persist_config off
+	auto_https off
+
+	log {
+		format json
+		output stderr
+		level WARN
+	}
+
+	# php-fpm ran pm.max_children = 50 (18 started), so max_threads keeps the
+	# same concurrency ceiling. Requests here are mostly I/O-bound (Postgres,
+	# Redis, S3, the SSR server, OpenRouter), and every open AI chat stream
+	# holds one PHP thread for its whole life (up to 210s, the kit's
+	# max_stream_seconds + 30), so 16 threads (4 per vCPU) start warm and the
+	# pool grows on demand. Requests beyond max_threads queue for
+	# max_wait_time, then get a 504.
+	frankenphp {
+		num_threads 16
+		max_threads 50
+		max_wait_time 30s
+	}
+}
+
+:{$PORT:80} {
+	root * /app/public
+
+	# nginx capped request bodies at client_max_body_size 35M; php.ini's
+	# post_max_size matches. The largest upload the app validates is 20MB.
+	request_body {
+		max_size 35MB
+	}
+
+	header X-Content-Type-Options "nosniff"
+	header -Server
+
+	# nginx denied every dotfile path except /.well-known.
+	@dotfiles {
+		path_regexp /\.
+		not path /.well-known/*
+	}
+	respond @dotfiles 404
+
+	# Compress an explicit allowlist only. text/event-stream is deliberately
+	# absent: AI replies stream as SSE and must reach the client frame by
+	# frame, never held back in an encoder buffer.
+	encode {
+		zstd
+		gzip
+		minimum_length 1024
+		match {
+			header Content-Type text/html*
+			header Content-Type text/css*
+			header Content-Type text/plain*
+			header Content-Type text/javascript*
+			header Content-Type application/javascript*
+			header Content-Type application/json*
+			header Content-Type application/xml*
+			header Content-Type image/svg+xml*
+		}
+	}
+
+	php_server
+}

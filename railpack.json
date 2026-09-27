@@ -1,0 +1,100 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "packages": {
+    "node": "22"
+  },
+  "steps": {
+    "extensions": {
+      "commands": [
+        "install-php-extensions ctype curl dom fileinfo filter mbstring openssl pdo session tokenizer xml calendar gd exif zip intl pgsql pdo_pgsql bcmath pcntl sockets gmp opcache"
+      ],
+      "deployOutputs": []
+    },
+    "install:composer": {
+      "commands": [
+        {
+          "image": "composer:latest",
+          "src": "/usr/bin/composer",
+          "dest": "/usr/bin/composer"
+        },
+        {
+          "src": "composer.json",
+          "dest": "composer.json"
+        },
+        {
+          "src": "composer.lock",
+          "dest": "composer.lock"
+        },
+        {
+          "src": "artisan",
+          "dest": "artisan"
+        },
+        "composer install --no-dev --prefer-dist --optimize-autoloader --no-scripts --no-interaction"
+      ],
+      "deployOutputs": []
+    },
+    "install:node": {
+      "commands": [
+        {
+          "path": "/app/node_modules/.bin"
+        },
+        "mkdir -p /app/node_modules/.cache",
+        {
+          "src": "package.json",
+          "dest": "package.json"
+        },
+        {
+          "src": "package-lock.json",
+          "dest": "package-lock.json"
+        },
+        "npx --yes npm@11.12.1 ci --no-audit --no-fund --loglevel=error"
+      ],
+      "deployOutputs": []
+    },
+    "prune:node": {
+      "commands": [
+        "true"
+      ],
+      "deployOutputs": []
+    },
+    "build": {
+      "commands": [
+        "NODE_OPTIONS=--max-old-space-size=2048 npm run build:ssr",
+        "mkdir -p storage/framework/sessions storage/framework/views storage/framework/cache storage/framework/testing storage/logs bootstrap/cache && chmod -R a+rw storage",
+        "node scripts/prune-node-modules.mjs --confirm isomorphic-dompurify @takumi-rs/core @takumi-rs/helpers"
+      ]
+    }
+  },
+  "deploy": {
+    "aptPackages": [
+      "supervisor",
+      "openjdk-17-jdk-headless",
+      "curl",
+      "wget"
+    ],
+    "variables": {
+      "LOG_CHANNEL": "stack"
+    },
+    "inputs": [
+      {
+        "step": "packages:mise",
+        "include": [
+          "/mise/shims",
+          "/mise/installs",
+          "/usr/local/bin/mise",
+          "/etc/mise/config.toml",
+          "/root/.local/state/mise"
+        ]
+      },
+      {
+        "step": "build",
+        "include": [
+          "."
+        ],
+        "exclude": [
+          "vendor"
+        ]
+      }
+    ]
+  }
+}
