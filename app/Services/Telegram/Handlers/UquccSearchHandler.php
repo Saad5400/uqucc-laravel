@@ -261,7 +261,7 @@ class UquccSearchHandler extends BaseHandler
      */
     protected function sendAttachmentsWithReply(Message $message, Collection $resolved, PageReply $reply): void
     {
-        $albums = $resolved->chunk(self::MEDIA_GROUP_SIZE)->values();
+        $albums = $this->groupIntoAlbums($resolved);
 
         $carriesCaption = $albums->count() === 1
             && $reply->fitsInCaption()
@@ -278,6 +278,42 @@ class UquccSearchHandler extends BaseHandler
         }
 
         $this->sendReplyText($message, $reply);
+    }
+
+    /**
+     * The files as albums of up to ten, each GIF after them on its own: an
+     * album has no place for an animation and would flatten it to a still.
+     *
+     * @param  Collection<int, array{path: string, filename: string}>  $resolved
+     * @return Collection<int, Collection<int, array{path: string, filename: string}>>
+     */
+    protected function groupIntoAlbums(Collection $resolved): Collection
+    {
+        [$animations, $stills] = $resolved->partition(fn (array $attachment): bool => $this->isAnimation($attachment));
+
+        return $stills->values()
+            ->chunk(self::MEDIA_GROUP_SIZE)
+            ->concat($animations->map(fn (array $animation): Collection => collect([$animation])))
+            ->values();
+    }
+
+    /**
+     * @param  array{path: string, filename: string}  $attachment
+     */
+    protected function isImage(array $attachment): bool
+    {
+        return str_starts_with(mime_content_type($attachment['path']) ?: '', 'image/');
+    }
+
+    /**
+     * A GIF, which Telegram keeps moving only when it is sent as an animation
+     * — as a photo it is re-encoded to a still frame.
+     *
+     * @param  array{path: string, filename: string}  $attachment
+     */
+    protected function isAnimation(array $attachment): bool
+    {
+        return mime_content_type($attachment['path']) === 'image/gif';
     }
 
     /**
@@ -350,9 +386,10 @@ class UquccSearchHandler extends BaseHandler
      */
     protected function sendSingleAttachment(Message $message, array $attachment, ?PageReply $reply): void
     {
-        $isImage = str_starts_with(mime_content_type($attachment['path']) ?: '', 'image/');
+        $isAnimation = $this->isAnimation($attachment);
+        $isImage = $this->isImage($attachment);
 
-        $send = function (?string $caption) use ($message, $attachment, $isImage, $reply): void {
+        $send = function (?string $caption) use ($message, $attachment, $isAnimation, $isImage, $reply): void {
             $payload = [
                 'chat_id' => $message->getChat()->getId(),
                 'reply_to_message_id' => $this->getReplyToMessageId($message),
@@ -369,7 +406,10 @@ class UquccSearchHandler extends BaseHandler
 
             $file = InputFile::create($attachment['path'], $attachment['filename']);
 
-            if ($isImage) {
+            if ($isAnimation) {
+                $payload['animation'] = $file;
+                $this->telegram->sendAnimation($payload);
+            } elseif ($isImage) {
                 $payload['photo'] = $file;
                 $this->telegram->sendPhoto($payload);
             } else {
@@ -397,7 +437,7 @@ class UquccSearchHandler extends BaseHandler
      */
     protected function sendMediaGroup(Message $message, Collection $attachments, ?PageReply $reply): void
     {
-        $allImages = $attachments->every(fn (array $attachment): bool => str_starts_with(mime_content_type($attachment['path']) ?: '', 'image/'));
+        $allImages = $attachments->every(fn (array $attachment): bool => $this->isImage($attachment));
 
         $send = function (?string $caption) use ($message, $attachments, $allImages): void {
             $media = [];

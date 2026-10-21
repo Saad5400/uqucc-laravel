@@ -53,6 +53,18 @@ function storedImage(string $name): array
     return ['type' => 'image', 'attrs' => ['src' => "/storage/uploads/{$name}"]];
 }
 
+/** A real GIF on the (faked) media disk, returned as its path for the bot reply's attachments. */
+function storedGif(string $name): string
+{
+    $image = imagecreatetruecolor(2, 2);
+    ob_start();
+    imagegif($image);
+    Storage::disk(Disk::MEDIA)->put("uploads/{$name}", (string) ob_get_clean());
+    imagedestroy($image);
+
+    return "uploads/{$name}";
+}
+
 beforeEach(function () {
     Storage::fake(Disk::MEDIA);
 });
@@ -151,6 +163,51 @@ it('keeps an album\'s buttons in a message of their own, since Telegram hangs no
         ->and(json_decode($api->sentMessages[0]['reply_markup'], true)['inline_keyboard'])->toBe([
             [['text' => 'الفيزياء', 'url' => url($child->slug)]],
         ]);
+});
+
+it('sends a GIF as an animation, with the reply as its caption and the buttons under it', function () {
+    $page = pageWithContent([textParagraph('طريقة التسجيل')], [
+        'quick_response_auto_extract_attachments' => false,
+        'quick_response_attachments' => [storedGif('steps.gif')],
+    ]);
+    $child = Page::factory()->childOf($page)->create(['title' => 'المداخل', 'slug' => '/courses/gates']);
+
+    $api = new FakeTelegramApi;
+    searchHandler($api)->handle(pageLookupMessage('المقررات'));
+
+    expect($api->sentAnimations)->toHaveCount(1)
+        ->and($api->sentPhotos)->toBeEmpty()
+        ->and($api->sentMessages)->toBeEmpty();
+
+    $animation = $api->sentAnimations[0];
+
+    expect($animation)->toHaveKey('animation')
+        ->and($animation['reply_to_message_id'])->toBe(20)
+        ->and($animation['parse_mode'])->toBe('HTML')
+        ->and($animation['caption'])->toContain('طريقة التسجيل')
+        ->and(json_decode($animation['reply_markup'], true)['inline_keyboard'])->toBe([
+            [['text' => 'المداخل', 'url' => url($child->slug)]],
+        ]);
+});
+
+it('sends a GIF on its own after the album, since an album would flatten it to a still', function () {
+    storedImage('one.png');
+    storedImage('two.png');
+    pageWithContent([textParagraph('طريقة التسجيل')], [
+        'quick_response_auto_extract_attachments' => false,
+        'quick_response_attachments' => ['uploads/one.png', storedGif('steps.gif'), 'uploads/two.png'],
+    ]);
+
+    $api = new FakeTelegramApi;
+    searchHandler($api)->handle(pageLookupMessage('المقررات'));
+
+    expect($api->sentAnimations)->toHaveCount(1)
+        ->and($api->sentAnimations[0])->not->toHaveKey('caption')
+        ->and($api->sentPhotos)->toBeEmpty()
+        ->and($api->sentMediaGroups)->toHaveCount(1)
+        ->and(json_decode($api->sentMediaGroups[0]['media'], true))->toHaveCount(2)
+        ->and($api->sentMessages)->toHaveCount(1)
+        ->and($api->sentMessages[0]['text'])->toContain('طريقة التسجيل');
 });
 
 it('sends a reply too long for a caption as its own message under the image', function () {
