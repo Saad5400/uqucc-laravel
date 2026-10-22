@@ -34,6 +34,9 @@ class FakeTelegramApi extends TelegramApi
     public array $sentAnimations = [];
 
     /** @var array<int, array<string, mixed>> */
+    public array $sentVideos = [];
+
+    /** @var array<int, array<string, mixed>> */
     public array $sentDocuments = [];
 
     /** @var array<int, array<string, mixed>> */
@@ -161,6 +164,13 @@ class FakeTelegramApi extends TelegramApi
     public function sendAnimation(array $params): Message
     {
         $this->sentAnimations[] = $params;
+
+        return new Message(['message_id' => ++$this->nextMessageId, 'chat' => ['id' => $params['chat_id'] ?? 0]]);
+    }
+
+    public function sendVideo(array $params): Message
+    {
+        $this->sentVideos[] = $params;
 
         return new Message(['message_id' => ++$this->nextMessageId, 'chat' => ['id' => $params['chat_id'] ?? 0]]);
     }

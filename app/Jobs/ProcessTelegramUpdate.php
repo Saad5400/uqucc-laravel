@@ -35,7 +35,7 @@ use App\Services\Telegram\Handlers\UquccSearchHandler;
 use App\Services\Telegram\InviteTracker;
 use App\Services\Telegram\PageReplyComposer;
 use App\Services\Telegram\TelegramApi;
-use App\Support\GifVideo;
+use App\Support\AnimationVideo;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Support\Facades\Log;
@@ -178,7 +178,7 @@ class ProcessTelegramUpdate implements ShouldQueue
             new LoginHandler($telegram),
             new PageManagementHandler($telegram, app(ContentParser::class)),
             new EditLinkHandler($telegram),
-            new UquccSearchHandler($telegram, app(QuickResponseService::class), app(PageReplyComposer::class), app(GifVideo::class)),
+            new UquccSearchHandler($telegram, app(QuickResponseService::class), app(PageReplyComposer::class), app(AnimationVideo::class)),
             new UquccListHandler($telegram),
             new PythonExecutionHandler($telegram),
             new JavaExecutionHandler($telegram),

@@ -6,8 +6,9 @@ use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\Process;
 
 /**
- * A GIF re-encoded as a sharp H.264 MP4, for sending to Telegram as an
- * animation.
+ * The video side of sending the bot's moving attachments to Telegram: a GIF
+ * re-encoded as a sharp H.264 MP4, and whether a video is silent enough to go
+ * as an animation — a looping, autoplaying clip — rather than a video.
  *
  * Telegram turns every GIF a bot uploads into an MP4 of its own, at a bitrate
  * low enough to smear text into an unreadable blur — a flyer with a moving
@@ -20,7 +21,7 @@ use Symfony\Component\Process\Process;
  * ffmpeg missing, a corrupt GIF — is logged and answered with null, and the
  * caller sends the GIF itself: a blurry animation beats none.
  */
-class GifVideo
+class AnimationVideo
 {
     /**
      * Seconds to wait on one conversion: enough for a long, large GIF, and a
@@ -32,7 +33,7 @@ class GifVideo
      * The path of the GIF's MP4, converting it on first use, or null when it
      * could not be converted.
      */
-    public function mp4For(string $gifPath): ?string
+    public function fromGif(string $gifPath): ?string
     {
         $hash = md5_file($gifPath);
 
@@ -56,7 +57,7 @@ class GifVideo
         $partialPath = "{$directory}/{$hash}.".bin2hex(random_bytes(4)).'.partial.mp4';
 
         $process = new Process([
-            $this->ffmpegBinary(),
+            $this->binary('binary', 'ffmpeg'),
             '-y', '-v', 'error',
             '-i', $gifPath,
             '-an',
@@ -85,6 +86,31 @@ class GifVideo
         return $videoPath;
     }
 
+    /**
+     * Whether the video has no sound, so Telegram can loop it as an animation
+     * without losing anything. A video ffprobe cannot read counts as having
+     * sound: sent as a video, nothing it carries is dropped.
+     */
+    public function isSilent(string $videoPath): bool
+    {
+        $process = new Process([
+            $this->binary('ffprobe_binary', 'ffprobe'),
+            '-v', 'error',
+            '-select_streams', 'a',
+            '-show_entries', 'stream=index',
+            '-of', 'csv=p=0',
+            $videoPath,
+        ], timeout: 30);
+
+        try {
+            $process->run();
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return $process->isSuccessful() && trim($process->getOutput()) === '';
+    }
+
     private function fail(string $partialPath, string $gifPath, string $reason): null
     {
         @unlink($partialPath);
@@ -98,12 +124,12 @@ class GifVideo
     }
 
     /**
-     * The ffmpeg to run — `ffmpeg` on PATH unless the deployment pinned one.
+     * The ffmpeg tool to run — the one on PATH unless the deployment pinned it.
      */
-    private function ffmpegBinary(): string
+    private function binary(string $key, string $default): string
     {
-        $binary = config('services.ffmpeg.binary');
+        $binary = config("services.ffmpeg.{$key}");
 
-        return is_string($binary) && $binary !== '' ? $binary : 'ffmpeg';
+        return is_string($binary) && $binary !== '' ? $binary : $default;
     }
 }

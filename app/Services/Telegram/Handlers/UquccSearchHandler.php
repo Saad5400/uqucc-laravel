@@ -7,8 +7,8 @@ use App\Services\QuickResponseService;
 use App\Services\Telegram\PageReply;
 use App\Services\Telegram\PageReplyComposer;
 use App\Services\Telegram\Traits\SearchesPages;
+use App\Support\AnimationVideo;
 use App\Support\Disk;
-use App\Support\GifVideo;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -44,7 +44,7 @@ class UquccSearchHandler extends BaseHandler
         Api $telegram,
         protected QuickResponseService $quickResponses,
         protected PageReplyComposer $composer,
-        protected GifVideo $gifVideo,
+        protected AnimationVideo $animationVideo,
     ) {
         parent::__construct($telegram);
     }
@@ -283,19 +283,20 @@ class UquccSearchHandler extends BaseHandler
     }
 
     /**
-     * The files as albums of up to ten, each GIF after them on its own: an
-     * album has no place for an animation and would flatten it to a still.
+     * The files as albums of up to ten, each GIF and video after them on its
+     * own: an album has no place for an animation and would flatten a GIF to
+     * a still.
      *
      * @param  Collection<int, array{path: string, filename: string}>  $resolved
      * @return Collection<int, Collection<int, array{path: string, filename: string}>>
      */
     protected function groupIntoAlbums(Collection $resolved): Collection
     {
-        [$animations, $stills] = $resolved->partition(fn (array $attachment): bool => $this->isAnimation($attachment));
+        [$moving, $stills] = $resolved->partition(fn (array $attachment): bool => $this->isMoving($attachment));
 
         return $stills->values()
             ->chunk(self::MEDIA_GROUP_SIZE)
-            ->concat($animations->map(fn (array $animation): Collection => collect([$animation])))
+            ->concat($moving->map(fn (array $attachment): Collection => collect([$attachment])))
             ->values();
     }
 
@@ -304,18 +305,57 @@ class UquccSearchHandler extends BaseHandler
      */
     protected function isImage(array $attachment): bool
     {
-        return str_starts_with(mime_content_type($attachment['path']) ?: '', 'image/');
+        return str_starts_with($this->mimeType($attachment), 'image/');
     }
 
     /**
-     * A GIF, which Telegram keeps moving only when it is sent as an animation
-     * — as a photo it is re-encoded to a still frame.
+     * A GIF or an MP4 — what Telegram plays in the chat. Other video formats
+     * it takes only as files.
      *
      * @param  array{path: string, filename: string}  $attachment
      */
-    protected function isAnimation(array $attachment): bool
+    protected function isMoving(array $attachment): bool
     {
-        return mime_content_type($attachment['path']) === 'image/gif';
+        return in_array($this->mimeType($attachment), ['image/gif', 'video/mp4'], true);
+    }
+
+    /**
+     * @param  array{path: string, filename: string}  $attachment
+     */
+    protected function mimeType(array $attachment): string
+    {
+        return mime_content_type($attachment['path']) ?: '';
+    }
+
+    /**
+     * How Telegram should get one file, and the file to give it.
+     *
+     * A GIF goes as an animation, in a sharp MP4 of our own encoding when one
+     * can be made: Telegram's conversion of an uploaded GIF blurs it, and as a
+     * photo it would be a still frame. A silent video loops as an animation
+     * too, the way a GIF would; one with sound goes as a video so the sound
+     * is kept.
+     *
+     * @param  array{path: string, filename: string}  $attachment
+     * @return array{kind: 'animation'|'video'|'photo'|'document', path: string, filename: string}
+     */
+    protected function outgoingFile(array $attachment): array
+    {
+        $mimeType = $this->mimeType($attachment);
+
+        if ($mimeType === 'image/gif') {
+            $videoPath = $this->animationVideo->fromGif($attachment['path']);
+
+            return $videoPath === null
+                ? ['kind' => 'animation', ...$attachment]
+                : ['kind' => 'animation', 'path' => $videoPath, 'filename' => pathinfo($attachment['filename'], PATHINFO_FILENAME).'.mp4'];
+        }
+
+        if ($mimeType === 'video/mp4') {
+            return ['kind' => $this->animationVideo->isSilent($attachment['path']) ? 'animation' : 'video', ...$attachment];
+        }
+
+        return ['kind' => str_starts_with($mimeType, 'image/') ? 'photo' : 'document', ...$attachment];
     }
 
     /**
@@ -388,13 +428,14 @@ class UquccSearchHandler extends BaseHandler
      */
     protected function sendSingleAttachment(Message $message, array $attachment, ?PageReply $reply): void
     {
-        $isAnimation = $this->isAnimation($attachment);
-        $isImage = $this->isImage($attachment);
+        $outgoing = $this->outgoingFile($attachment);
+        $kind = $outgoing['kind'];
 
-        $send = function (?string $caption) use ($message, $attachment, $isAnimation, $isImage, $reply): void {
+        $send = function (?string $caption) use ($message, $outgoing, $kind, $reply): void {
             $payload = [
                 'chat_id' => $message->getChat()->getId(),
                 'reply_to_message_id' => $this->getReplyToMessageId($message),
+                $kind => InputFile::create($outgoing['path'], $outgoing['filename']),
             ];
 
             if ($caption !== null) {
@@ -406,18 +447,12 @@ class UquccSearchHandler extends BaseHandler
                 }
             }
 
-            $file = InputFile::create($attachment['path'], $attachment['filename']);
-
-            if ($isAnimation) {
-                $payload['animation'] = $this->animationFile($attachment) ?? $file;
-                $this->telegram->sendAnimation($payload);
-            } elseif ($isImage) {
-                $payload['photo'] = $file;
-                $this->telegram->sendPhoto($payload);
-            } else {
-                $payload['document'] = $file;
-                $this->telegram->sendDocument($payload);
-            }
+            match ($kind) {
+                'animation' => $this->telegram->sendAnimation($payload),
+                'video' => $this->telegram->sendVideo($payload + ['supports_streaming' => true]),
+                'photo' => $this->telegram->sendPhoto($payload),
+                'document' => $this->telegram->sendDocument($payload),
+            };
         };
 
         if ($reply === null) {
@@ -427,23 +462,6 @@ class UquccSearchHandler extends BaseHandler
         }
 
         $this->withQuoteFallback($reply, $send);
-    }
-
-    /**
-     * The GIF as a sharp MP4 of our own encoding, since Telegram's conversion
-     * of an uploaded GIF blurs it — or null to send the GIF as it is.
-     *
-     * @param  array{path: string, filename: string}  $attachment
-     */
-    protected function animationFile(array $attachment): ?InputFile
-    {
-        $videoPath = $this->gifVideo->mp4For($attachment['path']);
-
-        if ($videoPath === null) {
-            return null;
-        }
-
-        return InputFile::create($videoPath, pathinfo($attachment['filename'], PATHINFO_FILENAME).'.mp4');
     }
 
     /**
