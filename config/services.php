@@ -62,6 +62,23 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | ffmpeg
+    |--------------------------------------------------------------------------
+    |
+    | App\Support\AnimationVideo re-encodes the bot's GIF attachments as MP4
+    | so Telegram does not blur them with its own conversion, and asks ffprobe
+    | whether a video attachment is silent. Both are found on PATH unless
+    | pinned here; without them GIFs go as they are and videos as videos.
+    |
+    */
+
+    'ffmpeg' => [
+        'binary' => env('FFMPEG_BINARY', 'ffmpeg'),
+        'ffprobe_binary' => env('FFPROBE_BINARY', 'ffprobe'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Code sandbox
     |--------------------------------------------------------------------------
     |

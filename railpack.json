@@ -70,7 +70,8 @@
     "aptPackages": [
       "supervisor",
       "curl",
-      "wget"
+      "wget",
+      "ffmpeg"
     ],
     "variables": {
       "LOG_CHANNEL": "stack"
