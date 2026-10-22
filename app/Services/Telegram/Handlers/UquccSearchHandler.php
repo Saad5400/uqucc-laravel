@@ -8,6 +8,7 @@ use App\Services\Telegram\PageReply;
 use App\Services\Telegram\PageReplyComposer;
 use App\Services\Telegram\Traits\SearchesPages;
 use App\Support\Disk;
+use App\Support\GifVideo;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -43,6 +44,7 @@ class UquccSearchHandler extends BaseHandler
         Api $telegram,
         protected QuickResponseService $quickResponses,
         protected PageReplyComposer $composer,
+        protected GifVideo $gifVideo,
     ) {
         parent::__construct($telegram);
     }
@@ -407,7 +409,7 @@ class UquccSearchHandler extends BaseHandler
             $file = InputFile::create($attachment['path'], $attachment['filename']);
 
             if ($isAnimation) {
-                $payload['animation'] = $file;
+                $payload['animation'] = $this->animationFile($attachment) ?? $file;
                 $this->telegram->sendAnimation($payload);
             } elseif ($isImage) {
                 $payload['photo'] = $file;
@@ -425,6 +427,23 @@ class UquccSearchHandler extends BaseHandler
         }
 
         $this->withQuoteFallback($reply, $send);
+    }
+
+    /**
+     * The GIF as a sharp MP4 of our own encoding, since Telegram's conversion
+     * of an uploaded GIF blurs it — or null to send the GIF as it is.
+     *
+     * @param  array{path: string, filename: string}  $attachment
+     */
+    protected function animationFile(array $attachment): ?InputFile
+    {
+        $videoPath = $this->gifVideo->mp4For($attachment['path']);
+
+        if ($videoPath === null) {
+            return null;
+        }
+
+        return InputFile::create($videoPath, pathinfo($attachment['filename'], PATHINFO_FILENAME).'.mp4');
     }
 
     /**

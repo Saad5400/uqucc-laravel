@@ -5,13 +5,14 @@ use App\Services\QuickResponseService;
 use App\Services\Telegram\Handlers\UquccSearchHandler;
 use App\Services\Telegram\PageReplyComposer;
 use App\Support\Disk;
+use App\Support\GifVideo;
 use Illuminate\Support\Facades\Storage;
 use Telegram\Bot\Objects\Message;
 use Tests\Fakes\FakeTelegramApi;
 
 function searchHandler(FakeTelegramApi $api): UquccSearchHandler
 {
-    return new UquccSearchHandler($api, app(QuickResponseService::class), app(PageReplyComposer::class));
+    return new UquccSearchHandler($api, app(QuickResponseService::class), app(PageReplyComposer::class), app(GifVideo::class));
 }
 
 function pageLookupMessage(string $text): Message
@@ -166,6 +167,9 @@ it('keeps an album\'s buttons in a message of their own, since Telegram hangs no
 });
 
 it('sends a GIF as an animation, with the reply as its caption and the buttons under it', function () {
+    $video = tempnam(sys_get_temp_dir(), 'gif-video');
+    $this->mock(GifVideo::class)->shouldReceive('mp4For')->once()->andReturn($video);
+
     $page = pageWithContent([textParagraph('طريقة التسجيل')], [
         'quick_response_auto_extract_attachments' => false,
         'quick_response_attachments' => [storedGif('steps.gif')],
@@ -181,7 +185,7 @@ it('sends a GIF as an animation, with the reply as its caption and the buttons u
 
     $animation = $api->sentAnimations[0];
 
-    expect($animation)->toHaveKey('animation')
+    expect($animation['animation']->getFilename())->toBe('steps.mp4')
         ->and($animation['reply_to_message_id'])->toBe(20)
         ->and($animation['parse_mode'])->toBe('HTML')
         ->and($animation['caption'])->toContain('طريقة التسجيل')
@@ -190,7 +194,25 @@ it('sends a GIF as an animation, with the reply as its caption and the buttons u
         ]);
 });
 
+it('sends the GIF itself when it could not be converted to MP4', function () {
+    $this->mock(GifVideo::class)->shouldReceive('mp4For')->andReturnNull();
+
+    pageWithContent([textParagraph('طريقة التسجيل')], [
+        'quick_response_auto_extract_attachments' => false,
+        'quick_response_attachments' => [storedGif('steps.gif')],
+    ]);
+
+    $api = new FakeTelegramApi;
+    searchHandler($api)->handle(pageLookupMessage('المقررات'));
+
+    expect($api->sentAnimations)->toHaveCount(1)
+        ->and($api->sentAnimations[0]['animation']->getFilename())->toBe('steps.gif')
+        ->and($api->sentAnimations[0]['caption'])->toContain('طريقة التسجيل');
+});
+
 it('sends a GIF on its own after the album, since an album would flatten it to a still', function () {
+    $this->mock(GifVideo::class)->shouldReceive('mp4For')->andReturnNull();
+
     storedImage('one.png');
     storedImage('two.png');
     pageWithContent([textParagraph('طريقة التسجيل')], [

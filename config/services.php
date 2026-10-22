@@ -62,6 +62,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | ffmpeg
+    |--------------------------------------------------------------------------
+    |
+    | App\Support\GifVideo re-encodes the bot's GIF attachments as MP4 so
+    | Telegram does not blur them with its own conversion. `ffmpeg` on PATH
+    | unless pinned here; without it the GIFs are sent as they are.
+    |
+    */
+
+    'ffmpeg' => [
+        'binary' => env('FFMPEG_BINARY', 'ffmpeg'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Code sandbox
     |--------------------------------------------------------------------------
     |
