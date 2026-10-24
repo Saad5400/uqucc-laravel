@@ -750,7 +750,7 @@ it('lets a dropped client resume and stop even once the burst limiter is exhaust
  * A turn must not land on `default` (one worker, no --timeout, so turns
  * serialize behind each other and are killed at 60s) nor on `ai` (multi-minute
  * corpus extraction and ingestion, which an interactive reply would wait
- * behind). nixpacks.toml's `worker-ai-chat` is the other half of this pairing;
+ * behind). deploy/supervisord.conf's `worker-ai-chat` is the other half of this pairing;
  * the queue NAME is the whole contract between config and worker topology, so
  * it is worth a test on each surface.
  *
