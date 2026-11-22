@@ -13,11 +13,12 @@
 	# same concurrency ceiling. Requests here are mostly I/O-bound (Postgres,
 	# Redis, S3, the SSR server, OpenRouter), and every open AI chat stream
 	# holds one PHP thread for its whole life (up to 210s, the kit's
-	# max_stream_seconds + 30), so 16 threads (4 per vCPU) start warm and the
-	# pool grows on demand. Requests beyond max_threads queue for
-	# max_wait_time, then get a 504.
+	# max_stream_seconds + 30), so 8 threads start warm and the pool grows on
+	# demand (up to max_threads) — the VPS is shared, and idle warm threads
+	# are memory other apps cannot use. Requests beyond max_threads queue
+	# for max_wait_time, then get a 504.
 	frankenphp {
-		num_threads 16
+		num_threads 8
 		max_threads 50
 		max_wait_time 30s
 	}

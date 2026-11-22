@@ -7,7 +7,7 @@
   "steps": {
     "extensions": {
       "commands": [
-        "install-php-extensions ctype curl dom fileinfo filter mbstring openssl pdo session tokenizer xml calendar gd exif zip intl pgsql pdo_pgsql bcmath pcntl sockets gmp opcache"
+        "install-php-extensions ctype curl dom fileinfo filter mbstring openssl pdo session tokenizer xml calendar gd exif zip intl pgsql pdo_pgsql redis bcmath pcntl sockets gmp opcache"
       ],
       "deployOutputs": []
     },

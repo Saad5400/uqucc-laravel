@@ -83,6 +83,7 @@ return [
         'navigation_tree' => 'navigation_tree',
         'search_data' => 'search_data',
         'quick_responses' => 'quick_responses',
+        'page_ids_by_slug' => 'page_ids_by_slug', // slug => id map for page-view tracking
         'screenshot' => 'screenshot', // Base key, will be appended with page slug and version
 
         // Page-related cache keys

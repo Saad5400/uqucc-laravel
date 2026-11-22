@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureUserCanManage;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\ServeCachedPage;
 use App\Http\Middleware\TrackPageViews;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -23,6 +24,11 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // Full-page cache hits for visitors without a session are answered
+        // before the web group starts one (after the global proxy and
+        // maintenance-mode middleware, which it must still honour).
+        $middleware->append(ServeCachedPage::class);
+
         $middleware->web(append: [
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
@@ -46,14 +52,22 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->redirectGuestsTo(fn (Request $request) => route('manage.login'));
 
-        // Trust all proxies to get real client IP from X-Forwarded-For headers
+        // Trusted proxies: '*' trusts only the direct peer (Traefik), so behind
+        // Cloudflare request()->ip() would be the Cloudflare edge — every
+        // per-IP limit and page-view identity would lump strangers together.
+        // Prod pins the proxy chain via TRUSTED_PROXIES (comma-separated
+        // IPs/CIDRs: Traefik's network + Cloudflare's ranges); unset/blank or
+        // '*' keeps the previous trust-the-peer behaviour for local/dev. Same
+        // pattern as catodemy. TrustedProxiesTest guards it.
+        $trustedProxies = trim((string) env('TRUSTED_PROXIES', ''));
         $middleware->trustProxies(
-            at: '*',
-            headers: Request::HEADER_X_FORWARDED_FOR |
-                     Request::HEADER_X_FORWARDED_HOST |
-                     Request::HEADER_X_FORWARDED_PORT |
-                     Request::HEADER_X_FORWARDED_PROTO |
-                     Request::HEADER_X_FORWARDED_AWS_ELB
+            at: $trustedProxies === '' || $trustedProxies === '*'
+                ? '*'
+                : array_values(array_filter(array_map('trim', explode(',', $trustedProxies)))),
+            headers: Request::HEADER_X_FORWARDED_FOR
+                | Request::HEADER_X_FORWARDED_HOST
+                | Request::HEADER_X_FORWARDED_PORT
+                | Request::HEADER_X_FORWARDED_PROTO,
         );
     })
     ->withExceptions(function (Exceptions $exceptions): void {

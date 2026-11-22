@@ -20,7 +20,7 @@ class CacheResponse
     /**
      * Routes/patterns to exclude from caching.
      */
-    protected array $excludedPaths = [
+    protected const EXCLUDED_PATHS = [
         'admin/*',
         'login',
         'logout',
@@ -33,35 +33,22 @@ class CacheResponse
      */
     public function handle(Request $request, Closure $next, ?string $ttl = null): Response
     {
-        // Only cache GET requests
-        if (! $request->isMethod('GET')) {
-            return $next($request);
-        }
-
         // Skip caching for authenticated users (they may see personalized content)
         if ($request->user()) {
             return $next($request);
         }
 
-        // Skip caching for excluded paths
-        if ($this->isExcludedPath($request)) {
+        $cacheKey = self::cacheKeyFor($request);
+
+        if ($cacheKey === null) {
             return $next($request);
         }
-
-        // Skip caching for Inertia partial reloads (they need fresh data)
-        if ($request->header('X-Inertia-Partial-Data')) {
-            return $next($request);
-        }
-
-        // Skip if request has query parameters that might affect output
-        // Allow caching with query params but include them in the cache key
-        $cacheKey = $this->getCacheKey($request);
 
         // Try to get cached response
         $cachedResponse = Cache::get($cacheKey);
 
         if ($cachedResponse !== null) {
-            return $this->buildResponseFromCache($cachedResponse, $request);
+            return self::responseFromCache($cachedResponse);
         }
 
         // Process the request
@@ -77,11 +64,30 @@ class CacheResponse
     }
 
     /**
-     * Generate a unique cache key for the request.
+     * The cache key a request reads and writes, or null when it must bypass
+     * the cache — the one rule this middleware and the pre-session
+     * {@see ServeCachedPage} share.
+     *
+     * Only GETs of a URL WITHOUT a query string are cached. No cached page
+     * reads a query parameter, so every `?utm_…`, `?fbclid=…` or cache-busting
+     * variant would store one more full copy of the same HTML in the shared,
+     * never-evicting Redis — fbclid alone is unique per click. Nor could such
+     * variants share the clean URL's entry: the Inertia page object carries
+     * the URL it was rendered for, and the client writes it into the address
+     * bar, so another visitor's tracking parameters would replace the
+     * visitor's own (and analytics would read those).
      */
-    protected function getCacheKey(Request $request): string
+    public static function cacheKeyFor(Request $request): ?string
     {
-        return self::keyFor($request->fullUrl(), (bool) $request->header('X-Inertia'));
+        if (! $request->isMethod('GET')
+            || $request->getQueryString() !== null
+            || self::isExcludedPath($request)
+            // Inertia partial reloads need fresh data
+            || $request->header('X-Inertia-Partial-Data')) {
+            return null;
+        }
+
+        return self::keyFor($request->url(), (bool) $request->header('X-Inertia'));
     }
 
     /**
@@ -105,7 +111,7 @@ class CacheResponse
     /**
      * Check if the path should be excluded from caching.
      */
-    protected function isExcludedPath(Request $request): bool
+    protected static function isExcludedPath(Request $request): bool
     {
         $path = $request->path();
 
@@ -114,7 +120,7 @@ class CacheResponse
             return true;
         }
 
-        foreach ($this->excludedPaths as $pattern) {
+        foreach (self::EXCLUDED_PATHS as $pattern) {
             if ($pattern === $path || fnmatch($pattern, $path)) {
                 return true;
             }
@@ -188,8 +194,10 @@ class CacheResponse
 
     /**
      * Build a response from cached data.
+     *
+     * @param  array{content: string, status: int, headers?: array<string, string|null>}  $cached
      */
-    protected function buildResponseFromCache(array $cached, Request $request): Response
+    public static function responseFromCache(array $cached): Response
     {
         $response = response($cached['content'], $cached['status']);
 

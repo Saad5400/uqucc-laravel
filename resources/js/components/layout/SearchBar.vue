@@ -1,13 +1,20 @@
 <script setup lang="ts">
-import type { AppPageProps, SearchItem } from '@/types';
-import { router, usePage } from '@inertiajs/vue3';
+import { loadSearchIndex } from '@/lib/searchIndex';
+import type { SearchItem } from '@/types';
+import { router } from '@inertiajs/vue3';
 import Fuse from 'fuse.js';
 import { ArrowUpLeft, Search, Sparkles } from 'lucide-vue-next';
 import { ComboboxAnchor, ComboboxContent, ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxPortal, ComboboxRoot, ComboboxViewport } from 'reka-ui';
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue';
 
-const page = usePage<AppPageProps<{ searchData: SearchItem[] }>>();
-const searchIndex = computed<SearchItem[]>(() => page.props.searchData ?? []);
+/** Loaded on first focus or keystroke (see lib/searchIndex.ts), not shipped with every page. */
+const searchIndex = shallowRef<SearchItem[]>([]);
+
+const ensureIndex = (): void => {
+    void loadSearchIndex().then((items) => {
+        searchIndex.value = items;
+    });
+};
 
 const query = ref('');
 const isOpen = ref(false);
@@ -62,6 +69,7 @@ const submitFirst = () => {
  * force-reopening the listbox.
  */
 const onInput = () => {
+    ensureIndex();
     isOpen.value = trimmedQuery.value.length > 0;
 };
 
@@ -120,6 +128,7 @@ const compareItems = (a: SearchItem | null, b: SearchItem | null) => a?.id === b
                         type="text"
                         class="h-full w-full border-0 ps-9 pe-3 text-start text-base shadow-none outline-none focus-visible:ring-0 md:text-sm"
                         dir="rtl"
+                        @focus="ensureIndex"
                         @input="onInput"
                         @keydown.escape="onEscape"
                     >

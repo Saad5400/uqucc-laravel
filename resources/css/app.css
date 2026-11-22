@@ -2,11 +2,9 @@
 @import '@saad5400/ai-kit/styles/prose.css';
 
 /* Tailwind auto-detects sources; deploy/ holds supervisord.conf, whose
-   [program:x] headers would otherwise become utility classes (nixpacks.toml
-   likewise, until it is deleted). The other Railpack files at the root carry
-   no class names worth scanning either. */
+   [program:x] headers would otherwise become utility classes. The other
+   Railpack files at the root carry no class names worth scanning either. */
 @source not '../../deploy';
-@source not '../../nixpacks.toml';
 @source not '../../Caddyfile';
 @source not '../../railpack.json';
 @source not '../../php.ini';

@@ -6,6 +6,7 @@ import PageHeader from '@/components/page/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { ensureXsrfToken, xsrfToken } from '@/lib/http';
 import { cancel as cancelTurn, send as sendChat, show as showConversation, stream as streamTurn } from '@/routes/ai/chat';
 import { store as storeAttachment } from '@/routes/ai/chat/attachments';
 import { show as showPage } from '@/routes/pages';
@@ -194,12 +195,6 @@ const newMessage = (role: 'user' | 'assistant', content = ''): ChatMessage => {
     const segments = reactive<Segment[]>([]);
 
     return { id: nextLocalId++, role, content, citations: [], segments, timeline: markRaw(createTimeline(segments)) };
-};
-
-const xsrfToken = (): string => {
-    const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
-
-    return match ? decodeURIComponent(match[1]) : '';
 };
 
 const scrollToBottom = async (): Promise<void> => {
@@ -529,7 +524,7 @@ const sendMessage = async (): Promise<void> => {
             credentials: 'same-origin',
             headers: {
                 'Content-Type': 'application/json',
-                'X-XSRF-TOKEN': xsrfToken(),
+                'X-XSRF-TOKEN': await ensureXsrfToken(),
                 Accept: 'text/event-stream',
             },
             body: JSON.stringify({
@@ -649,13 +644,14 @@ const openFilePicker = (): void => {
     fileInput.value?.click();
 };
 
-const uploadAttachment = (file: File, pending: PendingAttachment): void => {
+const uploadAttachment = async (file: File, pending: PendingAttachment): Promise<void> => {
     const body = new FormData();
     body.append('file', file);
+    const token = await ensureXsrfToken();
 
     const request = new XMLHttpRequest();
     request.open('POST', storeAttachment.url());
-    request.setRequestHeader('X-XSRF-TOKEN', xsrfToken());
+    request.setRequestHeader('X-XSRF-TOKEN', token);
     request.setRequestHeader('Accept', 'application/json');
     request.responseType = 'json';
 
@@ -722,7 +718,7 @@ const onFilesSelected = (event: Event): void => {
         attachments.value.push(pending);
 
         if (pending.status === 'uploading') {
-            uploadAttachment(file, attachments.value[attachments.value.length - 1]);
+            void uploadAttachment(file, attachments.value[attachments.value.length - 1]);
         }
     }
 };

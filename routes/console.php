@@ -53,14 +53,6 @@ Schedule::command('quiz:generate')
     ->withoutOverlapping(60)
     ->runInBackground();
 
-// Runs every minute and posts only when the configured moment arrives — the
-// posting time is a setting, and a single day can be rescheduled on its own,
-// so it cannot be pinned to one hour here (see App\Services\Quiz\QuizSchedule).
-Schedule::command('quiz:post')
-    ->everyMinute()
-    ->withoutOverlapping(10)
-    ->runInBackground();
-
 // Thursday evening, after the new week's first question went out at 16:00 and
 // the outgoing week's last one (Wednesday's) stopped taking votes with it.
 // The command only sends a message — the weekly board is summed from the
@@ -139,3 +131,18 @@ Schedule::command('quiz:remind closing')
     ->dailyAt('15:40')
     ->withoutOverlapping()
     ->runInBackground();
+
+// Runs every minute and posts only when the configured moment arrives — the
+// posting time is a setting, and a single day can be rescheduled on its own,
+// so it cannot be pinned to one hour here (see App\Services\Quiz\QuizSchedule).
+//
+// In the foreground: on almost every minute it only reads a setting and exits,
+// and backgrounding it cost two extra PHP processes a minute (the command and
+// its finish callback). Registered LAST on purpose: schedule:run starts due
+// tasks in this order, so on the rare minute it runs long (generating a missed
+// question inline) every other due task above has already been launched in
+// the background and nothing waits behind it. deploy/scheduler.sh backgrounds
+// each schedule:run, so the next minute is never delayed either.
+Schedule::command('quiz:post')
+    ->everyMinute()
+    ->withoutOverlapping(10);

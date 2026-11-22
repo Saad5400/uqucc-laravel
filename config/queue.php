@@ -77,7 +77,12 @@ return [
             // buffer that already has one. Static on purpose: it is a fixed
             // property of our worker topology, not a per-environment knob.
             'retry_after' => 360,
-            'block_for' => null,
+            // Idle workers wait on a blocking pop (BLPOP) for up to 5s instead
+            // of polling every --sleep second: a pushed job is still picked up
+            // at once, but the idle fleet stops sending the shared Redis a
+            // round of LPOP/ZRANGEBYSCORE per worker per second. Kept well
+            // below the client read timeout and the 25s supervisord stop grace.
+            'block_for' => 5,
             'after_commit' => false,
         ],
 

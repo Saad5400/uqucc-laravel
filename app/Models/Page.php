@@ -46,10 +46,26 @@ class Page extends Model implements Sortable
         Cache::forget(config('app-cache.keys.navigation_tree'));
         Cache::forget(config('app-cache.keys.search_data'));
         Cache::forget(config('app-cache.keys.quick_responses'));
+        Cache::forget(config('app-cache.keys.page_ids_by_slug'));
 
         // Clear all page-related caches using pattern-based flush
         // This uses Redis SCAN to find and delete matching keys efficiently
         self::clearPageCaches();
+    }
+
+    /**
+     * The id of the (non-deleted) page at a slug, from one cached slug => id
+     * map of every page — what page-view tracking asks on every public hit.
+     */
+    public static function idForSlug(string $slug): ?int
+    {
+        $ids = Cache::remember(
+            config('app-cache.keys.page_ids_by_slug'),
+            config('app-cache.pages.ttl', 1800),
+            fn (): array => self::query()->pluck('id', 'slug')->all(),
+        );
+
+        return $ids[$slug] ?? null;
     }
 
     /**

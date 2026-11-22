@@ -2,7 +2,6 @@
 
 namespace App\Http\Middleware;
 
-use App\Services\SearchIndexService;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -67,8 +66,6 @@ class HandleInertiaRequests extends Middleware
                 config('app-cache.navigation.ttl'),
                 fn () => app(\App\Services\NavigationService::class)->buildTree()
             ),
-            // Search data (cached, auto-invalidates on page changes)
-            'searchData' => fn () => app(SearchIndexService::class)->getCachedIndex(),
         ];
     }
 }
