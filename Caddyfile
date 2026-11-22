@@ -36,6 +36,15 @@
 	header X-Content-Type-Options "nosniff"
 	header -Server
 
+	# No other site may frame the guide or the /manage panel (clickjacking a
+	# signed-in admin into a click). CSP frame-ancestors for current browsers,
+	# X-Frame-Options for old ones. Nothing in the app frames itself.
+	header Content-Security-Policy "frame-ancestors 'self'"
+	header X-Frame-Options "SAMEORIGIN"
+	# Other origins get only our origin as Referer (the browsers' default,
+	# pinned so no old client sends the full URL).
+	header Referrer-Policy "strict-origin-when-cross-origin"
+
 	# nginx denied every dotfile path except /.well-known.
 	@dotfiles {
 		path_regexp /\.
