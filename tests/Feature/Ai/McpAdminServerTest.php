@@ -4,14 +4,18 @@ use App\Models\Page;
 use App\Models\PageChangeRequest;
 use App\Models\PrivateTutor\PrivateTutor;
 use App\Models\PrivateTutor\PrivateTutorCourse;
+use App\Models\TelegramChatSetting;
+use App\Models\TelegramInviteLink;
+use App\Models\TelegramInviteLinkJoin;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
+use Illuminate\Testing\TestResponse;
 use Laravel\Passport\Passport;
 
 use function Pest\Laravel\postJson;
 
 /** The text content of a successful tools/call response. */
-function adminResultText(\Illuminate\Testing\TestResponse $response): string
+function adminResultText(TestResponse $response): string
 {
     return (string) collect($response->json('result.content'))->pluck('text')->implode("\n");
 }
@@ -361,7 +365,7 @@ it('lists the application routes through list_routes', function () {
 });
 
 it('toggles a Telegram chat AI setting by chat_id', function () {
-    $chat = App\Models\TelegramChatSetting::query()->create([
+    $chat = TelegramChatSetting::query()->create([
         'chat_id' => 123456789,
         'title' => 'مجموعة',
         'type' => 'group',
@@ -386,7 +390,7 @@ it('summarizes analytics as readable text', function () {
 it('names the admin whose invite link a member joined through', function () {
     Passport::actingAs(makeUser('admin'));
 
-    $link = App\Models\TelegramInviteLink::query()->create([
+    $link = TelegramInviteLink::query()->create([
         'chat_id' => -100123,
         'invite_link' => 'https://t.me/+one',
         'creator_telegram_user_id' => 42,
@@ -396,7 +400,7 @@ it('names the admin whose invite link a member joined through', function () {
         'joins_count' => 1,
     ]);
 
-    App\Models\TelegramInviteLinkJoin::query()->create([
+    TelegramInviteLinkJoin::query()->create([
         'telegram_invite_link_id' => $link->id,
         'chat_id' => $link->chat_id,
         'invite_link' => $link->invite_link,
@@ -427,3 +431,15 @@ it('clears the application cache', function () {
 
     postJson('/mcp/admin', adminRpc('clear_cache'))->assertOk();
 });
+
+it('denies settings changes and the cache clear to an editor (admin-only)', function (string $tool, array $arguments) {
+    Passport::actingAs(makeUser('editor'));
+
+    $response = postJson('/mcp/admin', adminRpc($tool, $arguments));
+
+    expect($response->json('result.isError'))->toBeTrue()
+        ->and(adminResultText($response))->toContain('ليست لديك صلاحية');
+})->with([
+    'update_setting' => ['update_setting', ['group' => 'ai', 'key' => 'daily_budget_usd', 'value' => 999]],
+    'clear_cache' => ['clear_cache', []],
+]);

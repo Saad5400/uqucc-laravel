@@ -6,6 +6,7 @@ use App\Models\PageViewStat;
 use App\Models\User;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Support\Facades\Cache;
+use Inertia\Inertia;
 use Inertia\Testing\AssertableInertia as Assert;
 
 beforeEach(function () {
@@ -97,7 +98,7 @@ describe('deferred props', function () {
 
         $response = $this->actingAs($this->admin)->get('/manage', [
             'X-Inertia' => 'true',
-            'X-Inertia-Version' => \Inertia\Inertia::getVersion(),
+            'X-Inertia-Version' => Inertia::getVersion(),
             'X-Inertia-Partial-Component' => 'manage/Dashboard',
             'X-Inertia-Partial-Data' => 'viewsChart,commandsChart,latestPages,mostViewed,topCommands',
         ]);
@@ -129,6 +130,14 @@ describe('cache clear', function () {
         $response->assertRedirect('/manage');
         $response->assertSessionHas('success', 'تم مسح الكاش');
         expect(Cache::get('probe'))->toBeNull();
+    });
+
+    it('forbids editors to clear the cache (admin-only)', function () {
+        Cache::put('probe', 'value');
+
+        $this->actingAs($this->editor)->post('/manage/cache/clear')->assertForbidden();
+
+        expect(Cache::get('probe'))->toBe('value');
     });
 
     it('redirects guests trying to clear the cache', function () {

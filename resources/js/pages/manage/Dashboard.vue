@@ -6,7 +6,7 @@ import PageHeader from '@/components/manage/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatNumber, formatRelativeTime, formatShortDate } from '@/lib/formatters';
-import { Deferred, Head, Link, router } from '@inertiajs/vue3';
+import { Deferred, Head, Link, router, usePage } from '@inertiajs/vue3';
 import { Eraser } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
@@ -88,6 +88,12 @@ function toChartPoints(points: ChartPoint[] | undefined): LineChartPoint[] {
     return (points ?? []).map((point) => ({ label: formatShortDate(point.date), value: point.count }));
 }
 
+// Clearing the cache is admin-only (`manage-settings`, routes/manage.php).
+const page = usePage();
+const canClearCache = computed(() =>
+    (((page.props.auth?.user as { permissions?: string[] } | null | undefined)?.permissions ?? []) as string[]).includes('manage-settings'),
+);
+
 const confirmingCacheClear = ref(false);
 const clearingCache = ref(false);
 
@@ -113,7 +119,7 @@ function clearCache(): void {
 <template>
     <Head title="لوحة التحكم" />
     <PageHeader title="لوحة التحكم" description="نظرة عامة على الصفحات والزيارات وأوامر البوت">
-        <template #actions>
+        <template v-if="canClearCache" #actions>
             <Button variant="outline" @click="confirmingCacheClear = true">
                 <Eraser />
                 مسح الكاش

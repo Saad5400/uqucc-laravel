@@ -8,6 +8,7 @@ use App\Ai\Admin\Actions\AdminActionException;
 use App\Ai\Admin\SettingsRegistry;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\JsonSchema\Types\Type;
 use Saad\AiKit\Approvals\Classified\Field;
 use Saad\AiKit\Approvals\Classified\FieldWidget;
 
@@ -24,6 +25,12 @@ class UpdateSettingAction extends AdminAction
     public function name(): string
     {
         return 'update_setting';
+    }
+
+    /** Admin-only, like the /manage settings routes (`can:manage-settings`). */
+    public function requiredAbility(): ?string
+    {
+        return 'manage-settings';
     }
 
     public function category(): string
@@ -108,7 +115,7 @@ class UpdateSettingAction extends AdminAction
     }
 
     /**
-     * @return array<string, \Illuminate\JsonSchema\Types\Type>
+     * @return array<string, Type>
      */
     public function schema(JsonSchema $schema): array
     {

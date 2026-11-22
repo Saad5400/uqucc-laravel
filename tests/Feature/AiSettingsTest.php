@@ -162,11 +162,20 @@ describe('manage settings AI card', function () {
             );
     });
 
-    it('allows any panel user to save the AI settings (parity with the previous admin page)', function () {
+    it('forbids editors the AI settings (admin-only)', function () {
         $editor = User::factory()->create();
         $editor->assignRole('editor');
+        $before = app(AiSettings::class)->daily_budget_usd;
 
         $this->actingAs($editor)
+            ->put('/manage/settings/ai', validAiSettingsPayload(['daily_budget_usd' => 999]))
+            ->assertForbidden();
+
+        expect(app(AiSettings::class)->daily_budget_usd)->toBe($before);
+    });
+
+    it('lets an admin save the AI settings', function () {
+        $this->actingAs($this->admin)
             ->from('/manage/settings')
             ->put('/manage/settings/ai', validAiSettingsPayload())
             ->assertRedirect('/manage/settings')

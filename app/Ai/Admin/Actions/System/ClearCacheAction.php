@@ -4,13 +4,15 @@ namespace App\Ai\Admin\Actions\System;
 
 use App\Ai\Admin\Actions\ActionResult;
 use App\Ai\Admin\Actions\AdminAction;
+use App\Http\Controllers\Manage\CacheController;
 use App\Models\User;
 use Illuminate\Contracts\JsonSchema\JsonSchema;
+use Illuminate\JsonSchema\Types\Type;
 use Illuminate\Support\Facades\Artisan;
 
 /**
  * Flush the application cache, mirroring
- * {@see \App\Http\Controllers\Manage\CacheController::clear()}. It runs the
+ * {@see CacheController::clear()}. It runs the
  * cache:clear Artisan command; the cache rebuilds lazily on upcoming visits.
  */
 class ClearCacheAction extends AdminAction
@@ -18,6 +20,12 @@ class ClearCacheAction extends AdminAction
     public function name(): string
     {
         return 'clear_cache';
+    }
+
+    /** Admin-only, like the /manage settings routes (`can:manage-settings`). */
+    public function requiredAbility(): ?string
+    {
+        return 'manage-settings';
     }
 
     public function category(): string
@@ -32,7 +40,7 @@ class ClearCacheAction extends AdminAction
     }
 
     /**
-     * @return array<string, \Illuminate\JsonSchema\Types\Type>
+     * @return array<string, Type>
      */
     public function schema(JsonSchema $schema): array
     {

@@ -27,17 +27,17 @@ describe('authorization', function () {
         $this->get('/manage/settings')->assertForbidden();
     });
 
-    it('allows editors to open and save the settings page (any panel user, parity with Filament)', function () {
+    it('forbids editors the settings page and the telegram settings (admin-only)', function () {
         $this->actingAs($this->editor);
 
-        $this->get('/manage/settings')->assertOk();
+        $this->get('/manage/settings')->assertForbidden();
 
         $this->put('/manage/settings/telegram', [
             'allowed_chat_ids' => ['12345'],
             'auto_delete_messages' => true,
-        ])->assertSessionHasNoErrors();
+        ])->assertForbidden();
 
-        expect(app(TelegramSettings::class)->page_management_allowed_chat_ids)->toBe(['12345']);
+        expect(app(TelegramSettings::class)->page_management_allowed_chat_ids)->toBe([]);
     });
 });
 

@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class RolesAndPermissionsSeeder extends Seeder
 {
@@ -15,7 +16,7 @@ class RolesAndPermissionsSeeder extends Seeder
     public function run(): void
     {
         // Reset cached roles and permissions
-        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+        app()[PermissionRegistrar::class]->forgetCachedPermissions();
 
         // Create permissions
         $permissions = [
@@ -24,6 +25,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'edit-content',
             'manage-private-tutors',
             'view-activity-logs',
+            'manage-settings',
         ];
 
         foreach ($permissions as $permission) {
@@ -32,7 +34,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
         // Create roles and assign permissions
         $adminRole = Role::firstOrCreate(['name' => 'admin']);
-        $adminRole->givePermissionTo(['manage-users', 'assign-roles', 'edit-content', 'manage-private-tutors', 'view-activity-logs']);
+        $adminRole->givePermissionTo(['manage-users', 'assign-roles', 'edit-content', 'manage-private-tutors', 'view-activity-logs', 'manage-settings']);
 
         $editorRole = Role::firstOrCreate(['name' => 'editor']);
         $editorRole->givePermissionTo(['edit-content', 'view-activity-logs']);

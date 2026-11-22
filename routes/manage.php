@@ -37,7 +37,10 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 
         Route::get('/', [DashboardController::class, 'index'])->name('dashboard');
-        Route::post('/cache/clear', [CacheController::class, 'clear'])->name('cache.clear');
+        // Clearing the cache drops every visitor's full-page cache at once: admin-only.
+        Route::post('/cache/clear', [CacheController::class, 'clear'])
+            ->middleware('can:manage-settings')
+            ->name('cache.clear');
 
         Route::get('/pages', [PageController::class, 'index'])->name('pages.index');
         Route::post('/pages', [PageController::class, 'store'])->name('pages.store');
@@ -160,8 +163,12 @@ Route::prefix('manage')->name('manage.')->group(function () {
             ->middleware('can:view-activity-logs')
             ->name('activity.index');
 
-        Route::get('/settings', [TelegramSettingsController::class, 'edit'])->name('settings');
-        Route::put('/settings/telegram', [TelegramSettingsController::class, 'update'])->name('settings.telegram.update');
-        Route::put('/settings/ai', [AiSettingsController::class, 'update'])->name('settings.ai.update');
+        // The AI switches and daily budget, and which Telegram chats may manage
+        // pages: admin-only (editors used to have them).
+        Route::middleware('can:manage-settings')->group(function () {
+            Route::get('/settings', [TelegramSettingsController::class, 'edit'])->name('settings');
+            Route::put('/settings/telegram', [TelegramSettingsController::class, 'update'])->name('settings.telegram.update');
+            Route::put('/settings/ai', [AiSettingsController::class, 'update'])->name('settings.ai.update');
+        });
     });
 });
