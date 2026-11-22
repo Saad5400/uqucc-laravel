@@ -24,7 +24,7 @@ describe('authorization', function () {
         $this->get('/manage/telegram-chats')->assertForbidden();
     });
 
-    it('allows editors to open the page and toggle a chat (any panel user, parity with the previous admin resource)', function () {
+    it('lets editors see the chats but not toggle, reset or delete them (admin-only)', function () {
         $editor = User::factory()->create();
         $editor->assignRole('editor');
 
@@ -34,10 +34,11 @@ describe('authorization', function () {
 
         $this->get('/manage/telegram-chats')->assertOk();
 
-        $this->put("/manage/telegram-chats/{$chat->id}", ['ai_enabled' => true])
-            ->assertSessionHasNoErrors();
+        $this->put("/manage/telegram-chats/{$chat->id}", ['ai_enabled' => true])->assertForbidden();
+        $this->post("/manage/telegram-chats/{$chat->id}/reset-conversation")->assertForbidden();
+        $this->delete("/manage/telegram-chats/{$chat->id}")->assertForbidden();
 
-        expect($chat->refresh()->ai_enabled)->toBeTrue();
+        expect($chat->refresh()->ai_enabled)->toBeFalse();
     });
 });
 

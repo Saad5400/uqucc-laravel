@@ -23,6 +23,12 @@ class DeleteTelegramChatAction extends AdminAction
         return 'delete_telegram_chat';
     }
 
+    /** Admin-only, like the /manage per-chat routes (`can:manage-settings`). */
+    public function requiredAbility(): ?string
+    {
+        return 'manage-settings';
+    }
+
     /** A hard delete — nothing in the app can bring the row back. */
     public function isDestructive(): bool
     {

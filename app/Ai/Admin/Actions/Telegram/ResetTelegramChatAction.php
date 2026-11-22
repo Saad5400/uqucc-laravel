@@ -22,6 +22,12 @@ class ResetTelegramChatAction extends AdminAction
         return 'reset_telegram_chat';
     }
 
+    /** Admin-only, like the /manage per-chat routes (`can:manage-settings`). */
+    public function requiredAbility(): ?string
+    {
+        return 'manage-settings';
+    }
+
     public function category(): string
     {
         return 'telegram';
