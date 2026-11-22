@@ -159,3 +159,18 @@ it('clears the user agents stored before the change', function () {
     expect(PageViewStat::query()->whereNotNull('user_agent')->count())->toBe(0)
         ->and(PageViewStat::query()->count())->toBe(3);
 });
+
+it('runs the user-agent cleanup outside a migration transaction, one commit per batch', function () {
+    expect((require base_path('database/migrations/2026_11_22_183335_clear_page_view_user_agents.php'))->withinTransaction)->toBeFalse();
+});
+
+it('skips the user-agent cleanup with a single query when no agent is stored', function () {
+    $page = Page::factory()->create();
+    PageViewStat::factory()->count(2)->create(['page_id' => $page->id, 'user_agent' => null]);
+
+    DB::enableQueryLog();
+    (require base_path('database/migrations/2026_11_22_183335_clear_page_view_user_agents.php'))->up();
+
+    expect(DB::getQueryLog())->toHaveCount(1);
+    DB::disableQueryLog();
+});
