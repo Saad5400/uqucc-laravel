@@ -63,3 +63,22 @@ it('falls back to the master switch for unknown feature names', function () {
 
     expect(app(SafetySettings::class)->enabled('some_future_surface'))->toBeFalse();
 });
+
+it('sees a toggle saved after it was first resolved, across scoped resets', function () {
+    // The kill switch and budget guard are singletons that outlive one Octane
+    // request and one queued job; AiSettings is scoped and renewed for each.
+    $killSwitch = app(KillSwitch::class);
+    expect($killSwitch->engaged('assistant'))->toBeFalse();
+
+    // What Octane does between requests and the queue worker between jobs.
+    app()->forgetScopedInstances();
+
+    $settings = app(AiSettings::class);
+    $settings->ai_enabled = false;
+    $settings->daily_budget_usd = 0.0;
+    $settings->save();
+    app()->forgetScopedInstances();
+
+    expect($killSwitch->engaged('assistant'))->toBeTrue()
+        ->and(app(BudgetGuard::class)->limit())->toBe(0.0);
+});
