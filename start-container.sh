@@ -84,16 +84,18 @@ php artisan migrate --force || true
 # FrankenPHP worker mode (Laravel Octane) unless switched off in the env.
 # The Caddyfile reads these at parse time; empty = classic mode, so rolling
 # back is OCTANE_WORKERS=false in Coolify plus a restart, no code change.
-# The worker pool is fixed: each worker keeps a booted app in memory, and
-# the slow requests that would need more threads run on the classic pool
-# (see the Caddyfile). A worker restarts after OCTANE_MAX_REQUESTS
-# requests, which keeps its heap near the size of a fresh boot.
+# OCTANE_WORKER_COUNT workers boot at start; while every one of them is busy
+# (a stalled dependency, a burst) FrankenPHP adds more, up to
+# OCTANE_WORKER_MAX_THREADS, and stops them again once idle. Each worker keeps
+# a booted app in memory, and the requests that are slow by nature run on the
+# classic pool instead (see the Caddyfile). A worker restarts after
+# OCTANE_MAX_REQUESTS requests, which keeps its heap near a fresh boot.
 if [ "${OCTANE_WORKERS:-true}" != "false" ]; then
   OCTANE_WORKER_COUNT="${OCTANE_WORKER_COUNT:-2}"
   export FRANKENPHP_WORKER="worker {
 		file /app/public/frankenphp-worker.php
 		num ${OCTANE_WORKER_COUNT}
-		max_threads ${OCTANE_WORKER_MAX_THREADS:-$OCTANE_WORKER_COUNT}
+		max_threads ${OCTANE_WORKER_MAX_THREADS:-4}
 		env MAX_REQUESTS ${OCTANE_MAX_REQUESTS:-250}
 	}"
   export PHP_ENTRY="frankenphp-worker.php"

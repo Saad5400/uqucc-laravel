@@ -3,12 +3,14 @@
 namespace App\Providers;
 
 use App\Models\User;
+use App\Support\BoundedSsrGateway;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\ServiceProvider;
+use Inertia\Ssr\Gateway as SsrGateway;
 use Laravel\Passport\Passport;
 use Pgvector\Laravel\Schema as PgvectorSchema;
 
@@ -43,7 +45,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Inertia's SSR call with a deadline instead of the client's 30s.
+        $this->app->bind(SsrGateway::class, BoundedSsrGateway::class);
     }
 
     /**

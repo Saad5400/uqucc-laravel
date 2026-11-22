@@ -18,6 +18,10 @@ return [
     'ssr' => [
         'enabled' => true,
         'url' => 'http://127.0.0.1:13714',
+        // Seconds a page render may wait on the SSR server before the page
+        // falls back to client rendering (App\Support\BoundedSsrGateway).
+        // A healthy render takes milliseconds.
+        'timeout' => (float) env('INERTIA_SSR_TIMEOUT', 2.5),
         // 'bundle' => base_path('bootstrap/ssr/ssr.mjs'),
     ],
 

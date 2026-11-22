@@ -33,7 +33,7 @@ it('starts in worker mode by default and can be switched off', function () {
     expect($start)->toContain('"${OCTANE_WORKERS:-true}" != "false"')
         ->and($start)->toContain('export FRANKENPHP_WORKER="worker {')
         ->and($start)->toContain('file /app/public/frankenphp-worker.php')
-        ->and($start)->toContain('max_threads ${OCTANE_WORKER_MAX_THREADS:-$OCTANE_WORKER_COUNT}')
+        ->and($start)->toContain('max_threads ${OCTANE_WORKER_MAX_THREADS:-4}')
         ->and($start)->toContain('env MAX_REQUESTS ${OCTANE_MAX_REQUESTS:-250}')
         ->and($start)->toContain('export PHP_ENTRY="frankenphp-worker.php"')
         ->and($start)->toContain('export FRANKENPHP_WORKER=""')
@@ -77,11 +77,11 @@ it('sends every write and every slow GET to the classic threads', function () {
         ->and($caddy)->toContain('rewrite @classic_writes /index.php')
         ->and($caddy)->toContain('rewrite @classic_slow /index.php');
 
-    foreach (['/bahth', '/mstnd/12', '/_og-image', '/_og-image/adwat/x.png', '/ai/chat/turns/abc/stream', '/manage/assistant/turns/abc/stream'] as $path) {
+    foreach (['/bahth', '/bahth/', '/mstnd/12', '/mstnd/12/', '/_og-image', '/_og-image/', '/_og-image/adwat/x.png', '/ai/chat/turns/abc/stream', '/ai/chat/turns/abc/stream/', '/manage/assistant/turns/abc/stream', '/manage/assistant/turns/abc/stream/'] as $path) {
         expect(preg_match(octaneClassicGetPattern(), $path))->toBe(1, "{$path} should run on a classic thread");
     }
 
-    foreach (['/', '/almkrrat', '/adwat/hasbh-almadl', '/manage', '/manage/assistant', '/ai/chat/abc', '/csrf-cookie', '/bahthx', '/up'] as $path) {
+    foreach (['/', '/almkrrat', '/adwat/hasbh-almadl', '/manage', '/manage/assistant', '/ai/chat/abc', '/ai/chat/abc/', '/csrf-cookie', '/bahthx', '/bahth/x', '/up'] as $path) {
         expect(preg_match(octaneClassicGetPattern(), $path))->toBe(0, "{$path} should run on an Octane worker");
     }
 });
@@ -110,6 +110,7 @@ it('never serves a streamed response from an Octane worker', function () {
 
         $path = '/'.ltrim((string) preg_replace('/\{[^}]+\}/', 'abc-123', $route->uri()), '/');
 
-        expect(preg_match(octaneClassicGetPattern(), $path))->toBe(1, "{$path} streams but would run on an Octane worker");
+        expect(preg_match(octaneClassicGetPattern(), $path))->toBe(1, "{$path} streams but would run on an Octane worker")
+            ->and(preg_match(octaneClassicGetPattern(), $path.'/'))->toBe(1, "{$path}/ streams but would run on an Octane worker");
     }
 });
