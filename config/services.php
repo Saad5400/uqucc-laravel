@@ -77,7 +77,8 @@ return [
     */
 
     'code_sandbox' => [
-        'uid' => 47000,
+        // start-container.sh firewalls the same uid (CODE_SANDBOX_UID there too).
+        'uid' => (int) env('CODE_SANDBOX_UID', 47000),
         'root' => '/var/lib/code-sandbox',
         'path' => env('SANDBOX_PATH', '/usr/local/bin:/usr/bin:/bin'),
         'limits' => [
@@ -86,6 +87,8 @@ return [
             'cpu_seconds' => 20,
             'file_size' => 16 * 1024 * 1024,
             'open_files' => 256,
+            // stdout + stderr; CodeSandbox::run() stops the program past it.
+            'output_bytes' => 64 * 1024,
         ],
     ],
 

@@ -69,6 +69,7 @@
   "deploy": {
     "aptPackages": [
       "supervisor",
+      "iptables",
       "curl",
       "wget"
     ],
