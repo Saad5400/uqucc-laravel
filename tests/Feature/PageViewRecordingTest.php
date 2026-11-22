@@ -2,8 +2,10 @@
 
 use App\Models\Page;
 use App\Models\PageViewStat;
+use App\Models\User;
 use Database\Factories\PageFactory;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Testing\TestResponse;
 
 /*
 | Which hits count as a page view (TrackPageViews → PageViewRecorder). The
@@ -13,7 +15,7 @@ use Illuminate\Support\Facades\Cache;
 
 const READER_UA = 'Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Mobile Safari/537.36';
 
-function viewPage(string $uri, string $ip = '203.0.113.20', ?string $userAgent = READER_UA): Illuminate\Testing\TestResponse
+function viewPage(string $uri, string $ip = '203.0.113.20', ?string $userAgent = READER_UA): TestResponse
 {
     return test()->withServerVariables(['REMOTE_ADDR' => $ip])
         ->withHeaders(['User-Agent' => (string) $userAgent])
@@ -30,7 +32,7 @@ it('counts a reader\'s view of a content page', function (): void {
     expect(PageViewStat::query()->sole())
         ->page_id->toBe($this->page->id)
         ->ip_address->toBe('203.0.113.20')
-        ->user_agent->toBe(READER_UA)
+        ->user_agent->toBeNull()
         ->view_count->toBe(1);
 });
 
@@ -74,7 +76,7 @@ it('counts nothing for a path that is not a page, or a failed response', functio
 });
 
 it('records the signed-in user on their view', function (): void {
-    $user = App\Models\User::factory()->create();
+    $user = User::factory()->create();
 
     $this->actingAs($user);
     viewPage('/altkhssat')->assertOk();

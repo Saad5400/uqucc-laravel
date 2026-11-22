@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Carbon\CarbonInterface;
+use Database\Factories\PageViewStatFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,18 +11,16 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
 class PageViewStat extends Model
 {
-    /** @use HasFactory<\Database\Factories\PageViewStatFactory> */
+    /** @use HasFactory<PageViewStatFactory> */
     use HasFactory;
 
     protected $fillable = [
         'page_id',
         'user_id',
         'ip_address',
-        'user_agent',
         'view_count',
         'last_viewed_at',
     ];
@@ -61,13 +60,17 @@ class PageViewStat extends Model
     /**
      * Count $views view(s) of a page by one viewer identity (page, user, ip):
      * a single upsert that creates the row or adds to it, keeping the latest
-     * view time. The user agent is the one first seen for the identity.
+     * view time.
+     *
+     * The user agent is NOT stored: no report reads it (the recorder only uses
+     * it to drop bots), so keeping it was personal data for nothing. The IP
+     * stays — it is the guest's identity for the dedupe and the unique-visitor
+     * counts. The column remains (always NULL) until a later migration drops it.
      */
     public static function track(
         int $pageId,
         ?int $userId = null,
         ?string $ipAddress = null,
-        ?string $userAgent = null,
         int $views = 1,
         ?CarbonInterface $viewedAt = null,
     ): void {
@@ -78,7 +81,7 @@ class PageViewStat extends Model
             $pageId,
             $userId,
             $ipAddress,
-            $userAgent === null ? null : Str::limit($userAgent, 255, ''),
+            null,
             $views,
             $viewedAt === null ? $now : $model->fromDateTime($viewedAt),
             $now,
@@ -100,7 +103,7 @@ class PageViewStat extends Model
         DB::transaction(function () use ($userId): void {
             $table = (new static)->getTable();
             $folded = self::upsert(
-                "SELECT page_id, NULL, ip_address, user_agent, view_count, last_viewed_at, created_at, ? FROM {$table} WHERE user_id = ?",
+                "SELECT page_id, NULL, ip_address, NULL, view_count, last_viewed_at, created_at, ? FROM {$table} WHERE user_id = ?",
                 [(new static)->fromDateTime(now()), $userId],
             );
 
