@@ -113,11 +113,16 @@ class User extends Authenticatable implements OAuthenticatable
     }
 
     /**
-     * Check if user can manage pages via Telegram bot
+     * Check if user can manage pages via Telegram bot.
+     *
+     * The bot writes straight to live pages (create, edit, delete) and has no
+     * review flow, so a review-mode editor is kept to the /manage panel,
+     * where their edits are captured for review.
      */
     public function canManagePagesViaTelegram(): bool
     {
-        return $this->hasAnyRole(['admin', 'editor']) || $this->can('manage-pages');
+        return ($this->hasAnyRole(['admin', 'editor']) || $this->can('manage-pages'))
+            && ! $this->mustHaveChangesReviewed();
     }
 
     /**

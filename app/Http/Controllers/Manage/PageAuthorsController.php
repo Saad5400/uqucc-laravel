@@ -18,6 +18,12 @@ class PageAuthorsController extends Controller
      */
     public function update(SyncPageAuthorsRequest $request, Page $page): RedirectResponse
     {
+        // The credits show on the live page and are not part of a reviewable
+        // change request, so a review-mode editor may not rewrite them.
+        if ($request->user()->mustHaveChangesReviewed()) {
+            return back()->with('error', 'لا تملك صلاحية تعديل مؤلفي الصفحة مباشرة.');
+        }
+
         $userIds = collect($request->validated('user_ids'))->values();
 
         $page->users()->sync(

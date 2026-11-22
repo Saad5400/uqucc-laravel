@@ -107,6 +107,12 @@ class PageAuthoringController extends Controller
      */
     public function apply(PageContentProposal $proposal): RedirectResponse
     {
+        // Applying writes the proposal straight into the live page, so a
+        // review-mode editor may not do it; a reviewer applies it.
+        if (auth()->user()?->mustHaveChangesReviewed()) {
+            return back()->with('error', 'تطبيق الاقتراح يعدّل الصفحة المنشورة مباشرة، ويحتاج إلى مراجع.');
+        }
+
         abort_unless($this->author->isEnabled(), 403, $this->author->disabledReason() ?? 'توليد الصفحات من المستندات غير متاح حالياً.');
 
         if (! $proposal->isPending()) {
