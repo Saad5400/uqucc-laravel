@@ -75,6 +75,10 @@ class PageController extends Controller
      */
     public function store(StorePageRequest $request): RedirectResponse
     {
+        if ($refusal = $this->refuseInReviewMode()) {
+            return $refusal;
+        }
+
         $page = Page::create([
             'title' => $request->validated('title'),
             'slug' => $this->generateUniqueSlug($request->validated('title')),
@@ -230,6 +234,10 @@ class PageController extends Controller
      */
     public function destroy(Page $page): RedirectResponse
     {
+        if ($refusal = $this->refuseInReviewMode()) {
+            return $refusal;
+        }
+
         $descendantIds = $this->descendantIds($page->id, Page::query()->whereNotNull('parent_id')->get(['id', 'parent_id'])->groupBy('parent_id'));
 
         foreach (Page::query()->findMany($descendantIds) as $descendant) {
@@ -247,6 +255,10 @@ class PageController extends Controller
      */
     public function restore(Page $page): RedirectResponse
     {
+        if ($refusal = $this->refuseInReviewMode()) {
+            return $refusal;
+        }
+
         if (! $page->trashed()) {
             return back();
         }
@@ -272,6 +284,10 @@ class PageController extends Controller
      */
     public function forceDestroy(Page $page): RedirectResponse
     {
+        if ($refusal = $this->refuseInReviewMode()) {
+            return $refusal;
+        }
+
         if (! $page->trashed()) {
             return back()->with('error', 'يمكن الحذف النهائي للصفحات المحذوفة فقط.');
         }
@@ -294,6 +310,10 @@ class PageController extends Controller
      */
     public function reorder(ReorderPagesRequest $request): RedirectResponse
     {
+        if ($refusal = $this->refuseInReviewMode()) {
+            return $refusal;
+        }
+
         $ids = $request->validated('ids');
         $pages = Page::query()->findMany($ids)->keyBy('id');
 
@@ -405,5 +425,21 @@ class PageController extends Controller
         }
 
         return $ids;
+    }
+
+    /**
+     * Structural changes — create, reorder, delete, restore, force delete —
+     * cannot be captured as a reviewable change request, so a review-mode
+     * editor may not make them at all (the same rule the admin assistant's
+     * ManagePageStructureAction / RestorePageAction enforce). Without this
+     * the panel let them delete or replace live pages with no review.
+     */
+    protected function refuseInReviewMode(): ?RedirectResponse
+    {
+        if (auth()->user()?->mustHaveChangesReviewed()) {
+            return back()->with('error', 'لا يمكن إرسال تغييرات بنية الصفحات للمراجعة، ولا تملك صلاحية تنفيذها مباشرة.');
+        }
+
+        return null;
     }
 }
