@@ -22,6 +22,8 @@ use Symfony\Component\Process\Process;
  *   bootstrap/cache and storage are root-only, /proc/<pid>/environ of every
  *   root process is 0400, and start-container.sh closes every world-writable
  *   directory, so the run dir is the only place it can write;
+ * - no_new_privs (setpriv --no-new-privs): no setuid/setcap binary in the
+ *   image can lift the run back to root or add capabilities;
  * - an empty environment: Symfony Process is told to drop every inherited
  *   variable, and `env -i` builds the child's from scratch;
  * - rlimits: processes/threads (a fork bomb stops at the cap), address space,
@@ -99,7 +101,7 @@ class CodeSandbox
             '--nofile='.$limits['open_files'],
             '--core=0',
             '--',
-            'setpriv', '--reuid='.$uid, '--regid='.$uid, '--clear-groups', '--reset-env',
+            'setpriv', '--reuid='.$uid, '--regid='.$uid, '--clear-groups', '--no-new-privs', '--reset-env',
             '--',
             'env', '-i',
             ...array_map(fn (string $key, string $value): string => $key.'='.$value, array_keys($childEnv), $childEnv),

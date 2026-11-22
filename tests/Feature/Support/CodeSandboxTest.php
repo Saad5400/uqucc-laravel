@@ -17,7 +17,7 @@ it('wraps the command in rlimits, an unprivileged uid and an empty environment',
 
     expect($command)
         ->toStartWith("'prlimit' '--nproc=128' '--as=1073741824'")
-        ->toContain("'setpriv' '--reuid=47000' '--regid=47000' '--clear-groups' '--reset-env'")
+        ->toContain("'setpriv' '--reuid=47000' '--regid=47000' '--clear-groups' '--no-new-privs' '--reset-env'")
         ->toContain("'env' '-i' 'PATH=/jdk/bin:/usr/bin:/bin' 'HOME=/var/lib/code-sandbox/run-x' 'TMPDIR=/var/lib/code-sandbox/run-x' 'LANG=C.UTF-8'")
         ->toEndWith("'python3' '-I' 'main.py'")
         ->and($process->getTimeout())->toBe(5.0)
