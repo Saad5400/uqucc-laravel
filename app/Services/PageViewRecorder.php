@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Http\Middleware\ServeCachedPage;
+use App\Http\Middleware\TrackPageViews;
 use App\Models\Page;
 use App\Models\PageViewStat;
 use Illuminate\Http\Request;
@@ -11,8 +13,8 @@ use function Illuminate\Support\defer;
 
 /**
  * Counts a view of a content page — the one seam both the web stack
- * ({@see \App\Http\Middleware\TrackPageViews}) and a full-page cache hit served
- * before it ({@see \App\Http\Middleware\ServeCachedPage}) record through.
+ * ({@see TrackPageViews}) and a full-page cache hit served
+ * before it ({@see ServeCachedPage}) record through.
  *
  * The write runs after the response has been sent (`defer()`), so a visitor
  * never waits on it. Hits that are not a person reading the page are not
@@ -42,12 +44,13 @@ class PageViewRecorder
         $path = $request->path();
         $slug = $path === '/' ? '/' : '/'.$path;
 
-        defer(function () use ($slug, $userId, $ipAddress, $userAgent): void {
+        // The agent only decides bot-or-reader above; it is not stored.
+        defer(function () use ($slug, $userId, $ipAddress): void {
             try {
                 $pageId = Page::idForSlug($slug);
 
                 if ($pageId !== null) {
-                    PageViewStat::track($pageId, $userId, $ipAddress, $userAgent);
+                    PageViewStat::track($pageId, $userId, $ipAddress);
                 }
             } catch (Throwable $e) {
                 // Never let a statistic break anything.

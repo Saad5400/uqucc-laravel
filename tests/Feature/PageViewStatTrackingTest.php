@@ -3,61 +3,29 @@
 use App\Models\Page;
 use App\Models\PageViewStat;
 use App\Models\User;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
-it('truncates an over-long user agent to the column width instead of throwing', function () {
+it('never stores a user agent', function () {
     $page = Page::factory()->create();
 
-    // Real Instagram in-app browser UAs run well past varchar(255).
-    $userAgent = 'Mozilla/5.0 (Linux; Android 12; '.str_repeat('CET-LX9 Build/HUAWEICET-L29; ', 20).') Instagram 432.1.0.44.80';
+    PageViewStat::track($page->id, null, '10.0.0.1');
 
-    expect(mb_strlen($userAgent))->toBeGreaterThan(255);
-
-    PageViewStat::track(
-        pageId: $page->id,
-        userId: null,
-        ipAddress: '178.73.100.89',
-        userAgent: $userAgent,
-    );
-
-    $stat = PageViewStat::query()->where('page_id', $page->id)->sole();
-
-    expect(mb_strlen((string) $stat->user_agent))->toBe(255)
-        ->and($userAgent)->toStartWith((string) $stat->user_agent);
-});
-
-it('stores a normal-length user agent verbatim', function () {
-    $page = Page::factory()->create();
-    $userAgent = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36';
-
-    PageViewStat::track($page->id, null, '10.0.0.1', $userAgent);
-
-    expect(PageViewStat::query()->where('page_id', $page->id)->sole()->user_agent)
-        ->toBe($userAgent);
-});
-
-it('keeps a null user agent null', function () {
-    $page = Page::factory()->create();
-
-    PageViewStat::track($page->id, null, '10.0.0.2', null);
-
-    expect(PageViewStat::query()->where('page_id', $page->id)->sole()->user_agent)
-        ->toBeNull();
+    expect(PageViewStat::query()->where('page_id', $page->id)->sole()->user_agent)->toBeNull();
 });
 
 it('counts repeat views of one identity on one row with a single upsert', function () {
     $page = Page::factory()->create();
 
     $this->travelTo(now()->subHour());
-    PageViewStat::track($page->id, null, '10.0.0.3', 'UA one');
+    PageViewStat::track($page->id, null, '10.0.0.3');
     $this->travelBack();
-    PageViewStat::track($page->id, null, '10.0.0.3', 'UA two');
+    PageViewStat::track($page->id, null, '10.0.0.3');
 
     $stat = PageViewStat::query()->where('page_id', $page->id)->sole();
 
     expect($stat->view_count)->toBe(2)
-        ->and($stat->user_agent)->toBe('UA one')
         ->and($stat->last_viewed_at->diffInSeconds(now()))->toBeLessThan(5);
 });
 
@@ -136,7 +104,7 @@ it('merges rows that already share an identity before adding the unique index', 
 
     // And from now on the database itself refuses a second row per identity.
     expect(fn () => DB::table('page_view_stats')->insert($row('10.0.0.10', 1, '2026-11-06 10:00:00', '2026-11-06 10:00:00')))
-        ->toThrow(Illuminate\Database\UniqueConstraintViolationException::class);
+        ->toThrow(UniqueConstraintViolationException::class);
 });
 
 it('folds more than a thousand overlapping rows when a user is deleted', function () {
@@ -180,4 +148,29 @@ it('degrades to not counting, logged once, when the identity index is missing', 
 
     expect(PageViewStat::query()->pluck('view_count', 'ip_address')->all())->toBe(['10.0.0.11' => 2]);
     Log::shouldHaveReceived('error')->once();
+});
+
+it('clears the user agents stored before the change', function () {
+    $page = Page::factory()->create();
+    PageViewStat::factory()->count(3)->create(['page_id' => $page->id, 'user_agent' => 'Mozilla/5.0 (old row)']);
+
+    (require base_path('database/migrations/2026_11_22_183335_clear_page_view_user_agents.php'))->up();
+
+    expect(PageViewStat::query()->whereNotNull('user_agent')->count())->toBe(0)
+        ->and(PageViewStat::query()->count())->toBe(3);
+});
+
+it('runs the user-agent cleanup outside a migration transaction, one commit per batch', function () {
+    expect((require base_path('database/migrations/2026_11_22_183335_clear_page_view_user_agents.php'))->withinTransaction)->toBeFalse();
+});
+
+it('skips the user-agent cleanup with a single query when no agent is stored', function () {
+    $page = Page::factory()->create();
+    PageViewStat::factory()->count(2)->create(['page_id' => $page->id, 'user_agent' => null]);
+
+    DB::enableQueryLog();
+    (require base_path('database/migrations/2026_11_22_183335_clear_page_view_user_agents.php'))->up();
+
+    expect(DB::getQueryLog())->toHaveCount(1);
+    DB::disableQueryLog();
 });
