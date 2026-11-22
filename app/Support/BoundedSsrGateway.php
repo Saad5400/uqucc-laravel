@@ -5,6 +5,7 @@ namespace App\Support;
 use Exception;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\StrayRequestException;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Inertia\Ssr\HttpGateway;
@@ -22,6 +23,10 @@ use Inertia\Ssr\Response;
  * After a timeout or a refused connection the server is skipped for
  * {@see self::BACK_OFF_SECONDS}, so an outage costs one thread one deadline,
  * not every render its own wait; the next render after that tries again.
+ *
+ * A render that should have been server-rendered but fell back is marked on
+ * its request ({@see self::fellBack()}), so the full-page cache does not keep
+ * that client-rendered shell for an hour after SSR is back.
  */
 class BoundedSsrGateway extends HttpGateway
 {
@@ -29,13 +34,29 @@ class BoundedSsrGateway extends HttpGateway
 
     private const BACK_OFF_SECONDS = 10;
 
+    private const FELL_BACK = 'inertia.ssr_fell_back';
+
+    /**
+     * Whether this request's page was meant to be server-rendered but went
+     * out client-rendered (SSR down, slow or skipped). Request-scoped, so it
+     * is per request under Octane as well.
+     */
+    public static function fellBack(Request $request): bool
+    {
+        return $request->attributes->get(self::FELL_BACK) === true;
+    }
+
     /**
      * @param  array<string, mixed>  $page
      */
     public function dispatch(array $page): ?Response
     {
-        if (! $this->shouldDispatch() || Cache::has(self::BACK_OFF_KEY)) {
+        if (! $this->shouldDispatch()) {
             return null;
+        }
+
+        if (Cache::has(self::BACK_OFF_KEY)) {
+            return $this->fallBack();
         }
 
         $timeout = (float) config('inertia.ssr.timeout', 2.5);
@@ -55,13 +76,20 @@ class BoundedSsrGateway extends HttpGateway
                 Cache::put(self::BACK_OFF_KEY, true, self::BACK_OFF_SECONDS);
             }
 
-            return null;
+            return $this->fallBack();
         }
 
         if (! is_array($response)) {
-            return null;
+            return $this->fallBack();
         }
 
         return new Response(implode("\n", $response['head']), $response['body']);
+    }
+
+    private function fallBack(): null
+    {
+        request()->attributes->set(self::FELL_BACK, true);
+
+        return null;
     }
 }

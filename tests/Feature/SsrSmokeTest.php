@@ -50,3 +50,35 @@ it('server-renders a content page with its heading, not "[object Promise]"', fun
     expect($html)->not->toContain('[object Promise]')
         ->and($html)->toMatch('/<h1[^>]*>\s*المقررات الدراسية\s*<\/h1>/u');
 });
+
+it('does not keep a client-rendered fallback in the full-page cache once SSR is back', function () {
+    PageFactory::new()->create(['slug' => '/almqrrat', 'title' => 'المقررات الدراسية']);
+    PageFactory::new()->create(['slug' => '/warm-up', 'title' => 'تسخين']);
+    $serverRendered = '/<h1[^>]*>\s*المقررات الدراسية\s*<\/h1>/u';
+    $visit = fn (string $uri = '/almqrrat') => $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.9'])->get($uri);
+
+    // A first render compiles the page component; keep it out of the deadline.
+    $visit('/warm-up')->assertOk();
+    config(['inertia.ssr.timeout' => 1.0]);
+
+    // SSR freezes: the page falls back to the client-rendered shell, and
+    // neither that render nor the next (inside the skip window) is cached.
+    $this->ssr->signal(SIGSTOP);
+
+    $started = microtime(true);
+    $shell = $visit()->assertOk();
+    expect(microtime(true) - $started)->toBeLessThan(3.0)
+        ->and($shell->getContent())->not->toMatch($serverRendered);
+
+    $visit()->assertOk()->assertHeaderMissing('X-Cache');
+
+    // SSR recovers; once the skip window is over the page renders on the
+    // server again, and that render is what gets cached.
+    $this->ssr->signal(SIGCONT);
+    $this->travel(11)->seconds();
+
+    expect($visit()->assertOk()->assertHeaderMissing('X-Cache')->getContent())->toMatch($serverRendered);
+
+    $hit = $visit()->assertOk()->assertHeader('X-Cache', 'HIT');
+    expect($hit->getContent())->toMatch($serverRendered);
+});

@@ -46,12 +46,15 @@ it('skips the SSR server for a moment after it timed out, then tries again', fun
     Http::fake(['ssr.test/render' => Http::response(['head' => [], 'body' => '<div id="app"></div>'])]);
     Cache::put(BoundedSsrGateway::BACK_OFF_KEY, true, 10);
 
-    expect(app(Gateway::class)->dispatch(['component' => 'ContentPage', 'props' => [], 'url' => '/', 'version' => '']))->toBeNull();
+    expect(app(Gateway::class)->dispatch(['component' => 'ContentPage', 'props' => [], 'url' => '/', 'version' => '']))->toBeNull()
+        ->and(BoundedSsrGateway::fellBack(request()))->toBeTrue();
     Http::assertNothingSent();
 
     Cache::forget(BoundedSsrGateway::BACK_OFF_KEY);
+    request()->attributes->remove('inertia.ssr_fell_back');
 
-    expect(app(Gateway::class)->dispatch(['component' => 'ContentPage', 'props' => [], 'url' => '/', 'version' => '']))->not->toBeNull();
+    expect(app(Gateway::class)->dispatch(['component' => 'ContentPage', 'props' => [], 'url' => '/', 'version' => '']))->not->toBeNull()
+        ->and(BoundedSsrGateway::fellBack(request()))->toBeFalse();
     Http::assertSentCount(1);
 });
 

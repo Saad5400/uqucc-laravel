@@ -16,7 +16,7 @@ return [
     */
 
     'ssr' => [
-        'enabled' => true,
+        'enabled' => (bool) env('INERTIA_SSR_ENABLED', true),
         'url' => 'http://127.0.0.1:13714',
         // Seconds a page render may wait on the SSR server before the page
         // falls back to client rendering (App\Support\BoundedSsrGateway).

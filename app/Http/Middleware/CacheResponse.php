@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\BoundedSsrGateway;
 use App\Support\CacheFlusher;
 use Closure;
 use Illuminate\Http\Request;
@@ -54,8 +55,10 @@ class CacheResponse
         // Process the request
         $response = $next($request);
 
-        // Only cache successful responses
-        if ($this->shouldCacheResponse($response)) {
+        // Only cache successful, complete responses: a page that fell back to
+        // client rendering (SSR down) must not be served as that shell for the
+        // whole TTL once SSR is back.
+        if ($this->shouldCacheResponse($response) && ! BoundedSsrGateway::fellBack($request)) {
             $cacheTtl = $ttl ? (int) $ttl : config('app-cache.pages.response_ttl', 600);
             $this->cacheResponse($cacheKey, $response, $cacheTtl);
         }
