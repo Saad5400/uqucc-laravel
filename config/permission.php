@@ -107,8 +107,15 @@ return [
      * When set to true, Laravel\Octane\Events\OperationTerminated event listener will be registered
      * this will refresh permissions on every TickTerminated, TaskTerminated and RequestTerminated
      * NOTE: This should not be needed in most cases, but an Octane/Vapor combination benefited from it.
+     *
+     * On here: under FrankenPHP worker mode the registrar lives as long as the
+     * worker, so without this a role/permission change made outside that
+     * worker (a seeder, tinker, another worker) would not reach it until it
+     * restarts. With it, each request reads the cached set from the cache
+     * store, as every request did in classic mode. Only requests that check
+     * a permission pay for it (signed-in admins).
      */
-    'register_octane_reset_listener' => false,
+    'register_octane_reset_listener' => true,
 
     /*
      * Events will fire when a role or permission is assigned/unassigned:

@@ -81,4 +81,25 @@ fi
 # Run any outstanding migrations
 php artisan migrate --force || true
 
+# FrankenPHP worker mode (Laravel Octane) unless switched off in the env.
+# The Caddyfile reads these at parse time; empty = classic mode, so rolling
+# back is OCTANE_WORKERS=false in Coolify plus a restart, no code change.
+# The worker pool is fixed: each worker keeps a booted app in memory, and
+# the slow requests that would need more threads run on the classic pool
+# (see the Caddyfile). A worker restarts after OCTANE_MAX_REQUESTS
+# requests, which keeps its heap near the size of a fresh boot.
+if [ "${OCTANE_WORKERS:-true}" != "false" ]; then
+  OCTANE_WORKER_COUNT="${OCTANE_WORKER_COUNT:-2}"
+  export FRANKENPHP_WORKER="worker {
+		file /app/public/frankenphp-worker.php
+		num ${OCTANE_WORKER_COUNT}
+		max_threads ${OCTANE_WORKER_MAX_THREADS:-$OCTANE_WORKER_COUNT}
+		env MAX_REQUESTS ${OCTANE_MAX_REQUESTS:-250}
+	}"
+  export PHP_ENTRY="frankenphp-worker.php"
+else
+  export FRANKENPHP_WORKER=""
+  export PHP_ENTRY="index.php"
+fi
+
 exec supervisord -c /app/deploy/supervisord.conf -n
