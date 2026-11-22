@@ -4,6 +4,7 @@ use App\Http\Middleware\EnsureUserCanManage;
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\ServeCachedPage;
 use App\Http\Middleware\TrackPageViews;
+use App\Support\TrustedHosts;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -59,6 +60,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // IPs/CIDRs: Traefik's network + Cloudflare's ranges); unset/blank or
         // '*' keeps the previous trust-the-peer behaviour for local/dev. Same
         // pattern as catodemy. TrustedProxiesTest guards it.
+        // Only our own hostnames (App\Support\TrustedHosts); any other Host
+        // or X-Forwarded-Host answers 400 instead of steering absolute URLs,
+        // share cards and page-cache keys.
+        $middleware->trustHosts(at: fn (): array => TrustedHosts::patterns(), subdomains: false);
+
         $trustedProxies = trim((string) env('TRUSTED_PROXIES', ''));
         $middleware->trustProxies(
             at: $trustedProxies === '' || $trustedProxies === '*'
