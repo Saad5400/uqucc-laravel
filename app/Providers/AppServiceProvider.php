@@ -32,6 +32,9 @@ class AppServiceProvider extends ServiceProvider
      */
     private const AI_CHAT_PER_IP_PER_DAY = 300;
 
+    /** The `ai-chat-daily` refusal; must keep the word «اليومي» (see that limiter). */
+    public const AI_CHAT_DAILY_LIMIT_MESSAGE = 'وصلت إلى الحد اليومي لرسائل المساعد من هذا الاتصال. عد غداً وسيسعدنا مساعدتك.';
+
     /**
      * Register any application services.
      */
@@ -131,8 +134,17 @@ class AppServiceProvider extends ServiceProvider
 
         // Only on the turn-opening POST (routes/web.php): reading a
         // conversation or uploading an attachment must not use up the day.
+        //
+        // Answered in Arabic with «اليومي» in the message: that is what the
+        // assistant page (AssistantPage.vue) keys its daily-limit state on, so
+        // the student sees "come back tomorrow" instead of retrying into
+        // Laravel's English "Too Many Attempts.".
         RateLimiter::for('ai-chat-daily', function (Request $request): Limit {
-            return Limit::perDay(self::AI_CHAT_PER_IP_PER_DAY)->by('ai-chat-ip-day:'.self::clientAddressKey($request));
+            return Limit::perDay(self::AI_CHAT_PER_IP_PER_DAY)
+                ->by('ai-chat-ip-day:'.self::clientAddressKey($request))
+                ->response(fn (Request $request, array $headers) => response()->json([
+                    'message' => self::AI_CHAT_DAILY_LIMIT_MESSAGE,
+                ], 429, $headers));
         });
     }
 

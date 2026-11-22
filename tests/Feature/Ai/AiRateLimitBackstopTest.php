@@ -1,5 +1,6 @@
 <?php
 
+use App\Providers\AppServiceProvider;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
@@ -91,7 +92,14 @@ it('caps chat turns per address per day', function () {
         RateLimiter::hit(md5('ai-chat-daily'.'ai-chat-ip-day:203.0.113.10'), 86400);
     }
 
-    $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.10'])
+    $response = $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.10'])
         ->postJson('/ai/chat', ['message' => 'مرحبا'])
-        ->assertStatus(429);
+        ->assertStatus(429)
+        ->assertHeader('Retry-After');
+
+    // Arabic, and carrying «اليومي»: the assistant page switches to its
+    // "come back tomorrow" state on that word (AssistantPage.vue).
+    expect($response->json('message'))->toBe(AppServiceProvider::AI_CHAT_DAILY_LIMIT_MESSAGE)
+        ->toContain('اليومي')
+        ->not->toContain('Too Many Attempts');
 });
