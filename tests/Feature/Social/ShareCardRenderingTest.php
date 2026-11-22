@@ -474,6 +474,20 @@ it('gives a route with no page behind it the site"s own card', function () {
     expect(file_get_contents($tool))->not->toBe(file_get_contents($unknown));
 });
 
+it('draws one home card for every unknown URL instead of one per path', function () {
+    $service = app(OgImageService::class);
+
+    // The endpoint is public: a card per arbitrary path was a Node render and
+    // a new file for every random URL anyone cared to request.
+    $first = $service->generateRouteScreenshot('/la-yojad', OgImageService::TYPE_OG);
+    $second = $service->generateRouteScreenshot('/la-yojad/aydan-'.bin2hex(random_bytes(4)), OgImageService::TYPE_OG);
+    $home = $service->generateRouteScreenshot('', OgImageService::TYPE_OG);
+
+    expect($second)->toBe($first)
+        ->and($home)->toBe($first)
+        ->and(glob($this->cardsDirectory.'/*'))->toHaveCount(1);
+});
+
 it('serves the card as a PNG from the OG endpoint', function () {
     PageFactory::new()->create(['slug' => '/altkhssat', 'title' => 'التخصصات']);
 
