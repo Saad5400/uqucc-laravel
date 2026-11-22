@@ -167,10 +167,22 @@ class OgImageService
      * a route with nothing behind it — an unknown URL, or a tool whose page has
      * not been written — gets the site's own card rather than an error, because
      * this is the endpoint a crawler hits and a preview is not a place to fail.
+     *
+     * An unknown URL gets the HOME card, not one naming its own path: this
+     * endpoint is public and every distinct card is a Node render plus a file
+     * on disk, so a card per arbitrary path let anyone loop random URLs into
+     * unbounded renders and disk writes. The set of cards is now bounded by
+     * the pages and the named routes.
      */
     public function generateRouteScreenshot(string $route, string $type = self::TYPE_OG): string
     {
         $card = $this->cardForRoute($route);
+
+        if ($card === null) {
+            $route = '';
+            $card = $this->cardForRoute($route) ?? SocialCard::forSite($this->host());
+        }
+
         $slug = $this->normalizeSlug($route);
 
         if ($this->isCached($type, $slug, $card)) {
@@ -288,9 +300,10 @@ class OgImageService
      *
      * The visibility rule is the one the page controller serves under, so a
      * card exists for exactly the URLs that resolve — including the pages that
-     * are hidden from navigation but reachable from an AI citation.
+     * are hidden from navigation but reachable from an AI citation. Null for a
+     * path that is neither a page, a named route nor the home page.
      */
-    private function cardForRoute(string $route): SocialCard
+    private function cardForRoute(string $route): ?SocialCard
     {
         $path = '/'.trim($route, '/');
 
@@ -302,6 +315,10 @@ class OgImageService
 
         if ($page) {
             return SocialCard::forPage($page, $this->host());
+        }
+
+        if ($path !== '/' && ! array_key_exists(trim($route, '/'), self::ROUTE_TITLES)) {
+            return null;
         }
 
         return SocialCard::forSite(
