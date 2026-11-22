@@ -2,12 +2,15 @@
 
 namespace App\Services\Telegram\Handlers;
 
-use Telegram\Bot\Objects\Message;
 use App\Support\CodeSandbox;
+use App\Support\CodeSandboxUnavailable;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
+use Telegram\Bot\Objects\Message;
 
 class JavaExecutionHandler extends BaseHandler
 {
+    protected const OUTPUT_LIMIT_MESSAGE = 'تم إيقاف البرنامج: مخرجاته أطول من الحد المسموح.';
+
     public function handle(Message $message): void
     {
         $text = $message->getText();
@@ -19,6 +22,7 @@ class JavaExecutionHandler extends BaseHandler
         $userState = $this->getUserState($userId);
         if ($userState && $userState['waiting_for_input']) {
             $this->executeWithInput($message, $userId);
+
             return;
         }
 
@@ -43,6 +47,7 @@ class JavaExecutionHandler extends BaseHandler
                 'className' => $className,
             ]);
             $this->reply($message, 'الكود الخاص بك يستخدم Scanner. يرجى إرسال المدخل (في رسالة واحدة) الذي تريد توفيره.');
+
             return;
         }
 
@@ -117,7 +122,15 @@ class JavaExecutionHandler extends BaseHandler
     protected function runJavaCode(Message $message, string $code, string $className, ?string $input = null): void
     {
         $sandbox = app(CodeSandbox::class);
-        $runDir = $sandbox->makeRunDir();
+
+        try {
+            $runDir = $sandbox->makeRunDir();
+        } catch (CodeSandboxUnavailable $e) {
+            report($e);
+            $this->reply($message, 'تشغيل الأكواد متوقف مؤقتاً لأسباب أمنية. حاول لاحقاً.');
+
+            return;
+        }
 
         $javaFile = "$runDir/$className.java";
         file_put_contents($javaFile, $code);
@@ -130,11 +143,16 @@ class JavaExecutionHandler extends BaseHandler
                 $runDir,
                 10,
             );
-            $compileProcess->run();
+            if ($sandbox->run($compileProcess)) {
+                $this->reply($message, self::OUTPUT_LIMIT_MESSAGE);
 
-            if (!$compileProcess->isSuccessful()) {
+                return;
+            }
+
+            if (! $compileProcess->isSuccessful()) {
                 $error = $compileProcess->getErrorOutput();
                 $this->reply($message, "خطأ في الترجمة:\n```\n$error\n```", 'Markdown');
+
                 return;
             }
 
@@ -147,18 +165,22 @@ class JavaExecutionHandler extends BaseHandler
 
             if ($input !== null) {
                 // Add extra newlines to handle multiple inputs
-                $runProcess->setInput($input . str_repeat("\n", 1000));
+                $runProcess->setInput($input.str_repeat("\n", 1000));
             }
 
-            $runProcess->run();
+            if ($sandbox->run($runProcess)) {
+                $this->reply($message, self::OUTPUT_LIMIT_MESSAGE);
 
-            if (!$runProcess->isSuccessful()) {
+                return;
+            }
+
+            if (! $runProcess->isSuccessful()) {
                 $error = $runProcess->getErrorOutput() ?: 'لا توجد رسالة خطأ.';
                 $this->reply($message, "خطأ وقت التشغيل:\n```\n$error\n```", 'Markdown');
             } else {
                 $output = $runProcess->getOutput();
-                if (!empty(trim($output))) {
-                    $this->reply($message, "```\n" . trim($output) . "\n```", 'Markdown');
+                if (! empty(trim($output))) {
+                    $this->reply($message, "```\n".trim($output)."\n```", 'Markdown');
                 } else {
                     $this->reply($message, 'لا يوجد مخرجات.');
                 }

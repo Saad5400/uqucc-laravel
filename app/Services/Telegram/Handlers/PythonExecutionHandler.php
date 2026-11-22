@@ -2,12 +2,15 @@
 
 namespace App\Services\Telegram\Handlers;
 
-use Telegram\Bot\Objects\Message;
 use App\Support\CodeSandbox;
+use App\Support\CodeSandboxUnavailable;
 use Symfony\Component\Process\Exception\ProcessTimedOutException;
+use Telegram\Bot\Objects\Message;
 
 class PythonExecutionHandler extends BaseHandler
 {
+    protected const OUTPUT_LIMIT_MESSAGE = 'تم إيقاف البرنامج: مخرجاته أطول من الحد المسموح.';
+
     public function handle(Message $message): void
     {
         $text = $message->getText();
@@ -19,6 +22,7 @@ class PythonExecutionHandler extends BaseHandler
         $userState = $this->getUserState($userId);
         if ($userState && $userState['waiting_for_input']) {
             $this->executeWithInput($message, $userId);
+
             return;
         }
 
@@ -38,6 +42,7 @@ class PythonExecutionHandler extends BaseHandler
                 'code' => $code,
             ]);
             $this->reply($message, 'الكود الخاص بك يستخدم input(). يرجى إرسال المدخل الذي تريد توفيره.');
+
             return;
         }
 
@@ -60,7 +65,15 @@ class PythonExecutionHandler extends BaseHandler
     protected function runPythonCode(Message $message, string $code, ?string $input = null): void
     {
         $sandbox = app(CodeSandbox::class);
-        $runDir = $sandbox->makeRunDir();
+
+        try {
+            $runDir = $sandbox->makeRunDir();
+        } catch (CodeSandboxUnavailable $e) {
+            report($e);
+            $this->reply($message, 'تشغيل الأكواد متوقف مؤقتاً لأسباب أمنية. حاول لاحقاً.');
+
+            return;
+        }
 
         $file = "$runDir/main.py";
         file_put_contents($file, $code);
@@ -71,19 +84,23 @@ class PythonExecutionHandler extends BaseHandler
         $process = $sandbox->process(['python3', '-I', '-B', $file], $runDir, 5);
 
         if ($input !== null) {
-            $process->setInput($input . "\n");
+            $process->setInput($input."\n");
         }
 
         try {
-            $process->run();
+            if ($sandbox->run($process)) {
+                $this->reply($message, self::OUTPUT_LIMIT_MESSAGE);
 
-            if (!$process->isSuccessful()) {
+                return;
+            }
+
+            if (! $process->isSuccessful()) {
                 $error = $process->getErrorOutput() ?: 'لم يتم التقاط رسالة خطأ.';
                 $this->reply($message, "خطأ وقت التشغيل:\n```\n{$error}\n```", 'Markdown');
             } else {
                 $output = $process->getOutput();
-                if (!empty(trim($output))) {
-                    $this->reply($message, "```\n" . trim($output) . "\n```", 'Markdown');
+                if (! empty(trim($output))) {
+                    $this->reply($message, "```\n".trim($output)."\n```", 'Markdown');
                 } else {
                     $this->reply($message, 'لا يوجد مخرجات.');
                 }

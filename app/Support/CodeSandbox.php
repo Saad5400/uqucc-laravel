@@ -30,15 +30,28 @@ use Symfony\Component\Process\Process;
  *
  * The uid is deliberately not 65534: RLIMIT_NPROC counts every process of the
  * uid on the HOST, and other containers already run processes as nobody.
+ *
+ * - no network: start-container.sh firewalls the uid off (iptables/ip6tables
+ *   owner match), and no run starts unless {@see SandboxEgressGuard} confirms
+ *   the rule is installed — fail closed, never "run without the firewall";
+ * - bounded output: {@see run()} stops a program once stdout+stderr pass
+ *   services.code_sandbox.limits.output_bytes, so a print loop cannot fill
+ *   the worker's memory within its wall-clock window.
  */
 class CodeSandbox
 {
+    public function __construct(private readonly SandboxEgressGuard $egress) {}
+
     /**
      * Create a fresh run dir owned by the sandbox uid (mode 0700) and return
      * its path. Also reaps anything a previous run left behind.
      */
     public function makeRunDir(): string
     {
+        if (! $this->egress->isInstalled()) {
+            throw new CodeSandboxUnavailable('code sandbox: the egress firewall rule is not installed (NET_ADMIN / iptables missing?); refusing to run code with network access');
+        }
+
         $this->reapStragglers();
 
         $root = (string) config('services.code_sandbox.root');
@@ -101,6 +114,41 @@ class CodeSandbox
         $cleared['PATH'] = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
 
         return new Process($wrapped, $runDir, $cleared, null, $timeout);
+    }
+
+    /**
+     * Run a sandbox process to completion, stopping it once its combined
+     * stdout + stderr pass the output limit. The Process timeout still
+     * applies (ProcessTimedOutException, as with Process::run()).
+     *
+     * @return bool whether the program was stopped for producing too much output
+     */
+    public function run(Process $process): bool
+    {
+        $limit = (int) config('services.code_sandbox.limits.output_bytes');
+        $seen = 0;
+
+        $process->start();
+
+        while ($process->isRunning()) {
+            $process->checkTimeout();
+
+            // Only the new bytes: Process spools its buffer to a temp file past
+            // 1MB, and the full output is never pulled into memory here.
+            $seen += strlen($process->getIncrementalOutput()) + strlen($process->getIncrementalErrorOutput());
+
+            if ($seen > $limit) {
+                $process->stop(0);
+
+                return true;
+            }
+
+            usleep(10_000);
+        }
+
+        $process->wait();
+
+        return $seen + strlen($process->getIncrementalOutput()) + strlen($process->getIncrementalErrorOutput()) > $limit;
     }
 
     /**

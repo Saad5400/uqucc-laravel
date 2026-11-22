@@ -55,6 +55,29 @@ mkdir -p /var/lib/code-sandbox
 chmod 0711 /var/lib/code-sandbox
 rm -rf /var/lib/code-sandbox/run-*
 
+# The code sandbox gets NO network: every packet its uid sends is refused
+# (TCP, UDP/DNS, loopback included), so user code cannot reach Redis,
+# Postgres, the other containers or the cloud metadata service. Root — the
+# app — keeps its network. Needs the container's NET_ADMIN capability
+# (Coolify custom docker options: --cap-add=NET_ADMIN). If the rule cannot be
+# installed the container still boots, and App\Support\SandboxEgressGuard
+# keeps the bot's run-code commands switched off (fail closed). The rule
+# must stay identical to SandboxEgressGuard::ruleSpec().
+# Verify on a live container (both must print "blocked"/fail):
+#   setpriv --reuid=47000 --regid=47000 --clear-groups python3 -c \
+#     'import socket,os; socket.create_connection((os.environ.get("H","<REDIS_HOST>"),6379),3)'
+#   setpriv --reuid=47000 --regid=47000 --clear-groups curl -m 3 https://example.com
+SANDBOX_UID="${CODE_SANDBOX_UID:-47000}"
+block_sandbox_egress() {
+  "$1" -w 5 -C OUTPUT -m owner --uid-owner "$SANDBOX_UID" -j REJECT 2>/dev/null \
+    || "$1" -w 5 -I OUTPUT 1 -m owner --uid-owner "$SANDBOX_UID" -j REJECT
+}
+if block_sandbox_egress iptables && block_sandbox_egress ip6tables; then
+  echo "code sandbox: network blocked for uid $SANDBOX_UID"
+else
+  echo "code sandbox: WARNING — could not firewall uid $SANDBOX_UID (needs --cap-add=NET_ADMIN and iptables); run-code commands stay disabled" >&2
+fi
+
 # Run any outstanding migrations
 php artisan migrate --force || true
 
