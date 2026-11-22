@@ -44,7 +44,6 @@ class Page extends Model implements Sortable
     protected static function clearAppCache(): void
     {
         Cache::forget(config('app-cache.keys.navigation_tree'));
-        Cache::forget(config('app-cache.keys.search_data'));
         Cache::forget(config('app-cache.keys.quick_responses'));
         Cache::forget(config('app-cache.keys.page_ids_by_slug'));
 

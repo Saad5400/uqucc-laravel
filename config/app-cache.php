@@ -20,12 +20,6 @@ return [
         'ttl' => env('CACHE_NAVIGATION_TTL', 3600),
     ],
 
-    'search' => [
-        // Cache duration for search data (in seconds)
-        // Default: 3600 (1 hour)
-        'ttl' => env('CACHE_SEARCH_TTL', 3600),
-    ],
-
     'quick_responses' => [
         // Cache duration for Telegram-ready quick responses (in seconds)
         // Default: 3600 (1 hour)
@@ -81,7 +75,6 @@ return [
 
     'keys' => [
         'navigation_tree' => 'navigation_tree',
-        'search_data' => 'search_data',
         'quick_responses' => 'quick_responses',
         'page_ids_by_slug' => 'page_ids_by_slug', // slug => id map for page-view tracking
         'screenshot' => 'screenshot', // Base key, will be appended with page slug and version

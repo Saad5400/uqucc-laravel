@@ -18,13 +18,25 @@ use Illuminate\Support\Facades\Schema;
  *
  * Rows that already share an identity (concurrent first views, or a deleted
  * user's rows set to NULL) are merged first: views summed, the latest view and
- * the first sighting kept, so the dashboard's totals are unchanged.
+ * the first sighting kept. All-time totals are unchanged; the windowed ones
+ * (views30d, the daily chart) rise once, because a merged row's older views
+ * now sit on its latest last_viewed_at.
+ *
+ * On Postgres the table is locked against writes (SHARE ROW EXCLUSIVE) for
+ * the whole migration, which Laravel runs in one transaction there: during a
+ * rolling deploy the old container keeps inserting, and a duplicate written
+ * between the merge and CREATE UNIQUE INDEX would fail the index. Its inserts
+ * wait for the commit instead (the merge and the index build take moments).
  */
 return new class extends Migration
 {
     public function up(): void
     {
         DB::transaction(function (): void {
+            if (DB::getDriverName() === 'pgsql') {
+                DB::statement('LOCK TABLE page_view_stats IN SHARE ROW EXCLUSIVE MODE');
+            }
+
             $duplicates = DB::table('page_view_stats')
                 ->select('page_id', 'user_id', 'ip_address')
                 ->selectRaw('MIN(id) as keep_id, SUM(view_count) as views, MAX(last_viewed_at) as last_viewed_at, MIN(created_at) as created_at')
@@ -46,9 +58,9 @@ return new class extends Migration
                     ->where('id', '!=', $group->keep_id)
                     ->delete();
             }
-        });
 
-        DB::statement("CREATE UNIQUE INDEX page_view_stats_identity_unique ON page_view_stats (page_id, (COALESCE(user_id, 0)), (COALESCE(ip_address, '')))");
+            DB::statement("CREATE UNIQUE INDEX page_view_stats_identity_unique ON page_view_stats (page_id, (COALESCE(user_id, 0)), (COALESCE(ip_address, '')))");
+        });
 
         // Subsumed by the identity index (same leading column); one index less
         // to maintain on every view.

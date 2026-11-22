@@ -90,3 +90,56 @@ it('never caches a URL with a query string', function (string $query): void {
     'fbclid' => 'fbclid=IwAR0abc',
     'anything else' => 'v=1',
 ]);
+
+it('tells browsers the HTML and the Inertia JSON of a URL differ, on every hit', function (array $headers): void {
+    $version = (string) app(HandleInertiaRequests::class)->version(Request::create('/'));
+    $headers = array_map(fn (string $value): string => $value === '{version}' ? $version : $value, $headers);
+
+    visitAsGuest('/altkhssat', $headers)->assertOk();
+    $early = visitAsGuest('/altkhssat', $headers);
+    $viaWebGroup = test()->withCookie(config('session.cookie'), 'anything')->withHeaders($headers)->get('/altkhssat');
+
+    // Without it, Back after an Inertia visit can show the cached JSON as a page.
+    foreach ([$early, $viaWebGroup] as $hit) {
+        $hit->assertHeader('X-Cache', 'HIT');
+        expect(array_map('trim', explode(',', (string) $hit->headers->get('Vary'))))->toContain('X-Inertia');
+    }
+})->with([
+    'html' => [[]],
+    'inertia' => [['X-Inertia' => 'true', 'X-Inertia-Version' => '{version}']],
+]);
+
+it('never caches an Inertia partial reload, nor serves one from the cache', function (string $header, string $value): void {
+    $version = (string) app(HandleInertiaRequests::class)->version(Request::create('/'));
+    $inertia = ['X-Inertia' => 'true', 'X-Inertia-Version' => $version];
+
+    // A cold URL first hit by a partial reload must not store the partial props…
+    visitAsGuest('/altkhssat', [...$inertia, 'X-Inertia-Partial-Component' => 'Page', $header => $value])->assertOk();
+
+    expect(Cache::has(CacheResponse::keyFor(url('/altkhssat'), true)))->toBeFalse();
+
+    // …so the next full Inertia visit renders, and carries every prop.
+    visitAsGuest('/altkhssat', $inertia)
+        ->assertOk()
+        ->assertHeaderMissing('X-Cache')
+        ->assertJsonStructure(['props' => ['page', 'navigation', 'breadcrumbs']]);
+
+    // And a warm entry is not handed to a partial reload either.
+    visitAsGuest('/altkhssat', [...$inertia, 'X-Inertia-Partial-Component' => 'Page', $header => $value])
+        ->assertHeaderMissing('X-Cache');
+})->with([
+    'only' => ['X-Inertia-Partial-Data', 'seo'],
+    'except' => ['X-Inertia-Partial-Except', 'page,navigation,breadcrumbs'],
+]);
+
+it('preloads only files that exist (a 404 would start a session)', function (): void {
+    $html = visitAsGuest('/altkhssat')->assertOk()->getContent();
+
+    preg_match_all('/<link[^>]+rel="preload"[^>]+href="(\/[^"]+)"/', (string) $html, $matches);
+
+    expect($matches[1])->not->toBeEmpty();
+
+    foreach ($matches[1] as $href) {
+        expect(public_path(ltrim($href, '/')))->toBeFile();
+    }
+});

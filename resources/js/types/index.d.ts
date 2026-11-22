@@ -17,14 +17,3 @@ export interface User {
     created_at: string;
     updated_at: string;
 }
-
-export interface SearchItem {
-    id: string;
-    title: string;
-    slug: string;
-    icon?: string | null;
-    breadcrumb: string;
-    preview: string;
-    keywords: string;
-    smart: boolean;
-}

@@ -82,8 +82,7 @@ class CacheResponse
         if (! $request->isMethod('GET')
             || $request->getQueryString() !== null
             || self::isExcludedPath($request)
-            // Inertia partial reloads need fresh data
-            || $request->header('X-Inertia-Partial-Data')) {
+            || self::isPartialReload($request)) {
             return null;
         }
 
@@ -106,6 +105,24 @@ class CacheResponse
         $build = Vite::manifestHash() ?? '';
 
         return $prefix.':'.md5($url.($isInertia ? ':inertia' : '').'|'.$build);
+    }
+
+    /**
+     * An Inertia partial reload — any of X-Inertia-Partial-Data / -Except /
+     * -Component — answers with a subset of the page's props, and is keyed
+     * like the full Inertia visit, so it must neither read nor store: one
+     * anonymous `X-Inertia-Partial-Except: page` would otherwise poison the
+     * URL's Inertia entry for everyone until the TTL runs out.
+     */
+    protected static function isPartialReload(Request $request): bool
+    {
+        foreach (array_keys($request->headers->all()) as $name) {
+            if (str_starts_with($name, 'x-inertia-partial-')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -204,6 +221,17 @@ class CacheResponse
         // Restore cached headers
         foreach ($cached['headers'] ?? [] as $key => $value) {
             $response->headers->set($key, $value);
+        }
+
+        // The HTML page and the Inertia JSON of one URL are different bodies,
+        // so a browser must never answer one from its cache for the other
+        // (Back after an Inertia visit would show raw JSON). Inertia adds this
+        // on the way out of its middleware — after CacheResponse stored the
+        // entry, and never at all for a hit served before the web group.
+        $vary = array_filter(array_map('trim', explode(',', (string) $response->headers->get('Vary'))));
+
+        if (! in_array('x-inertia', array_map('strtolower', $vary), true)) {
+            $response->headers->set('Vary', implode(', ', [...$vary, 'X-Inertia']));
         }
 
         // Add cache hit header for debugging

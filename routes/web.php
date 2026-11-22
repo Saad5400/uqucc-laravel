@@ -6,18 +6,10 @@ use App\Http\Controllers\OgImageController;
 use App\Http\Controllers\PageController;
 use App\Http\Controllers\PrivateTutorController;
 use App\Http\Controllers\SearchController;
-use App\Http\Controllers\SearchIndexController;
 use App\Http\Controllers\StudentGroupController;
 use App\Http\Controllers\ToolController;
 use App\Http\Middleware\CacheResponse;
-use App\Http\Middleware\HandleInertiaRequests;
-use App\Http\Middleware\TrackPageViews;
-use Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse;
-use Illuminate\Cookie\Middleware\EncryptCookies;
-use Illuminate\Foundation\Http\Middleware\ValidateCsrfToken;
-use Illuminate\Session\Middleware\StartSession;
 use Illuminate\Support\Facades\Route;
-use Illuminate\View\Middleware\ShareErrorsFromSession;
 
 // Homepage - with full response caching
 Route::get('/', [PageController::class, 'home'])
@@ -61,23 +53,6 @@ Route::post('/adwat/jdwal-alsawab', [ToolController::class, 'generateTruthTable'
 Route::post('/adwat/tahwel-alaadad', [ToolController::class, 'convertBase'])
     ->middleware('throttle:60,1')
     ->name('tools.base-converter.convert');
-
-// Quick-search index (JSON; must come before catch-all route), loaded by the
-// search bar on first use. Public and identical for everyone, so it runs
-// without the session layers (no session is started for it) and is browser-
-// cacheable with an ETag; it is rebuilt from the cache Page writes flush.
-Route::get('/search-index.json', SearchIndexController::class)
-    ->withoutMiddleware([
-        EncryptCookies::class,
-        AddQueuedCookiesToResponse::class,
-        StartSession::class,
-        ShareErrorsFromSession::class,
-        ValidateCsrfToken::class,
-        HandleInertiaRequests::class,
-        TrackPageViews::class,
-    ])
-    ->middleware('cache.headers:public;max_age=300;etag')
-    ->name('search-index');
 
 // Starts the visitor's session and hands out its XSRF-TOKEN cookie. A page
 // served from the full-page cache before the session layer (ServeCachedPage)

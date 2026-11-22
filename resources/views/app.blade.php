@@ -28,8 +28,9 @@
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
         <link rel="manifest" href="/site.webmanifest">
 
-        {{-- Fonts (self-hosted, see resources/css/app.css) --}}
-        <link rel="preload" href="/fonts/cairo/cairo-arabic.woff2" as="font" type="font/woff2" crossorigin>
+        {{-- Fonts (self-hosted, see resources/css/app.css). Only files that exist:
+             a preload that 404s is a Laravel 404 page that starts a session. --}}
+        <link rel="preload" href="/fonts/ibm-plex/ibm-plex-arabic-400.woff2" as="font" type="font/woff2" crossorigin>
 
         {{-- Open Graph / Facebook --}}
         <meta inertia="og:type" property="og:type" content="{{ $ogType }}">

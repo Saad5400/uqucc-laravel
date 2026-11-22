@@ -57,11 +57,14 @@ it('does not count bots, crawlers, link previews and HTTP clients', function (?s
     'no user agent' => '',
 ]);
 
-it('still counts a phone whose model name ends in "bot"', function (): void {
-    viewPage('/altkhssat', userAgent: 'Mozilla/5.0 (Linux; Android 10; CUBOT X30) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36')->assertOk();
+it('still counts readers whose agent merely mentions a filtered word', function (string $userAgent): void {
+    viewPage('/altkhssat', userAgent: $userAgent)->assertOk();
 
     expect(PageViewStat::query()->count())->toBe(1);
-});
+})->with([
+    'phone model ending in "bot"' => 'Mozilla/5.0 (Linux; Android 10; CUBOT X30) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36',
+    'whatsapp in-app browser' => 'Mozilla/5.0 (Linux; Android 14; SM-A546E Build/UP1A.231005.007; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/131.0.6778.135 Mobile Safari/537.36 WhatsApp/2.24.25.79',
+]);
 
 it('counts nothing for a path that is not a page, or a failed response', function (): void {
     viewPage('/no-such-page')->assertNotFound();

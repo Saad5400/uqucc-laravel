@@ -26,7 +26,7 @@ class PageViewRecorder
      * only — a false negative costs one inflated count, a false positive hides
      * a real reader (hence the exception for Cubot phones, "CUBOT X30").
      */
-    private const NON_HUMAN_AGENT = '/(?<!cu)bot\b|bot\/|crawl|spider|slurp|scrape|preview|facebookexternalhit|whatsapp|headless|lighthouse|pingdom|uptime|monitor|curl\/|wget\/|python-|go-http-client|okhttp|axios\/|node-fetch|undici|guzzle|libwww|java\//i';
+    private const NON_HUMAN_AGENT = '/(?<!cu)bot\b|bot\/|crawl|spider|slurp|scrape|preview|facebookexternalhit|^WhatsApp\/|headless|lighthouse|pingdom|uptime|monitor|curl\/|wget\/|python-|go-http-client|okhttp|axios\/|node-fetch|undici|guzzle|libwww|java\//i';
 
     private const LOOPBACK = ['127.0.0.1', '::1'];
 
