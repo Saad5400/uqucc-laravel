@@ -31,5 +31,8 @@ Mcp::oauthRoutes();
 Mcp::web('/mcp', UqccServer::class)
     ->middleware('throttle:mcp');
 
+// manage.access: the same panel gate as /manage (admin or editor). A valid
+// token alone is not enough — an account whose roles were removed keeps its
+// password and could otherwise still mint one.
 Mcp::web('/mcp/admin', UqccAdminServer::class)
-    ->middleware(['auth:api', 'throttle:mcp-admin']);
+    ->middleware(['auth:api', 'manage.access', 'throttle:mcp-admin']);
