@@ -15,6 +15,30 @@ use Pgvector\Laravel\Schema as PgvectorSchema;
 class AppServiceProvider extends ServiceProvider
 {
     /**
+     * Per-IP ceilings behind the per-session AI limits. A session is free to
+     * mint (drop the cookie, GET /csrf-cookie), so the session key alone let
+     * one client rotate sessions and drain the shared daily AI budget for
+     * everyone. Generous enough for a campus NAT; meaningful only because
+     * TRUSTED_PROXIES makes request()->ip() the real client.
+     */
+    private const AI_CHAT_PER_IP = 30;
+
+    private const AI_SEARCH_PER_IP = 60;
+
+    /**
+     * Chat turns per client address per day, on top of the per-minute burst
+     * limits: sized for a shared campus / mobile-carrier address, low enough
+     * that one address cannot spend the whole daily budget.
+     */
+    private const AI_CHAT_PER_IP_PER_DAY = 300;
+
+    /** The `ai-chat` per-minute refusal; must NOT contain «اليومي» (that locks the page for the day). */
+    public const AI_CHAT_BURST_LIMIT_MESSAGE = 'محاولات كثيرة خلال وقت قصير، انتظر دقيقة ثم أعد المحاولة.';
+
+    /** The `ai-chat-daily` refusal; must keep the word «اليومي» (see that limiter). */
+    public const AI_CHAT_DAILY_LIMIT_MESSAGE = 'وصلت إلى الحد اليومي لرسائل المساعد من هذا الاتصال. عد غداً وسيسعدنا مساعدتك.';
+
+    /**
      * Register any application services.
      */
     public function register(): void
@@ -75,15 +99,21 @@ class AppServiceProvider extends ServiceProvider
      * `ai-chat` is the assistant chat's BURST limiter (same session-first
      * key as `ai-search`); the operator's per-session DAILY quota and the
      * daily spend budget are enforced in code by the chat controller.
+     *
+     * Both AI limiters also carry a per-IP backstop (AI_CHAT_PER_IP /
+     * AI_SEARCH_PER_IP) so rotating sessions does not reset them.
      */
     private function configureRateLimiting(): void
     {
-        RateLimiter::for('ai-search', function (Request $request): Limit {
+        RateLimiter::for('ai-search', function (Request $request): array {
             $sessionId = $request->hasSession() && $request->cookies->has((string) config('session.cookie'))
                 ? $request->session()->getId()
                 : null;
 
-            return Limit::perMinute(20)->by('ai-search:'.($sessionId ?? (string) $request->ip()));
+            return [
+                Limit::perMinute(20)->by('ai-search:'.($sessionId ?? self::clientAddressKey($request))),
+                Limit::perMinute(self::AI_SEARCH_PER_IP)->by('ai-search-ip:'.self::clientAddressKey($request)),
+            ];
         });
 
         RateLimiter::for('mcp', function (Request $request): Limit {
@@ -94,13 +124,59 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinute(60)->by('mcp-admin:'.($request->user()?->getAuthIdentifier() ?? (string) $request->ip()));
         });
 
-        RateLimiter::for('ai-chat', function (Request $request): Limit {
+        RateLimiter::for('ai-chat', function (Request $request): array {
             $sessionId = $request->hasSession() && $request->cookies->has((string) config('session.cookie'))
                 ? $request->session()->getId()
                 : null;
 
-            return Limit::perMinute(5)->by('ai-chat:'.($sessionId ?? (string) $request->ip()));
+            // A burst refusal is answered in Arabic as "slow down" — never with
+            // «اليومي», which would lock the assistant page for the day.
+            $slowDown = fn (Request $request, array $headers) => response()->json([
+                'message' => self::AI_CHAT_BURST_LIMIT_MESSAGE,
+            ], 429, $headers);
+
+            return [
+                Limit::perMinute(5)->by('ai-chat:'.($sessionId ?? self::clientAddressKey($request)))->response($slowDown),
+                Limit::perMinute(self::AI_CHAT_PER_IP)->by('ai-chat-ip:'.self::clientAddressKey($request))->response($slowDown),
+            ];
         });
+
+        // Only on the turn-opening POST (routes/web.php): reading a
+        // conversation or uploading an attachment must not use up the day.
+        //
+        // Answered in Arabic with «اليومي» in the message: that is what the
+        // assistant page (AssistantPage.vue) keys its daily-limit state on, so
+        // the student sees "come back tomorrow" instead of retrying into
+        // Laravel's English "Too Many Attempts.".
+        RateLimiter::for('ai-chat-daily', function (Request $request): Limit {
+            return Limit::perDay(self::AI_CHAT_PER_IP_PER_DAY)
+                ->by('ai-chat-ip-day:'.self::clientAddressKey($request))
+                ->response(fn (Request $request, array $headers) => response()->json([
+                    'message' => self::AI_CHAT_DAILY_LIMIT_MESSAGE,
+                ], 429, $headers));
+        });
+    }
+
+    /**
+     * The client address a per-IP limit is keyed by: an IPv4 address as is,
+     * an IPv6 address by its /64. One IPv6 subscriber is routinely handed a
+     * whole /64, so keying by the full address let a single client rotate
+     * through billions of "different" IPs. IPv4-mapped IPv6 counts as IPv4.
+     */
+    public static function clientAddressKey(Request $request): string
+    {
+        $ip = (string) $request->ip();
+        $packed = @inet_pton($ip);
+
+        if ($packed === false || strlen($packed) !== 16) {
+            return $ip;
+        }
+
+        if (str_starts_with($packed, str_repeat("\0", 10)."\xff\xff")) {
+            return (string) inet_ntop(substr($packed, 12));
+        }
+
+        return inet_ntop(substr($packed, 0, 8).str_repeat("\0", 8)).'/64';
     }
 
     /**
