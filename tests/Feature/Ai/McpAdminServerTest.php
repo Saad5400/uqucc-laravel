@@ -443,3 +443,14 @@ it('denies settings changes and the cache clear to an editor (admin-only)', func
     'update_setting' => ['update_setting', ['group' => 'ai', 'key' => 'daily_budget_usd', 'value' => 999]],
     'clear_cache' => ['clear_cache', []],
 ]);
+
+it('denies per-chat Telegram AI changes to an editor (admin-only)', function (string $tool) {
+    $chat = \App\Models\TelegramChatSetting::factory()->create();
+    Passport::actingAs(makeUser('editor'));
+
+    $response = postJson('/mcp/admin', adminRpc($tool, ['chat_id' => $chat->chat_id, 'enabled' => true]));
+
+    expect($response->json('result.isError'))->toBeTrue()
+        ->and(adminResultText($response))->toContain('ليست لديك صلاحية')
+        ->and(\App\Models\TelegramChatSetting::query()->whereKey($chat->id)->exists())->toBeTrue();
+})->with(['set_telegram_chat_ai', 'reset_telegram_chat', 'delete_telegram_chat']);

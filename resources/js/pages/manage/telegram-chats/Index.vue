@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { formatDateTime, formatRelativeTime } from '@/lib/formatters';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import { Bot, EllipsisVertical, RefreshCw, Trash2 } from 'lucide-vue-next';
 import { computed, ref } from 'vue';
 
@@ -122,6 +122,12 @@ function runConfirmedAction(): void {
         router.post(`/manage/telegram-chats/${targetChat.value.id}/reset-conversation`, {}, options);
     }
 }
+
+// Switching a chat's AI, resetting or deleting it is admin-only (`manage-settings`).
+const page = usePage();
+const canManageChats = computed(() =>
+    (((page.props.auth?.user as { permissions?: string[] } | null | undefined)?.permissions ?? []) as string[]).includes('manage-settings'),
+);
 </script>
 
 <template>
@@ -174,7 +180,7 @@ function runConfirmedAction(): void {
                     </div>
                 </div>
 
-                <div class="flex items-center gap-2">
+                <div v-if="canManageChats" class="flex items-center gap-2">
                     <Switch
                         :model-value="chat.ai_enabled"
                         :disabled="togglingId === chat.id"

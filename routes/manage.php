@@ -99,9 +99,12 @@ Route::prefix('manage')->name('manage.')->group(function () {
         Route::get('/invites', [InviteAnalyticsController::class, 'index'])->name('invites.index');
 
         Route::get('/telegram-chats', [TelegramChatSettingController::class, 'index'])->name('telegram-chats.index');
-        Route::put('/telegram-chats/{chat}', [TelegramChatSettingController::class, 'update'])->name('telegram-chats.update');
-        Route::post('/telegram-chats/{chat}/reset-conversation', [TelegramChatSettingController::class, 'resetConversation'])->name('telegram-chats.reset-conversation');
-        Route::delete('/telegram-chats/{chat}', [TelegramChatSettingController::class, 'destroy'])->name('telegram-chats.destroy');
+        // Per-chat AI switch / reset / delete: admin-only, like the AI settings.
+        Route::middleware('can:manage-settings')->group(function () {
+            Route::put('/telegram-chats/{chat}', [TelegramChatSettingController::class, 'update'])->name('telegram-chats.update');
+            Route::post('/telegram-chats/{chat}/reset-conversation', [TelegramChatSettingController::class, 'resetConversation'])->name('telegram-chats.reset-conversation');
+            Route::delete('/telegram-chats/{chat}', [TelegramChatSettingController::class, 'destroy'])->name('telegram-chats.destroy');
+        });
 
         Route::get('/telegram-teams', [TelegramTeamController::class, 'index'])->name('telegram-teams.index');
         Route::put('/telegram-teams/teams/{team}', [TelegramTeamController::class, 'update'])->name('telegram-teams.update');

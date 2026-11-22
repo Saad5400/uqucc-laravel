@@ -23,6 +23,12 @@ class SetTelegramChatAiAction extends AdminAction
         return 'set_telegram_chat_ai';
     }
 
+    /** Admin-only, like the /manage per-chat routes (`can:manage-settings`). */
+    public function requiredAbility(): ?string
+    {
+        return 'manage-settings';
+    }
+
     public function category(): string
     {
         return 'telegram';
