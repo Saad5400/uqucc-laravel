@@ -167,7 +167,11 @@ class ProcessTelegramUpdate implements ShouldQueue
             return;
         }
 
-        if ($message->getFrom()?->getIsBot()) {
+        // Every handler acts for the person who sent the message. Channel posts
+        // (and other sender-less messages) carry no `from`, so there is nobody
+        // to act for — and handlers that read `getFrom()->getId()` would crash.
+        $from = $message->getFrom();
+        if ($from === null || $from->getIsBot()) {
             return;
         }
 
@@ -202,7 +206,9 @@ class ProcessTelegramUpdate implements ShouldQueue
         foreach ($handlers as $handler) {
             try {
                 $handler->handle($message);
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
+                // Throwable, not Exception: a PHP Error in one handler (a null
+                // dereference, a TypeError) must not skip every handler after it.
                 Log::error('Telegram handler error', [
                     'handler' => get_class($handler),
                     'message' => $e->getMessage(),
