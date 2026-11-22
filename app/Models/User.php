@@ -32,6 +32,12 @@ class User extends Authenticatable implements OAuthenticatable
      */
     protected $guard_name = 'web';
 
+    protected static function booted(): void
+    {
+        // Their page views become guest views (see PageViewStat::foldIntoGuests).
+        static::deleting(fn (User $user) => PageViewStat::foldIntoGuests($user->id));
+    }
+
     /**
      * The attributes that are mass assignable.
      *

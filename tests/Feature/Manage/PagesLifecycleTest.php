@@ -168,7 +168,7 @@ describe('reorder', function () {
         $second = PageFactory::new()->childOf($parent)->create();
 
         Cache::put(config('app-cache.keys.navigation_tree'), ['stale']);
-        Cache::put(config('app-cache.keys.search_data'), ['stale']);
+        Cache::put(config('app-cache.keys.page_ids_by_slug'), ['stale']);
 
         $this->actingAs($this->admin)->post('/manage/pages/reorder', [
             'parent_id' => $parent->id,
@@ -176,6 +176,6 @@ describe('reorder', function () {
         ]);
 
         expect(Cache::has(config('app-cache.keys.navigation_tree')))->toBeFalse();
-        expect(Cache::has(config('app-cache.keys.search_data')))->toBeFalse();
+        expect(Cache::has(config('app-cache.keys.page_ids_by_slug')))->toBeFalse();
     });
 });

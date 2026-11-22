@@ -54,6 +54,12 @@ Route::post('/adwat/tahwel-alaadad', [ToolController::class, 'convertBase'])
     ->middleware('throttle:60,1')
     ->name('tools.base-converter.convert');
 
+// Starts the visitor's session and hands out its XSRF-TOKEN cookie. A page
+// served from the full-page cache before the session layer (ServeCachedPage)
+// sets no cookie, so the first JSON POST from such a page fetches this first
+// (ensureXsrfToken() in resources/js/lib/http.ts).
+Route::get('/csrf-cookie', fn () => response()->noContent())->name('csrf-cookie');
+
 // AI corpus search endpoint (JSON; must come before catch-all route) - rate limited, never cached
 Route::get('/bahth', SearchController::class)
     ->middleware('throttle:ai-search')

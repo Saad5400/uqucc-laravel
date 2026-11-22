@@ -50,8 +50,9 @@ return [
     |
     | The cards App\Support\TakumiRenderer draws are laid out by a Node script
     | (scripts/takumi-render.mjs). Only the interpreter is configurable, and
-    | only because the deployment image installs Node through Nix and PHP-FPM
-    | does not always see it on PATH (nixpacks.toml exports NODE_BINARY for it).
+    | only because the deployment image installs Node through mise, which the
+    | PHP server does not always see on PATH (start-container.sh exports
+    | NODE_BINARY for it).
     | Everything else the render needs (the fonts, the packages) is in the repo.
     |
     */

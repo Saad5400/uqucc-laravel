@@ -108,18 +108,18 @@ describe('cache invalidation hooks', function () {
     function primeAppCaches(): void
     {
         Cache::put(config('app-cache.keys.navigation_tree'), ['stale']);
-        Cache::put(config('app-cache.keys.search_data'), ['stale']);
+        Cache::put(config('app-cache.keys.page_ids_by_slug'), ['stale']);
         Cache::put(config('app-cache.keys.quick_responses'), ['stale']);
     }
 
     function expectAppCachesFlushed(): void
     {
         expect(Cache::has(config('app-cache.keys.navigation_tree')))->toBeFalse();
-        expect(Cache::has(config('app-cache.keys.search_data')))->toBeFalse();
+        expect(Cache::has(config('app-cache.keys.page_ids_by_slug')))->toBeFalse();
         expect(Cache::has(config('app-cache.keys.quick_responses')))->toBeFalse();
     }
 
-    it('flushes navigation, search and quick-response caches on save', function () {
+    it('flushes navigation, slug-map and quick-response caches on save', function () {
         $page = PageFactory::new()->create();
 
         primeAppCaches();
