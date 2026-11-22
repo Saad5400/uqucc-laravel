@@ -40,7 +40,7 @@ export const manageNavItems: ManageNavItem[] = [
     { title: 'روابط الدعوة', href: '/manage/invites', icon: UserPlus },
     { title: 'سؤال اليوم', href: '/manage/quiz', icon: Trophy },
     { title: 'سجل النشاط', href: '/manage/activity', icon: Activity, permission: 'view-activity-logs' },
-    { title: 'الإعدادات', href: '/manage/settings', icon: Settings },
+    { title: 'الإعدادات', href: '/manage/settings', icon: Settings, permission: 'manage-settings' },
 ];
 
 /** Nav items the given user is allowed to see, by held permissions and review access. */
