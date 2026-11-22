@@ -54,3 +54,44 @@ it('answers 429 once one IP passes the chat backstop across fresh sessions', fun
         ->postJson('/ai/chat', ['message' => 'مرحبا'])
         ->assertStatus(429);
 });
+
+it('puts two IPv6 addresses of one /64 in the same bucket, and another /64 in its own', function () {
+    $first = aiLimits('ai-chat', aiLimiterRequest('2001:db8:abcd:12::1', str_repeat('d', 40)));
+    $sibling = aiLimits('ai-chat', aiLimiterRequest('2001:db8:abcd:12:ffff:ffff:ffff:fffe', str_repeat('e', 40)));
+    $neighbour = aiLimits('ai-chat', aiLimiterRequest('2001:db8:abcd:13::1', str_repeat('f', 40)));
+
+    expect($first[1]->key)->toBe('ai-chat-ip:2001:db8:abcd:12::/64')
+        ->and($sibling[1]->key)->toBe($first[1]->key)
+        ->and($neighbour[1]->key)->not->toBe($first[1]->key);
+
+    $search = aiLimits('ai-search', aiLimiterRequest('2001:db8:abcd:12::99', str_repeat('g', 40)));
+
+    expect($search[1]->key)->toBe('ai-search-ip:2001:db8:abcd:12::/64')
+        ->and($search[1]->maxAttempts)->toBe(60);
+});
+
+it('keys IPv4 (and IPv4-mapped IPv6) by the full address', function () {
+    $plain = aiLimits('ai-chat', aiLimiterRequest('198.51.100.4', str_repeat('h', 40)));
+    $mapped = aiLimits('ai-chat', aiLimiterRequest('::ffff:198.51.100.4', str_repeat('i', 40)));
+    $other = aiLimits('ai-chat', aiLimiterRequest('198.51.100.5', str_repeat('j', 40)));
+
+    expect($plain[1]->key)->toBe('ai-chat-ip:198.51.100.4')
+        ->and($mapped[1]->key)->toBe($plain[1]->key)
+        ->and($other[1]->key)->not->toBe($plain[1]->key);
+});
+
+it('caps chat turns per address per day', function () {
+    $limit = RateLimiter::limiter('ai-chat-daily')(aiLimiterRequest('203.0.113.10', str_repeat('k', 40)));
+
+    expect($limit->maxAttempts)->toBe(300)
+        ->and($limit->decaySeconds)->toBe(86400)
+        ->and($limit->key)->toBe('ai-chat-ip-day:203.0.113.10');
+
+    foreach (range(1, 300) as $turn) {
+        RateLimiter::hit(md5('ai-chat-daily'.'ai-chat-ip-day:203.0.113.10'), 86400);
+    }
+
+    $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.10'])
+        ->postJson('/ai/chat', ['message' => 'مرحبا'])
+        ->assertStatus(429);
+});

@@ -26,6 +26,13 @@ class AppServiceProvider extends ServiceProvider
     private const AI_SEARCH_PER_IP = 60;
 
     /**
+     * Chat turns per client address per day, on top of the per-minute burst
+     * limits: sized for a shared campus / mobile-carrier address, low enough
+     * that one address cannot spend the whole daily budget.
+     */
+    private const AI_CHAT_PER_IP_PER_DAY = 300;
+
+    /**
      * Register any application services.
      */
     public function register(): void
@@ -98,8 +105,8 @@ class AppServiceProvider extends ServiceProvider
                 : null;
 
             return [
-                Limit::perMinute(20)->by('ai-search:'.($sessionId ?? (string) $request->ip())),
-                Limit::perMinute(self::AI_SEARCH_PER_IP)->by('ai-search-ip:'.(string) $request->ip()),
+                Limit::perMinute(20)->by('ai-search:'.($sessionId ?? self::clientAddressKey($request))),
+                Limit::perMinute(self::AI_SEARCH_PER_IP)->by('ai-search-ip:'.self::clientAddressKey($request)),
             ];
         });
 
@@ -117,10 +124,38 @@ class AppServiceProvider extends ServiceProvider
                 : null;
 
             return [
-                Limit::perMinute(5)->by('ai-chat:'.($sessionId ?? (string) $request->ip())),
-                Limit::perMinute(self::AI_CHAT_PER_IP)->by('ai-chat-ip:'.(string) $request->ip()),
+                Limit::perMinute(5)->by('ai-chat:'.($sessionId ?? self::clientAddressKey($request))),
+                Limit::perMinute(self::AI_CHAT_PER_IP)->by('ai-chat-ip:'.self::clientAddressKey($request)),
             ];
         });
+
+        // Only on the turn-opening POST (routes/web.php): reading a
+        // conversation or uploading an attachment must not use up the day.
+        RateLimiter::for('ai-chat-daily', function (Request $request): Limit {
+            return Limit::perDay(self::AI_CHAT_PER_IP_PER_DAY)->by('ai-chat-ip-day:'.self::clientAddressKey($request));
+        });
+    }
+
+    /**
+     * The client address a per-IP limit is keyed by: an IPv4 address as is,
+     * an IPv6 address by its /64. One IPv6 subscriber is routinely handed a
+     * whole /64, so keying by the full address let a single client rotate
+     * through billions of "different" IPs. IPv4-mapped IPv6 counts as IPv4.
+     */
+    public static function clientAddressKey(Request $request): string
+    {
+        $ip = (string) $request->ip();
+        $packed = @inet_pton($ip);
+
+        if ($packed === false || strlen($packed) !== 16) {
+            return $ip;
+        }
+
+        if (str_starts_with($packed, str_repeat("\0", 10)."\xff\xff")) {
+            return (string) inet_ntop(substr($packed, 12));
+        }
+
+        return inet_ntop(substr($packed, 0, 8).str_repeat("\0", 8)).'/64';
     }
 
     /**
