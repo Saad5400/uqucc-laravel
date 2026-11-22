@@ -70,3 +70,28 @@ it('ignores an edited channel post', function () {
     expect($fake->sentMessages)->toBeEmpty()
         ->and($fake->sentPhotos)->toBeEmpty();
 });
+
+it('ignores a channel post, which has no sender to act for', function () {
+    $payload = helpMessagePayload([
+        'chat' => ['id' => -100777, 'type' => 'channel', 'title' => 'قناة الكلية'],
+        'sender_chat' => ['id' => -100777, 'type' => 'channel', 'title' => 'قناة الكلية'],
+    ]);
+    unset($payload['from']);
+
+    $fake = runUpdate(['update_id' => 4, 'channel_post' => $payload]);
+
+    expect($fake->sentMessages)->toBeEmpty()
+        ->and($fake->sentPhotos)->toBeEmpty();
+});
+
+it('ignores a group message with no sender instead of crashing the handlers', function () {
+    $payload = helpMessagePayload([
+        'chat' => ['id' => -100888, 'type' => 'supergroup', 'title' => 'قروب الدفعة'],
+        'sender_chat' => ['id' => -100888, 'type' => 'supergroup', 'title' => 'قروب الدفعة'],
+    ]);
+    unset($payload['from']);
+
+    $fake = runUpdate(['update_id' => 5, 'message' => $payload]);
+
+    expect($fake->sentMessages)->toBeEmpty();
+});
