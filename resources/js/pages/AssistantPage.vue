@@ -875,7 +875,7 @@ onBeforeUnmount(() => abortController?.abort());
 
             <!-- Daily quota state -->
             <div v-else-if="dailyQuotaHit" class="border-t border-border/60 py-8 text-center text-sm text-muted-foreground">
-                وصلت إلى الحد اليومي لرسائل المساعد لهذه الجلسة. عد غداً وسيسعدنا مساعدتك.
+                وصلت إلى الحد اليومي لرسائل المساعد. عد غداً وسيسعدنا مساعدتك.
             </div>
 
             <!-- Composer -->

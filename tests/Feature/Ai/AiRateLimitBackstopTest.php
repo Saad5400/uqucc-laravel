@@ -51,9 +51,29 @@ it('answers 429 once one IP passes the chat backstop across fresh sessions', fun
         RateLimiter::hit(md5('ai-chat'.'ai-chat-ip:203.0.113.9'), 60);
     }
 
-    $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.9'])
+    $response = $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.9'])
+        ->postJson('/ai/chat', ['message' => 'مرحبا'])
+        ->assertStatus(429)
+        ->assertHeader('Retry-After');
+
+    // A "slow down" in Arabic — never «اليومي», which would lock the page for the day.
+    expect($response->json('message'))->toBe(AppServiceProvider::AI_CHAT_BURST_LIMIT_MESSAGE)
+        ->not->toContain('اليومي')
+        ->not->toContain('Too Many Attempts');
+});
+
+it('answers the per-session burst limit with the same Arabic slow-down message', function () {
+    // No session cookie: the per-session limit falls back to the address.
+    foreach (range(1, 5) as $attempt) {
+        RateLimiter::hit(md5('ai-chat'.'ai-chat:203.0.113.12'), 60);
+    }
+
+    $response = $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.12'])
         ->postJson('/ai/chat', ['message' => 'مرحبا'])
         ->assertStatus(429);
+
+    expect($response->json('message'))->toBe(AppServiceProvider::AI_CHAT_BURST_LIMIT_MESSAGE)
+        ->not->toContain('اليومي');
 });
 
 it('puts two IPv6 addresses of one /64 in the same bucket, and another /64 in its own', function () {

@@ -32,6 +32,9 @@ class AppServiceProvider extends ServiceProvider
      */
     private const AI_CHAT_PER_IP_PER_DAY = 300;
 
+    /** The `ai-chat` per-minute refusal; must NOT contain «اليومي» (that locks the page for the day). */
+    public const AI_CHAT_BURST_LIMIT_MESSAGE = 'محاولات كثيرة خلال وقت قصير، انتظر دقيقة ثم أعد المحاولة.';
+
     /** The `ai-chat-daily` refusal; must keep the word «اليومي» (see that limiter). */
     public const AI_CHAT_DAILY_LIMIT_MESSAGE = 'وصلت إلى الحد اليومي لرسائل المساعد من هذا الاتصال. عد غداً وسيسعدنا مساعدتك.';
 
@@ -126,9 +129,15 @@ class AppServiceProvider extends ServiceProvider
                 ? $request->session()->getId()
                 : null;
 
+            // A burst refusal is answered in Arabic as "slow down" — never with
+            // «اليومي», which would lock the assistant page for the day.
+            $slowDown = fn (Request $request, array $headers) => response()->json([
+                'message' => self::AI_CHAT_BURST_LIMIT_MESSAGE,
+            ], 429, $headers);
+
             return [
-                Limit::perMinute(5)->by('ai-chat:'.($sessionId ?? self::clientAddressKey($request))),
-                Limit::perMinute(self::AI_CHAT_PER_IP)->by('ai-chat-ip:'.self::clientAddressKey($request)),
+                Limit::perMinute(5)->by('ai-chat:'.($sessionId ?? self::clientAddressKey($request)))->response($slowDown),
+                Limit::perMinute(self::AI_CHAT_PER_IP)->by('ai-chat-ip:'.self::clientAddressKey($request))->response($slowDown),
             ];
         });
 
