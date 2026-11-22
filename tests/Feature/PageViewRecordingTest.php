@@ -3,8 +3,12 @@
 use App\Models\Page;
 use App\Models\PageViewStat;
 use App\Models\User;
+use App\Services\PageViewRecorder;
 use Database\Factories\PageFactory;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Testing\TestResponse;
 
 /*
@@ -97,4 +101,56 @@ it('resolves slugs from one cached map that page writes refresh', function (): v
     $this->page->delete();
 
     expect(Page::idForSlug('/altakhassusat'))->toBeNull();
+});
+
+/**
+ * Make the next page_view_stats write fail with the given SQLSTATE, as
+ * Postgres does when the recorder's lock or statement timeout fires.
+ */
+function failPageViewWrites(string $sqlState, int &$attempts = 0): void
+{
+    DB::connection()->beforeExecuting(function (string $query) use ($sqlState, &$attempts): void {
+        if (str_contains($query, 'INSERT INTO page_view_stats')) {
+            $attempts++;
+
+            $previous = new class("SQLSTATE[{$sqlState}]: simulated", $sqlState) extends PDOException
+            {
+                public function __construct(string $message, string $sqlState)
+                {
+                    parent::__construct($message);
+                    $this->code = $sqlState;
+                }
+            };
+
+            throw new QueryException('pgsql', $query, [], $previous);
+        }
+    });
+}
+
+it('drops views quietly, and stops trying for a moment, when the bounded write times out (a locked table)', function (string $sqlState): void {
+    Log::spy();
+    $attempts = 0;
+    failPageViewWrites($sqlState, $attempts);
+
+    app(PageViewRecorder::class)->write('/altkhssat', null, '203.0.113.30');
+    app(PageViewRecorder::class)->write('/altkhssat', null, '203.0.113.31');
+
+    Log::shouldHaveReceived('warning')->once();
+    Log::shouldNotHaveReceived('error');
+    expect($attempts)->toBe(1)
+        ->and(PageViewStat::where('page_id', $this->page->id)->count())->toBe(0);
+
+    $this->travel(11)->seconds();
+    app(PageViewRecorder::class)->write('/altkhssat', null, '203.0.113.32');
+
+    expect($attempts)->toBe(2);
+})->with(['lock timeout' => '55P03', 'statement timeout' => '57014']);
+
+it('still reports other write failures as errors', function (): void {
+    Log::spy();
+    failPageViewWrites('23502');
+
+    app(PageViewRecorder::class)->write('/altkhssat', null, '203.0.113.32');
+
+    Log::shouldHaveReceived('error')->once();
 });

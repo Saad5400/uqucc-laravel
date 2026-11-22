@@ -17,10 +17,20 @@
 	# demand (up to max_threads) — the VPS is shared, and idle warm threads
 	# are memory other apps cannot use. Requests beyond max_threads queue
 	# for max_wait_time, then get a 504.
+	#
+	# Worker mode (Laravel Octane): the app boots once per worker and serves
+	# request after request instead of bootstrapping Laravel on every hit.
+	# start-container.sh fills FRANKENPHP_WORKER and PHP_ENTRY unless
+	# OCTANE_WORKERS=false, which falls back to classic per-request mode
+	# (public/index.php) with no redeploy of code: flip the env in Coolify
+	# and restart. The worker threads are a small pool on top of the classic
+	# ones above, which keep serving writes, AI streams and other slow
+	# requests (see php_server below).
 	frankenphp {
 		num_threads 8
 		max_threads 50
 		max_wait_time 30s
+		{$FRANKENPHP_WORKER}
 	}
 }
 
@@ -71,5 +81,25 @@
 		}
 	}
 
-	php_server
+	# Worker mode serves the short, hot GETs from the Octane workers: pages,
+	# Inertia visits, full-page cache hits. Everything that can hold a thread
+	# for seconds or minutes runs on the classic threads instead, exactly as
+	# in classic mode, where the pool grows on demand up to max_threads:
+	# every write (logins, admin saves, uploads, the AI chat and assistant
+	# turns that answer as an event stream), the event-stream resumes, the
+	# AI search (an embeddings call), corpus file downloads and social-card
+	# renders. The worker pool is small (start-container.sh), so a few slow
+	# requests on it would stall every visitor; and a stream gains nothing
+	# from a booted app. The trailing /? matters: Laravel routes /bahth/ as
+	# /bahth. OctaneWorkerModeTest checks every
+	# event-stream route lands here.
+	@classic_writes not method GET HEAD
+	rewrite @classic_writes /index.php
+	@classic_slow path_regexp classic_slow ^/(ai/chat/turns/[^/]+/stream|manage/assistant/turns/[^/]+/stream|bahth|mstnd/.+|_og-image(/.*)?)/?$
+	rewrite @classic_slow /index.php
+
+	php_server {
+		index {$PHP_ENTRY:index.php}
+		try_files {path} {$PHP_ENTRY:index.php}
+	}
 }
