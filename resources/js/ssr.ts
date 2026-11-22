@@ -25,7 +25,9 @@ createServer(
     // One process, as in s-grade and catodemy. cluster: true (the starter
     // kit's default) forked a worker per vCPU: five Node processes and
     // ~220MB more for SSR traffic that one process renders in milliseconds.
-    { cluster: false },
+    // INERTIA_SSR_PORT lets the SSR smoke test (tests/Feature/SsrSmokeTest.php)
+    // run a private server; production keeps Inertia's default 13714.
+    { cluster: false, port: Number(process.env.INERTIA_SSR_PORT) || 13714 },
 );
 
 function resolvePage(name: string) {
